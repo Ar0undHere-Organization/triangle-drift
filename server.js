@@ -71,7 +71,7 @@ function getRoomPlayers(code) {
   return [...members]
     .map(socketId => io.sockets.sockets.get(socketId))
     .filter(Boolean)
-    .map(s => ({ playerId: s.data.playerId, isHost: s.data.isHost === true }))
+    .map(s => ({ playerId: s.data.playerId, isHost: s.data.isHost === true, name: s.data.playerName || `P${s.data.playerId}` }))
     .filter(p => Number.isInteger(p.playerId))
     .sort((a, b) => a.playerId - b.playerId);
 }
@@ -144,6 +144,14 @@ io.on('connection', socket => {
   socket.data.roomCode = null;
   socket.data.playerId = null;
   socket.data.isHost = false;
+  socket.data.playerName = '';
+
+  socket.on('set-name', payload => {
+    if (!hasRoomMembership(socket) || !isPlainObject(payload)) return;
+    const name = typeof payload.name === 'string' ? payload.name.trim().slice(0, 16) : '';
+    socket.data.playerName = name || `P${socket.data.playerId}`;
+    publishRoster(socket.data.roomCode);
+  });
 
   socket.on('create-room', () => {
     if (hasRoomMembership(socket)) {
@@ -155,6 +163,7 @@ io.on('connection', socket => {
     socket.data.roomCode = code;
     socket.data.playerId = 1;
     socket.data.isHost = true;
+    socket.data.playerName = `P${socket.data.playerId}`;
     roomHosts.set(code, socket.id);
     socket.emit('room-created', { code, playerId: 1, maxPlayers: MAX_PLAYERS });
     publishRoster(code);
@@ -189,6 +198,7 @@ io.on('connection', socket => {
     socket.data.roomCode = code;
     socket.data.playerId = playerId;
     socket.data.isHost = false;
+    socket.data.playerName = `P${playerId}`;
     socket.emit('room-joined', { code, playerId, maxPlayers: MAX_PLAYERS });
     socket.to(code).emit('peer-joined', { playerId });
     publishRoster(code);

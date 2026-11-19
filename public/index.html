@@ -76,8 +76,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         <div class="screen-kicker">TRIANGLE DRIFT / ARCADE</div>
         <h2>メインメニュー</h2>
         <p class="screen-copy">プレイ人数 1 - 8 人</p>
+        <div class="screen-fields"><label for="dashModeSelect">ダッシュ方向</label><select id="dashModeSelect" aria-label="ダッシュ方向"><option value="mouse">マウス方向</option><option value="move">移動方向</option></select></div>
+        <div class="screen-fields"><label><input id="bloomToggle" type="checkbox" checked> ブルーム</label><label><input id="trailToggle" type="checkbox" checked> 軌道表示</label></div>
         <div class="screen-actions"><button id="soloStart">ソロで始める</button><button id="createRoom" class="secondary">マルチプレイを作成</button></div>
         <div class="screen-fields">
+          <input id="playerName" type="text" maxlength="16" placeholder="プレイヤー名" aria-label="プレイヤー名">
           <input id="serverUrl" type="url" placeholder="サーバーURL (例: https://your-game-server.example)" aria-label="サーバーURL">
           <div class="screen-join"><input id="roomCode" type="text" maxlength="6" placeholder="ルームコード" aria-label="ルームコード"><button id="joinRoom">参加</button></div>
         </div>
@@ -130,7 +133,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     // エリート五角形(五角形より少し大きい。3way弾を撃つ)
     epent: { sides: 5, r: 27, vr: 1.05, color: '#d98cff', fill: '#25103a', mass: 2 },
     // 回復十字(回転。周囲の十字以外の敵を一定間隔で回復)
-    cross: { cross: true, sides: 12, r: 20, vr: 1.15, color: '#6cff8f', fill: '#0e2a18' }
+    cross: { cross: true, sides: 12, r: 20, vr: 1.15, color: '#6cff8f', fill: '#0e2a18' },
+    hexstar: { star: true, sides: 12, r: 25, vr: 1.05, color: '#72aaff', fill: '#101e3a', hk: 0.9 }
   };
   const isTri = (t) => t === 'tri' || t === 'etri';
   const CROSS_R = 140, CROSS_INTERVAL = 2.6, CROSS_HEAL = 0.2;      // 回復範囲 / 間隔(秒) / 最大HPに対する回復割合
@@ -142,7 +146,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   /* ---------- canvas sizing ---------- */
   let scale = 1, dpr = 1;
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     const cw = cv.clientWidth || W;
     scale = cw / W;
     cv.width = Math.round(cw * dpr);
@@ -203,9 +207,31 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   /* ---------- upgrades ---------- */
   const BASE_DELAY = 0.28;
   const DASH_DUR = 0.2, DASH_SPEED = 900, DASH_CD = 1.0;   // ダッシュ(右クリック): 時間 / 速度 / ダッシュ後のクールダウン
-  const PHASE_MAX = 16;                        // 1フェーズの敵数の上限(超えるとウェーブをフェーズ分割)
+  const PHASE_MIN = 20, PHASE_MAX = 30;        // 1フェーズは原則20〜30体。余りは均等配分
   const DMG_BASE = 20, HP_SCALE = 20;          // 弾の基本ダメージ / 敵HPの倍率(旧: ダメージ1・HPそのまま)
   const ITEM_DROP = 0.15, ITEM_HEAL = 10;      // 十字撃破時の回復アイテム: ドロップ率 / 回復量
+  function upgradeValue(id, pl) {
+    const s = pl.S;
+    switch (id) {
+      case 'rate': return [s.fireDelay.toFixed(2) + '秒', (BASE_DELAY / (s.rate + 0.15)).toFixed(2) + '秒'];
+      case 'dmg': return [s.dmg + '', (s.dmg + DMG_BASE) + ''];
+      case 'multi': return [formatChance(s.shots), formatChance(s.shots + 0.5)];
+      case 'speed': return [Math.round(s.bspeed) + '', (Math.round(s.bspeed + 62)) + ''];
+      case 'pierce': return [formatChance(s.pierce), formatChance(s.pierce + 0.5)];
+      case 'homing': return [s.guideLevel + '段階', (s.guideLevel + 1) + '段階'];
+      case 'burst': return [s.burstLv ? 'Lv ' + s.burstLv : 'なし', 'Lv ' + (s.burstLv + 1)];
+      case 'ricochet': return [formatChance(s.ric), formatChance(s.ric + 0.5)];
+      case 'crit': return [formatPercent(s.critChance), formatPercent(s.critChance + 0.05)];
+      case 'critdmg': return [formatPercent(s.critDmg - 1), formatPercent(s.critDmg + 0.25 - 1)];
+      case 'size': return [s.bsize.toFixed(1), (s.bsize + 0.45).toFixed(1)];
+      case 'move': return [pl.speed + '', (pl.speed + 25) + ''];
+      case 'armor': return [pl.maxHp + ' / ' + Math.ceil(pl.hp) + ' HP', (pl.maxHp + 20) + ' / ' + Math.min(pl.maxHp + 20, Math.ceil(pl.hp) + 20) + ' HP'];
+      case 'heal': return [Math.ceil(pl.hp) + ' / ' + pl.maxHp + ' HP', Math.min(pl.maxHp, Math.ceil(pl.hp) + 40) + ' / ' + pl.maxHp + ' HP'];
+      default: return ['-', '-'];
+    }
+  }
+  function formatChance(v) { const n = Math.floor(v) + (v % 1 >= 0.5 ? 1 : 0); return (n * 100 + Math.round((v % 1) * 100)) + '%相当'; }
+  function formatPercent(v) { return Math.round(v * 100) + '%'; }
   const UPG = [
     { id: 'rate', name: '連射強化', desc: '時間あたりの攻撃回数 +15%', color: '#ffd76a', apply: (s) => { s.rate += 0.15; s.fireDelay = BASE_DELAY / s.rate; } },
     { id: 'dmg', name: '火力強化', desc: '弾のダメージ +' + DMG_BASE, color: '#ff7a59', apply: (s) => { s.dmg += DMG_BASE; } },
@@ -226,6 +252,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   /* ---------- state ---------- */
   let state = 'title';          // title | play | clear | upgrade | dying | over
   let P, enemies, bullets, ebullets, parts, rings, spawns, texts, meteors, items, trainZones;
+  const COLLISION_CELL = 96;
+  let enemyGrid = new Map();
+  const LIMITS = { parts: 800, rings: 120, texts: 160, bullets: 240, ebullets: 800, trainZones: 100 };
   let wave = 0, kills = 0, time = 0;
   let phaseIdx = 0, phaseCount = 1, wavePhases = [];     // ウェーブ内フェーズ
   let trainCid = 1;                                      // Train のチェーンID採番
@@ -235,11 +264,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let hoverIdx = -1, myPickIdx = -1;
   const keys = {};
   let guestDash = false;
+  let dashMode = 'mouse';
+  let bloomEnabled = true, trailEnabled = true;
   const mouse = { x: W / 2, y: H / 2, down: false };
   let netSocket = null, netRole = 'solo', netRoom = '', peerConnected = false;
   const MAX_PLAYERS = 8;
   const PLAYER_COLORS = ['#ffffff', '#5ee6d0', '#ffbd69', '#e68cff', '#8ee06c', '#ff7a86', '#72b7ff', '#f4e66a'];
-  let playerId = 1, roomRoster = [{ playerId: 1, isHost: true }];
+  let playerId = 1, roomRoster = [{ playerId: 1, isHost: true, name: 'P1' }];
+  let playerName = 'P1';
   const freshRemoteInput = () => ({ has: false, x: W / 2 + 45, y: H / 2, aimX: W / 2, aimY: H / 2, firing: false, dashT: 0, dashCd: 0 });
   let remotePlayer = null, lastNetSend = 0, lastInputAt = 0, lastSnapshotAt = 0, netConnected = false;
   let remotePlayers = new Map(), remoteInputs = new Map(), remoteCursors = new Map(), remotePickStates = new Map();
@@ -255,7 +287,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let guestPicked = false;                            // ゲスト: アップグレード選択状況
   const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
   function hosting() { return netRole === 'host' && peerConnected && !!netSocket && netSocket.connected; }
-  function pushEv(a) { if (!muteEv && evq.length < 160 && hosting()) evq.push(a); }
+  function pushEv(a) { if (!muteEv && evq.length < (bullets.length > 120 ? 48 : 160) && hosting()) evq.push(a); }
   function localOnly(fn) { const m = muteEv; muteEv = true; try { fn(); } finally { muteEv = m; } }
   const lerp = (a, b, t) => a + (b - a) * t;
   const myPlayer = () => (netRole === 'guest' ? remotePlayer : P);
@@ -288,7 +320,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     list.replaceChildren();
     for (const entry of roomRoster) {
       const item = document.createElement('li'), name = document.createElement('span'), status = document.createElement('span');
-      name.textContent = (entry.isHost ? 'ホスト' : 'プレイヤー') + ' P' + entry.playerId + (entry.playerId === playerId ? ' (あなた)' : '');
+      name.textContent = (entry.name || 'P' + entry.playerId) + (entry.isHost ? ' (ホスト)' : '') + (entry.playerId === playerId ? ' (あなた)' : '') + '  / P' + entry.playerId;
       name.style.color = playerColor(entry.playerId);
       status.className = 'lobby-state'; status.textContent = entry.isHost ? 'ホスト' : '接続中';
       item.append(name, status); list.append(item);
@@ -303,7 +335,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   // プレイヤーごとに独立した強化状態(S)・取得レベル・アップグレード選択肢を持つ
   function newPlayer(x, y, color) {
-    return { x, y, sx: x, sy: y, r: 14, hp: 100, maxHp: 100, speed: 250, kx: 0, ky: 0, inv: 0, cool: 0, dashT: 0, dashCd: 0, dvx: 0, dvy: 0, lx: 0, ly: 0, color, S: newStats(), levels: {}, choices: [], picked: null };
+    return { x, y, sx: x, sy: y, r: 14, hp: 100, maxHp: 100, speed: 250, kx: 0, ky: 0, inv: 0, cool: 0, dashT: 0, dashCd: 0, dvx: 0, dvy: 0, lx: 0, ly: 0, color, name: 'P1', S: newStats(), levels: {}, choices: [], picked: null };
   }
   function getRemotePlayer(id) {
     let pl = remotePlayers.get(id);
@@ -329,6 +361,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function resetRun() {
     P = newPlayer(W / 2, H / 2, '#ffffff');
+    P.name = playerName;
     P.id = 1;
     remotePlayers = new Map(); remoteInputs = new Map(); remoteCursors = new Map(); remotePickStates = new Map();
     for (const entry of roomRoster) if (entry.playerId > 1) { getRemotePlayer(entry.playerId); remoteInputs.set(entry.playerId, freshRemoteInput()); }
@@ -360,7 +393,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       sfx.boss();
       return;
     }
-    const count = Math.min(7 + (n - 1) * 3, 42);
+    const count = Math.min(8 + (n - 1) * 3, 120);
     const nP = n >= 6 ? Math.min(1 + Math.floor((n - 6) / 2), 6) : 0;
     const nS = n >= 3 ? Math.min(1 + Math.floor((n - 3) / 2), 8) : 0;
     const types = [];
@@ -368,18 +401,30 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (let i = 0; i < nS; i++) types.push('sq');
     const nH = n >= 8 ? Math.min(1 + Math.floor((n - 8) / 3), 4) : 0;
     for (let i = 0; i < nH; i++) types.push('hex');
-    const nE = n >= 4 ? Math.min(1 + Math.floor((n - 4) / 3), 4) : 0;   // エリート三角形
+    const nE = n >= 10 ? Math.min(1 + Math.floor((n - 10) / 3), 4) : 0;   // エリート三角形は序盤には出さない
     for (let i = 0; i < nE; i++) types.push('etri');
-    const nEP = n >= 8 ? Math.min(1 + Math.floor((n - 8) / 4), 3) : 0;  // エリート五角形
+    const nEP = n >= 12 ? Math.min(1 + Math.floor((n - 12) / 4), 3) : 0;  // エリート五角形は序盤には出さない
     for (let i = 0; i < nEP; i++) types.push('epent');
     const nX = n >= 5 ? Math.min(1 + Math.floor((n - 5) / 3), 3) : 0;   // 回復十字
     for (let i = 0; i < nX; i++) types.push('cross');
+    const nL = n >= 7 ? Math.min(1 + Math.floor((n - 7) / 3), 3) : 0;   // レーザーを撃つ六芳星
+    for (let i = 0; i < nL; i++) types.push('hexstar');
     while (types.length < count) types.push('tri');
     for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const tmp = types[i]; types[i] = types[j]; types[j] = tmp; }
-    // 敵数が閾値を超えるときはフェーズ分割(種類が偏らないよう交互に振り分け)。前フェーズを全滅させると次フェーズが召喚される
-    const nPh = Math.ceil(count / PHASE_MAX);
+    // 合計をフェーズ数で均等配分し、通常は20〜30体に収める。前フェーズを全滅させると次フェーズが召喚される
+    let nPh = count <= 39 ? 1 : Math.ceil(count / PHASE_MAX);
+    if (count > 39) {
+      while (nPh > 1 && count / (nPh - 1) <= 35) nPh--;
+    }
     wavePhases = Array.from({ length: nPh }, () => []);
-    types.forEach((t, i) => wavePhases[i % nPh].push(t));
+    const base = Math.floor(count / nPh), extra = count % nPh;
+    const shuffled = types.slice();
+    let cursor = 0;
+    for (let p = 0; p < nPh; p++) {
+      const phaseSize = base + (p < extra ? 1 : 0);
+      wavePhases[p] = shuffled.slice(cursor, cursor + phaseSize);
+      cursor += phaseSize;
+    }
     phaseIdx = 0; phaseCount = nPh;
     startPhase(0);
     sfx.wave();
@@ -422,9 +467,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const a = Math.random() * TAU, v = speed * (0.35 + Math.random() * 0.8);
       parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: life * (0.6 + Math.random() * 0.6), max: life, size: size * (0.6 + Math.random() * 0.8), color });
     }
+    if (parts.length > LIMITS.parts) parts.splice(0, parts.length - LIMITS.parts);
   }
-  function ring(x, y, maxR, life, color, lw) { pushEv(['r', r1(x), r1(y), maxR, life, color, lw || 2]); rings.push({ x, y, r: 0, maxR, life, max: life, color, lw: lw || 2 }); }
-  function floatText(x, y, str, color) { pushEv(['t', r1(x), r1(y), str, color]); texts.push({ x, y, str, color, life: 0.7, max: 0.7 }); }
+  function ring(x, y, maxR, life, color, lw) { if (!trailEnabled && maxR < 80) return; pushEv(['r', r1(x), r1(y), maxR, life, color, lw || 2]); rings.push({ x, y, r: 0, maxR, life, max: life, color, lw: lw || 2 }); if (rings.length > LIMITS.rings) rings.shift(); }
+  function floatText(x, y, str, color) { pushEv(['t', r1(x), r1(y), str, color]); texts.push({ x, y, str, color, life: 0.7, max: 0.7 }); if (texts.length > LIMITS.texts) texts.shift(); }
   const fmtNum = (v) => String(Math.round(v * 10) / 10);
   // ダメージポップ(通常=白・小、クリティカル=橙・大)
   function damagePop(x, y, v, crit, color) {
@@ -448,7 +494,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function tryDash(pl, dx, dy, ax, ay) {
     if (!pl || pl.hp <= 0 || pl.dashT > 0 || pl.dashCd > 0 || (state !== 'play' && state !== 'clear')) return;
     let ux, uy; const m = Math.hypot(dx, dy);
-    if (m > 0.01) { ux = dx / m; uy = dy / m; }
+    if (dashMode === 'move' && m > 0.01) { ux = dx / m; uy = dy / m; }
+    else if (dashMode === 'move' && (pl.lx || pl.ly)) { ux = pl.lx; uy = pl.ly; }
+    else if (dashMode === 'mouse') { const ex = ax - pl.x, ey = ay - pl.y, d = Math.hypot(ex, ey); if (d > 1) { ux = ex / d; uy = ey / d; } else { ux = 1; uy = 0; } }
     else if (pl.lx || pl.ly) { ux = pl.lx; uy = pl.ly; }
     else { const ex = ax - pl.x, ey = ay - pl.y, d = Math.hypot(ex, ey); if (d > 1) { ux = ex / d; uy = ey / d; } else { ux = 1; uy = 0; } }
     pl.lx = ux; pl.ly = uy;
@@ -462,7 +510,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl.dashT -= dt;
       pl.x += pl.dvx * step; pl.y += pl.dvy * step;
       pl.x = Math.max(pl.r + 6, Math.min(W - pl.r - 6, pl.x)); pl.y = Math.max(pl.r + 6, Math.min(H - pl.r - 6, pl.y));
-      parts.push({ x: pl.x, y: pl.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: pl.r * 0.7, color: pl.color || '#ffffff' });
+      if (trailEnabled) parts.push({ x: pl.x, y: pl.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: pl.r * 0.7, color: pl.color || '#ffffff' });
       pl.inv = Math.max(pl.inv, 0.1);
       if (pl.dashT <= 0) { pl.dashT = 0; pl.dashCd = DASH_CD; }
     } else if (pl.dashCd > 0) pl.dashCd = Math.max(0, pl.dashCd - dt);
@@ -480,7 +528,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         x: shooter.x + c * (shooter.r + 6), y: shooter.y + s * (shooter.r + 6),
         vx: c * S.bspeed, vy: s * S.bspeed,
         r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, bounceChance: S.ric, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
-        homing: !!S.missileHoming, owner: 'player',
+        homing: !!S.missileHoming, owner: shooter.id || 1,
         crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, guide: S.guideLevel   // 弾ごとに発射時の強化を保持
       });
     }
@@ -501,7 +549,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     shake = Math.max(shake, sm ? 5 : 8);
     sfx.kill();
     if (e.type === 'cross' && !e.silent && Math.random() < ITEM_DROP) items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU });
-    if (e.type === 'hex' && !e.silent) hexShoot(e);          // 六角形: 倒したときだけ6方向へ弾
+    if (e.type === 'hex' && !e.silent) hexShoot(e);          // 六角形: 倒したときだけ三段の12方向へ弾
     if (e.type === 'etri' && !e.silent) splitElite(e);       // エリート三角形: 通常三角形3体に分裂
     const lastSeg = !et.seg || !enemies.some((o) => o !== e && o.type === e.type && o.hp > 0);
     if (et.boss && !(et.seg && (!lastSeg || e.silent))) {
@@ -514,8 +562,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ring(e.x, e.y, 280, 0.8, et.color, 4);
       ring(e.x, e.y, 170, 0.6, '#ffffff', 3);
       const party = partyPlayers();
-      for (const pl of party) if (pl.hp <= 0) {
-        pl.hp = pl.maxHp * 0.5; pl.inv = 1.5; pl.kx = 0; pl.ky = 0;
+      for (const pl of party) {
+        pl.hp = pl.maxHp; pl.inv = 1.5; pl.kx = 0; pl.ky = 0;
         ring(pl.x, pl.y, 90, 0.55, pl.color, 3); burst(pl.x, pl.y, 24, pl.color, 240, 0.6, 3);
       }
       if (party.some((pl) => pl.hp > 0)) { state = 'play'; dyT = 0; overT = 0; }
@@ -579,7 +627,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const target = getTargetPlayer(e.x, e.y);
     const a = Math.atan2(target.y - e.y, target.x - e.x), c = Math.cos(a), s = Math.sin(a);
     const elite = e.type === 'epent', col = ET[e.type].color;
-    for (let k = elite ? -2 : 0; k <= (elite ? 2 : 0); k++) {
+    for (let k = -2; k <= 2; k++) {
       const aa = a + k * (elite ? 0.22 : 0.3), cc = Math.cos(aa), ss = Math.sin(aa), speed = elite ? 225 : 210;
       ebullets.push({ x: e.x + cc * e.r, y: e.y + ss * e.r, vx: cc * speed, vy: ss * speed, r: elite ? 5.5 : 5, life: 5, color: elite ? col : undefined });
     }
@@ -590,9 +638,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function hexShoot(e) {
     const col = ET.hex.color;
-    for (let i = 0; i < 6; i++) {
-      const a = e.rot + i * TAU / 6, c = Math.cos(a), s = Math.sin(a);
-      ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 200, vy: s * 200, r: 5, life: 5, color: col });
+    for (let pass = 0; pass < 3; pass++) {
+      const base = e.rot + pass * TAU / 36;
+      for (let i = 0; i < 12; i++) {
+        const a = base + i * TAU / 12, c = Math.cos(a), s = Math.sin(a);
+        ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 200, vy: s * 200, r: 5, life: 5, delay: pass * 0.12, color: col });
+      }
     }
     burst(e.x, e.y, 8, col, 160, 0.25, 2.4); ring(e.x, e.y, 44, 0.25, col, 2); sfx.eshoot();
   }
@@ -831,19 +882,35 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   /* ---------- 敵同士の反発 ---------- */
   function separate(dt) {
-    const n = enemies.length;
-    for (let i = 0; i < n; i++) {
-      const a = enemies[i];
-      for (let j = i + 1; j < n; j++) {
-        const b = enemies[j], tot = a.inv + b.inv;
-        if (tot === 0) continue;
-        let dx = b.bx - a.bx, dy = b.by - a.by, d = Math.hypot(dx, dy);
-        const min = (a.r + b.r) * 0.95;
-        if (d >= min) continue;
-        if (d < 0.01) { const g = Math.random() * TAU; dx = Math.cos(g); dy = Math.sin(g); d = 1; }
-        const push = (min - d) * Math.min(1, dt * 13), ux = dx / d, uy = dy / d;
-        a.bx -= ux * push * a.inv / tot; a.by -= uy * push * a.inv / tot;
-        b.bx += ux * push * b.inv / tot; b.by += uy * push * b.inv / tot;
+    const grid = new Map();
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      const cx = Math.floor((e.bx || e.x) / COLLISION_CELL), cy = Math.floor((e.by || e.y) / COLLISION_CELL);
+      const key = cx + ',' + cy;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(e);
+    }
+    const checked = new Set();
+    for (const [key, bucket] of grid) {
+      const [cx, cy] = key.split(',').map(Number);
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const neighbors = grid.get((cx + ox) + ',' + (cy + oy));
+        if (!neighbors) continue;
+        for (const a of bucket) for (const b of neighbors) {
+          if (a === b) continue;
+          const pair = a.id && b.id ? (a.id < b.id ? a.id + ':' + b.id : b.id + ':' + a.id) : a + ':' + b;
+          if (checked.has(pair)) continue;
+          checked.add(pair);
+          const tot = a.inv + b.inv;
+          if (tot === 0) continue;
+          let dx = b.bx - a.bx, dy = b.by - a.by, d = Math.hypot(dx, dy);
+          const min = (a.r + b.r) * 0.95;
+          if (d >= min) continue;
+          if (d < 0.01) { const g = Math.random() * TAU; dx = Math.cos(g); dy = Math.sin(g); d = 1; }
+          const push = (min - d) * Math.min(1, dt * 13), ux = dx / d, uy = dy / d;
+          a.bx -= ux * push * a.inv / tot; a.by -= uy * push * a.inv / tot;
+          b.bx += ux * push * b.inv / tot; b.by += uy * push * b.inv / tot;
+        }
       }
     }
     for (const e of enemies) {
@@ -863,7 +930,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       fireT: 1.8 + Math.random() * 0.8, cd: 1.6, atk: 0, volley: 0, p2: false,
       spin: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 1.5),
       mode: 'drift', dashT: 1.5 + Math.random() * 2, healT: 2 + Math.random() * 1.5,
-      inv: et.boss ? 0 : 1 / (et.mass || 1), noScore: !!summoned
+      inv: et.boss ? 0 : 1 / (et.mass || 1), noScore: !!summoned,
+      laserT: type === 'hexstar' ? 2.2 + Math.random() * 1.1 : 0, laserPhase: 0, laserAngle: 0, laserT0: 0
     };
     if (type === 'trinity') { enemy.sy0 = y; initTrinity(enemy); }
     if (type === 'hex') { const hv = Math.min(150, 70 + wave * 3); enemy.vx = Math.cos(va) * hv; enemy.vy = Math.sin(va) * hv; }
@@ -874,7 +942,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   /* ---------- boss: Train (部位破壊で分裂するワーム) ---------- */
-  const TRAIN_LEN = 22, TRAIN_GAP = 34, TRAIN_SPEED = 225, TRAIN_ENTRY = 360;
+  const TRAIN_LEN = 22, TRAIN_GAP = 34, TRAIN_SPEED = 150, TRAIN_ENTRY = 260;
   function spawnTrain(sp) {
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1];
     const hx = sp.edge === 0 ? -40 : sp.edge === 1 ? W + 40 : sp.x, hy = sp.edge === 2 ? -40 : sp.edge === 3 ? H + 40 : sp.y;
@@ -884,6 +952,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       enemies.push({
         type: 'train', x, y, bx: x, by: y, r: 19, hp: per, maxHp: per, maxTotal: per * TRAIN_LEN,
         cid, ci: i, ang: Math.atan2(uy, ux), ent: i === 0, boost: 0, trailT: Math.random() * 0.5, ph: Math.random() * TAU, rot: 0, flash: 0, born: 1,
+        enrageChargeT: 3.8 + Math.random() * 1.2, chargePhase: 0, chargeT: 0, chargeAngle: 0,
         vx: 0, vy: 0, fireT: 9, cd: 9, atk: 0, volley: 0, p2: false, spin: 0, mode: 'drift', dashT: 9, healT: 9, inv: 0
       });
     }
@@ -930,6 +999,34 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         h.ang += Math.max(-turn, Math.min(turn, d));
         sp = TRAIN_SPEED * (0.65 + surge * 0.8) * (1 + split);
         if (h.boost > 0) { h.boost -= dt; sp *= 1.5; }
+      }
+      const hpRatio = segs.length ? (segs.filter((q) => q.cid === h.cid).reduce((sum, q) => sum + Math.max(0, q.hp), 0) / segs.filter((q) => q.cid === h.cid).reduce((sum, q) => sum + q.maxHp, 0)) : 1;
+      if (hpRatio < 0.5) {
+        h.p2 = true;
+        h.enrageChargeT -= dt;
+        h.fireT = (h.fireT || 3.2) - dt;
+        if (h.fireT <= 0) {
+          h.fireT = 2.4;
+          const target = getTargetPlayer(h.x, h.y), base = Math.atan2(target.y - h.y, target.x - h.x);
+          for (let k = -3; k <= 3; k++) {
+            const a = base + k * 0.16, c = Math.cos(a), s = Math.sin(a);
+            ebullets.push({ x: h.x + c * h.r, y: h.y + s * h.r, vx: c * 190, vy: s * 190, r: 5.5, life: 5.5, color: ET.train.color });
+          }
+          ring(h.x, h.y, 70, 0.28, ET.train.color, 3); sfx.eshoot();
+        }
+        if (h.chargePhase === 0 && h.enrageChargeT <= 0) {
+          h.chargePhase = 1; h.chargeT = 1.05;
+          const target = getTargetPlayer(h.x, h.y); h.chargeAngle = Math.atan2(target.y - h.y, target.x - h.x);
+        }
+        if (h.chargePhase === 1) {
+          h.chargeT -= dt;
+          if (h.chargeT <= 0) { h.chargePhase = 2; h.chargeT = 0.55; }
+        } else if (h.chargePhase === 2) {
+          h.chargeT -= dt;
+          sp = 620;
+          h.ang = h.chargeAngle;
+          if (h.chargeT <= 0) { h.chargePhase = 0; h.enrageChargeT = 4.2 + Math.random() * 1.2; h.ang = h.chargeAngle; }
+        }
       }
       h.x += Math.cos(h.ang) * sp * dt; h.y += Math.sin(h.ang) * sp * dt;
       for (let i = 1; i < ch.length; i++) {               // 前の車両に一定間隔で追従
@@ -1041,8 +1138,31 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     pickFlash = Math.max(0, pickFlash - dt * 2);
   }
 
+  function rebuildEnemyGrid() {
+    enemyGrid.clear();
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const cx = Math.floor(e.x / COLLISION_CELL), cy = Math.floor(e.y / COLLISION_CELL);
+      const key = cx + ',' + cy;
+      let bucket = enemyGrid.get(key);
+      if (!bucket) enemyGrid.set(key, bucket = []);
+      bucket.push(e);
+    }
+  }
+  function nearbyEnemies(x, y, radius) {
+    const cx = Math.floor(x / COLLISION_CELL), cy = Math.floor(y / COLLISION_CELL), found = [];
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const bucket = enemyGrid.get((cx + ox) + ',' + (cy + oy));
+      if (bucket) found.push(...bucket);
+    }
+    return found;
+  }
   function updateWorld(dt, input) {
     time += dt;
+    if (bullets.length > LIMITS.bullets) bullets.splice(0, bullets.length - LIMITS.bullets);
+    if (ebullets.length > LIMITS.ebullets) ebullets.splice(0, ebullets.length - LIMITS.ebullets);
+    if (trainZones.length > LIMITS.trainZones) trainZones.splice(0, trainZones.length - LIMITS.trainZones);
+    rebuildEnemyGrid();
     // player
     if (state !== 'dying') {
       let dx = 0, dy = 0;
@@ -1077,7 +1197,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (ri.dashT > 0) {
           rp.inv = Math.max(rp.inv, ri.dashT + 0.1);
           if (rp.dashT <= 0) localOnly(() => { ring(rp.x, rp.y, 40, 0.25, '#ffffff', 2); sfx.dash(); });
-          parts.push({ x: rp.sx, y: rp.sy, vx: 0, vy: 0, life: 0.25, max: 0.25, size: rp.r * 0.7, color: rp.color });
+          if (trailEnabled) parts.push({ x: rp.sx, y: rp.sy, vx: 0, vy: 0, life: 0.25, max: 0.25, size: rp.r * 0.7, color: rp.color });
         }
         rp.dashT = ri.dashT; rp.dashCd = ri.dashCd;
         rp.cool -= dt;
@@ -1163,6 +1283,26 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           else { if (e.type === 'epent') e.burstLeft = 3; e.fireT = e.type === 'epent' ? 2.6 + Math.random() * 0.8 : 2.4; }
         }
       }
+      if (e.type === 'hexstar' && state !== 'dying' && e.born > 0.4) {
+        if (e.laserPhase === 0) {
+          e.laserT -= dt;
+          if (e.laserT <= 0) {
+            const target = getTargetPlayer(e.x, e.y); e.laserAngle = Math.atan2(target.y - e.y, target.x - e.x);
+            e.laserPhase = 1; e.laserT = 1.0; e.laserT0 = 1.0;
+          }
+        } else if (e.laserPhase === 1) {
+          e.laserT -= dt;
+          if (e.laserT <= 0) { e.laserPhase = 2; e.laserT = 0.38; e.laserT0 = 0.38; }
+        } else {
+          e.laserT -= dt;
+          for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0) {
+            const rx = pl.x - e.x, ry = pl.y - e.y, c = Math.cos(e.laserAngle), s = Math.sin(e.laserAngle);
+            const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
+            if (along > 0 && side < 7 + pl.r * 0.5) { if (pl === P) hurtPlayer(12, e.x, e.y); else hurtRemotePlayer(pl, 12, e.x, e.y); }
+          }
+          if (e.laserT <= 0) { e.laserPhase = 0; e.laserT = 3.2 + Math.random(); }
+        }
+      }
       if (e.type === 'cross' && state !== 'dying' && e.born > 0.4) {      // 十字: 一定間隔で周囲を回復
         e.healT -= dt;
         if (e.healT <= 0) { crossHeal(e); e.healT = CROSS_INTERVAL; }
@@ -1176,6 +1316,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     // enemy bullets
     for (let i = ebullets.length - 1; i >= 0; i--) {
       const b = ebullets[i];
+      if (b.delay > 0) { b.delay -= dt; continue; }
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       if (b.star) b.rot += dt * 6;
       if (b.bounce > 0) {                           // 反射する弾
@@ -1205,7 +1346,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       b.px = b.x; b.py = b.y;
       if (b.homing) {
         let target = null, td = Infinity;
-        for (const e of enemies) if (e.hp > 0) {
+        for (const e of nearbyEnemies(b.x, b.y, 160)) if (e.hp > 0) {
           const q = nearPt(e, b.x, b.y), d = Math.hypot(q.x - b.x, q.y - b.y);
           if (d < td) { td = d; target = q; }
         }
@@ -1235,7 +1376,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         bullets.splice(i, 1); continue;
       }
       let dead = false;
-      for (const e of enemies) {
+      for (const e of nearbyEnemies(b.x, b.y, 160)) {
         if (e.hp <= 0) continue;
         if (b.hit.has(e)) continue;
         if (bodyHit(e, b.x, b.y, e.r * 0.9 * (ET[e.type].hk || 1) + b.r)) {
@@ -1272,7 +1413,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       bannerText = 'PHASE ' + (phaseIdx + 1) + ' / ' + phaseCount; bannerT = 1.8;
       ring(P.x, P.y, 300, 0.6, '#ffffff', 2); sfx.wave();
     } else if (state === 'play' && spawns.length === 0 && enemies.length === 0) {
-      state = 'clear'; clearT = 1.2; ebullets.length = 0; meteors.length = 0;
+      state = 'clear'; clearT = 1.2; bullets.length = 0; ebullets.length = 0; meteors.length = 0;
       bannerText = 'WAVE CLEAR'; bannerT = 1.4;
       ring(P.x, P.y, 420, 0.8, C.accent, 3);
       ring(P.x, P.y, 260, 0.6, '#ffffff', 2);
@@ -1528,6 +1669,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (head) { ctx.fillStyle = '#fff6c8'; ctx.shadowColor = '#fff6c8'; ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(L / 2 - 7, 0, 4.5, 0, TAU); ctx.fill(); }
     if (tail) { ctx.fillStyle = '#ff5d6a'; ctx.shadowColor = '#ff5d6a'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(-L / 2 + 6, 0, 3, 0, TAU); ctx.fill(); }
   }
+  function drawTrainCharge() {
+    for (const h of enemies) if (h.type === 'train' && h.chargePhase === 1) {
+      const a = h.chargeAngle, ex = h.x + Math.cos(a) * 1100, ey = h.y + Math.sin(a) * 1100;
+      ctx.save(); ctx.strokeStyle = '#ff7a86'; ctx.lineWidth = 5; ctx.globalAlpha = 0.25 + 0.35 * (Math.sin(time * 18) + 1) * 0.5;
+      ctx.setLineDash([18, 12]); ctx.lineDashOffset = -time * 100; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#ff5d6a'; ctx.beginPath(); ctx.arc(h.x + Math.cos(a) * h.r, h.y + Math.sin(a) * h.r, 7, 0, TAU); ctx.fill(); ctx.restore();
+    }
+  }
   function drawTrainWarn(sp) {                          // 進入レーンの警告
     const p = Math.min(1, sp.t / sp.delay), blink = Math.floor(sp.t * 6) % 2 ? 1 : 0.45, lane = 76;
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1], horiz = sp.edge < 2;
@@ -1583,7 +1732,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (e.type === 'train') { drawTrainSeg(e); ctx.restore(); continue; }
       if (e.parts) {                                          // Trinity: 3つの三角形
         for (const q of e.parts) {
-          ctx.shadowColor = et.color; ctx.shadowBlur = 16 + q.chg * 26;
+          ctx.shadowColor = bloomEnabled ? et.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + q.chg * 26 : 0;
           drawPoly(q.x, q.y, e.r * sc * et.vr, q.rot, 3);
           ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill; ctx.fill();
           ctx.lineWidth = 3; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : et.color; ctx.stroke();
@@ -1597,7 +1746,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         ctx.restore();
         continue;
       }
-      ctx.shadowColor = et.color; ctx.shadowBlur = 16 + ch * 22;
+      ctx.shadowColor = bloomEnabled ? et.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + ch * 22 : 0;
       if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, 0.36);
       else if (et.cross) drawCross(e.x, e.y, e.r * sc * et.vr, e.rot);
       else drawPoly(e.x, e.y, e.r * sc * et.vr, e.rot, et.sides);
@@ -1611,8 +1760,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
 
-  function drawLasers() {                                   // Trinity のレーザー(予告線→照射)
+  function drawLasers() {                                   // Trinity と六芳星のレーザー(予告線→照射)
     for (const e of enemies) {
+      if (e.type === 'hexstar' && e.laserPhase > 0) {
+        const ex = e.x + Math.cos(e.laserAngle) * 1300, ey = e.y + Math.sin(e.laserAngle) * 1300;
+        ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(ex, ey);
+        ctx.lineCap = 'round';
+        if (e.laserPhase === 1) { ctx.strokeStyle = '#72aaff'; ctx.lineWidth = 2; ctx.setLineDash([12, 10]); ctx.lineDashOffset = -time * 80; ctx.globalAlpha = 0.45 + 0.35 * (Math.sin(time * 20) + 1) * 0.5; ctx.stroke(); }
+        else { ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = '#72aaff'; ctx.shadowBlur = 20; ctx.strokeStyle = '#72aaff'; ctx.lineWidth = 20; ctx.globalAlpha = 0.35; ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.globalAlpha = 0.9; ctx.stroke(); }
+        ctx.restore(); continue;
+      }
       if (e.type !== 'trinity' || !e.beam) continue;
       const col = ET.trinity.color;
       ctx.save();
@@ -1703,7 +1860,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.globalCompositeOperation = 'lighter';
     for (const b of ebullets) {
       const col = b.color || ET.pent.color;
-      ctx.shadowColor = col; ctx.shadowBlur = 12;
+      ctx.shadowColor = bloomEnabled ? col : 'transparent'; ctx.shadowBlur = bloomEnabled ? 12 : 0;
       ctx.fillStyle = col;
       if (b.star) {
         drawStar(b.x, b.y, b.r * 1.5, b.rot, 0.38); ctx.fill();
@@ -1725,8 +1882,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function drawCursorDot(x, y, color) {
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > W || y < 0 || y > H) return;
     ctx.save(); ctx.globalAlpha = 0.8; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, TAU); ctx.stroke();
-    ctx.beginPath(); ctx.arc(x, y, 2, 0, TAU); ctx.fill(); ctx.restore();
+    ctx.beginPath(); ctx.arc(x, y, 8, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x - 5, y); ctx.moveTo(x + 5, y); ctx.lineTo(x + 12, y); ctx.moveTo(x, y - 12); ctx.lineTo(x, y - 5); ctx.moveTo(x, y + 5); ctx.lineTo(x, y + 12); ctx.stroke(); ctx.restore();
   }
   function drawCursors() {
     if (state !== 'play' && state !== 'clear') return;
@@ -1743,12 +1901,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const dp = (netRole === 'host' && player !== P) ? Object.assign({}, player, { x: player.sx, y: player.sy }) : player;
     if (coop()) {
       ctx.save(); ctx.fillStyle = color; ctx.globalAlpha = 0.85; ctx.textAlign = 'center'; setFont(11, 700); spaced(1);
-      ctx.fillText(player === myPlayer() ? 'YOU' : 'P' + (player.id || 1), dp.x, dp.y - dp.r - 19);
+      const label = player.name || 'P' + (player.id || 1);
+      ctx.fillText(player === myPlayer() ? label + ' / YOU' : label, dp.x, dp.y - dp.r - 19);
       spaced(0); ctx.restore();
     }
     if (dp.inv > 0 && Math.floor(dp.inv * 24) % 2 === 0) { drawHpRingFor(dp, color); return; }
     ctx.save();
-    ctx.shadowColor = color; ctx.shadowBlur = 20;
+    ctx.shadowColor = bloomEnabled ? color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 20 : 0;
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(dp.x, dp.y, dp.r, 0, TAU); ctx.fill();
     ctx.restore();
@@ -1893,6 +2052,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       // desc (wrap)
       ctx.fillStyle = '#aab2c8'; setFont(15, 500);
       wrapText(u.desc, r.x + 22, y + 160 + (nameLines - 1) * 26, CARD_W - 44, 24);
+      const values = upgradeValue(u.id, pl);
+      ctx.fillStyle = u.color; setFont(13, 700); spaced(1);
+      ctx.fillText(values[0] + '  →  ' + values[1], r.x + 22, y + CARD_H - 56);
+      spaced(0);
       // level
       const lv = pl.levels[u.id] || 0;
       ctx.fillStyle = chosen ? u.color : C.muted; setFont(13, 700); spaced(2);
@@ -1981,16 +2144,22 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     netSocket.on('disconnect', () => { netConnected = false; peerConnected = false; setNetStatus('サーバーとの接続が切れました'); showMainMenu(); });
     netSocket.on('room-created', d => {
       netRoom = d.code; playerId = d.playerId || 1; document.getElementById('roomCode').value = d.code;
-      syncRoster([{ playerId: 1, isHost: true }]); showLobbyScreen(true);
+      syncRoster([{ playerId: 1, isHost: true, name: playerName }]); showLobbyScreen(true);
+      netSocket.emit('set-name', { name: playerName });
       setNetStatus('ルーム ' + d.code + ' を作成しました。参加者を待っています。');
     });
     netSocket.on('room-joined', d => {
-      netRoom = d.code; playerId = d.playerId || 2; getRemotePlayer(playerId); showLobbyScreen(false);
+      netRoom = d.code; playerId = d.playerId || 2; getRemotePlayer(playerId).name = playerName; showLobbyScreen(false);
+      netSocket.emit('set-name', { name: playerName });
       setNetStatus('ルーム ' + d.code + ' に参加しました。ホストの開始を待っています。');
     });
     netSocket.on('room-error', d => setNetStatus(d.message || 'ルーム処理に失敗しました'));
     netSocket.on('room-roster', d => {
       syncRoster(d && d.players);
+      if (d && d.players) for (const entry of d.players) {
+        if (entry.playerId === 1) P.name = entry.name || 'P1';
+        else { const pl = getRemotePlayer(entry.playerId); pl.name = entry.name || 'P' + entry.playerId; }
+      }
       renderLobbyRoster();
       if (netRole === 'host') setNetStatus('待機中: ' + roomRoster.length + ' / ' + MAX_PLAYERS + ' 人');
     });
@@ -2023,6 +2192,21 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     });
     netSocket.on('snapshot', applySnapshot);
     netSocket.on('start-game', () => { if (netRole === 'guest') { resetRun(); hideMenuScreens(); sfx.start(); setNetStatus('協力プレイ中'); } });
+    netSocket.on('bullet-hit', d => {
+      if (netRole !== 'host' || !d) return;
+      const pl = remotePlayers.get(d.playerId);
+      for (const e of enemies) if (e.id === d.enemyId) {
+        e.hp -= d.damage; e.flash = 0.09;
+        if (e.bx !== undefined) { const l = Math.hypot(d.vx, d.vy) || 1; e.bx += d.vx / l * d.kb; e.by += d.vy / l * d.kb; }
+        damagePop(e.x, e.y - e.r - 4, d.damage, false); break;
+      }
+      if (pl) sfx.hit();
+    });
+    netSocket.on('enemy-bullet-hit', d => {
+      if (netRole !== 'host' || !d) return;
+      const pl = remotePlayers.get(d.playerId);
+      if (pl) hurtRemotePlayer(pl, d.damage || 10, d.fromX, d.fromY);
+    });
     netSocket.on('upgrade-pick', d => {                            // ホスト: ゲストの強化選択(ゲスト自身の強化にだけ反映)
       if (netRole !== 'host' || !d || !Number.isInteger(d.playerId) || !Number.isInteger(d.index)) return;
       const pl = remotePlayers.get(d.playerId);
@@ -2064,8 +2248,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         return [pl.id || 1, pSer(pl), r1(cursorX), r1(cursorY)];
       }),
       en: enemies.map(serEnemy),
-      bu: bullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), r1(b.r)]; }),
-      eb: ebullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0]; }),
+      bu: bullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), r1(b.r), b.owner || 1]; }),
+      eb: ebullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0, b.dmg || 10, r2(b.delay || 0)]; }),
       sp: spawns.map((s) => [r1(s.x), r1(s.y), r2(s.t), r2(s.delay), s.type, s.edge === undefined ? -1 : s.edge]),
       me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r]),
       tz: trainZones.map((z) => [r1(z.x), r1(z.y), r2(z.life), z.r]),
@@ -2108,7 +2292,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const angLerp = (a, b, t) => a + angDiff(b, a) * t;
   function gEnemy(o, p, al) {
     const L = (k) => (p ? lerp(p[k], o[k], al) : o[k]);
-    const e = { type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft };
+    const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft };
     e.bx = e.x; e.by = e.y;
     if (o.ty === 'train') { e.cid = o.cid; e.ci = o.ci; e.ang = p ? angLerp(p.an, o.an, al) : o.an; e.maxTotal = o.mt; }
     if (o.pa) {
@@ -2127,7 +2311,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     state = cur.st; wave = cur.w; phaseIdx = cur.ph; phaseCount = cur.pc; kills = cur.k;
     if (state !== prev) {
       if (state === 'play') { hideMenuScreens(); setNetStatus('協力プレイ中 — ルーム ' + netRoom); }
-      if (state === 'upgrade') { upT = 0; hoverIdx = -1; guestPicked = false; myPickIdx = -1; mouse.down = false; }
+      if (state === 'upgrade') { bullets.length = 0; upT = 0; hoverIdx = -1; guestPicked = false; myPickIdx = -1; mouse.down = false; }
       if (state === 'over') { overT = 0; mouse.down = false; }
     }
     if (cur.up) {
@@ -2184,18 +2368,20 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const EA = new Map(); for (const o of a.en) EA.set(o.i, o);
     enemies = b.en.map((o) => gEnemy(o, EA.get(o.i), alpha));
     const BA = new Map(); for (const q of a.bu) BA.set(q[0], q);
+    const localBullets = bullets.filter((b) => b.owner === playerId);
     bullets = b.bu.map((q) => {
       const p = BA.get(q[0]); let x, y;
       if (p) { x = lerp(p[1], q[1], alpha); y = lerp(p[2], q[2], alpha); }
       else { const back = (rt - b.t) / 1000; x = q[1] + q[3] * back; y = q[2] + q[4] * back; }     // 新しい弾は速度で時刻合わせ
-      return { x, y, vx: q[3], vy: q[4], px: x - q[3] * 0.016, py: y - q[4] * 0.016, r: q[5] };
-    });
+      return { x, y, vx: q[3], vy: q[4], px: x - q[3] * 0.016, py: y - q[4] * 0.016, r: q[5], owner: q[6] || 1 };
+    }).filter((b) => b.owner !== playerId);
+    bullets.push(...localBullets);
     const EBA = new Map(); for (const q of a.eb) EBA.set(q[0], q);
     ebullets = b.eb.map((q) => {
       const p = EBA.get(q[0]); let x, y;
       if (p) { x = lerp(p[1], q[1], alpha); y = lerp(p[2], q[2], alpha); }
       else { const back = (rt - b.t) / 1000; x = q[1] + q[3] * back; y = q[2] + q[4] * back; }
-      return { x, y, vx: q[3], vy: q[4], r: q[5], color: q[6] || undefined, star: !!q[7], rot: time * 6 };
+      return { x, y, vx: q[3], vy: q[4], r: q[5], color: q[6] || undefined, star: !!q[7], rot: time * 6, dmg: q[8] || 10, delay: q[9] || 0 };
     });
     const IA = new Map(); for (const q of a.it) IA.set(q[0], q);
     items = b.it.map((q) => { const p = IA.get(q[0]); return { x: p ? lerp(p[1], q[1], alpha) : q[1], y: p ? lerp(p[2], q[2], alpha) : q[2], life: q[3], ph: q[4] }; });
@@ -2215,6 +2401,33 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const k = Math.exp(-9 * dt); g.kx *= k; g.ky *= k;
       g.x = Math.max(g.r + 6, Math.min(W - g.r - 6, g.x)); g.y = Math.max(g.r + 6, Math.min(H - g.r - 6, g.y));
       updateDash(g, dt);
+      g.cool -= dt;
+      if (mouse.down && g.cool <= 0) {
+        fireFrom(g, mouse.x, mouse.y);
+        g.cool = g.S.fireDelay;
+      }
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        if (b.owner !== playerId) continue;
+        b.px = b.x; b.py = b.y; b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+        for (const e of enemies) if (e.hp > 0 && bodyHit(e, b.x, b.y, e.r * 0.9 * (ET[e.type].hk || 1) + b.r)) {
+          b.hit ||= new Set();
+          if (!b.hit.has(e.id)) {
+            b.hit.add(e.id);
+            if (netSocket && netSocket.connected) netSocket.emit('bullet-hit', { bulletId: String(b.id || uid++), enemyId: e.id || 0, damage: b.dmg, kb: b.kb, vx: b.vx, vy: b.vy, x: b.x, y: b.y });
+          }
+          bullets.splice(i, 1); break;
+        }
+        if (b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) bullets.splice(i, 1);
+      }
+      for (let i = ebullets.length - 1; i >= 0; i--) {
+        const b = ebullets[i];
+        if (Math.hypot(b.x - g.x, b.y - g.y) < b.r + g.r && g.inv <= 0) {
+          if (netSocket && netSocket.connected) netSocket.emit('enemy-bullet-hit', { bulletId: i, fromX: b.x - b.vx * 0.1, fromY: b.y - b.vy * 0.1 });
+          g.hp = Math.max(0, g.hp - (b.dmg || 10)); g.inv = 0.75;
+          burst(g.x, g.y, 10, '#ff7a86', 220, 0.35, 2.5); ebullets.splice(i, 1);
+        }
+      }
     } else g.dashT = 0;
     guestDash = false;
   }
@@ -2233,13 +2446,25 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     guestBuild();
     updateGuestPlayer(dt);
     if (state === 'upgrade') upT += dt; else if (state === 'over') overT += dt;
-    if (P.dashT > 0) parts.push({ x: P.x, y: P.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: P.r * 0.7, color: P.color });
+    if (P.dashT > 0 && trailEnabled) parts.push({ x: P.x, y: P.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: P.r * 0.7, color: P.color });
     updateFx(dt);
     sendLocalInput(performance.now());
   }
-  document.getElementById('soloStart').addEventListener('click', () => { initAudio(); startGame(); });
-  document.getElementById('createRoom').addEventListener('click', createOnlineRoom);
-  document.getElementById('joinRoom').addEventListener('click', joinOnlineRoom);
+  function readPlayerName() {
+    const field = document.getElementById('playerName');
+    playerName = (field && field.value.trim().slice(0, 16)) || 'P' + playerId;
+    if (P) P.name = playerName;
+  }
+  document.getElementById('playerName').addEventListener('change', readPlayerName);
+  document.getElementById('soloStart').addEventListener('click', () => { readPlayerName(); initAudio(); startGame(); });
+  document.getElementById('dashModeSelect').addEventListener('change', (event) => { dashMode = event.target.value === 'move' ? 'move' : 'mouse'; });
+  document.getElementById('bloomToggle').addEventListener('change', (event) => { bloomEnabled = event.target.checked; try { localStorage.setItem('td-bloom', bloomEnabled ? '1' : '0'); } catch (_) {} });
+  document.getElementById('trailToggle').addEventListener('change', (event) => { trailEnabled = event.target.checked; try { localStorage.setItem('td-trails', trailEnabled ? '1' : '0'); } catch (_) {} });
+  try { bloomEnabled = localStorage.getItem('td-bloom') !== '0'; trailEnabled = localStorage.getItem('td-trails') !== '0'; } catch (_) {}
+  document.getElementById('bloomToggle').checked = bloomEnabled;
+  document.getElementById('trailToggle').checked = trailEnabled;
+  document.getElementById('createRoom').addEventListener('click', () => { readPlayerName(); createOnlineRoom(); });
+  document.getElementById('joinRoom').addEventListener('click', () => { readPlayerName(); joinOnlineRoom(); });
   document.getElementById('startRoom').addEventListener('click', () => { if (netRole === 'host' && roomRoster.length > 1) { initAudio(); startGame(); } });
   document.getElementById('leaveRoom').addEventListener('click', () => {
     if (netSocket) netSocket.disconnect();
@@ -2263,7 +2488,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         updateWorld(dt, true);
         if (state === 'clear') {
           clearT -= dt;
-          if (clearT <= 0) { state = 'upgrade'; upT = 0; mouse.down = false; startUpgrade(); }
+          if (clearT <= 0) { state = 'upgrade'; bullets.length = 0; upT = 0; mouse.down = false; startUpgrade(); }
         }
       } else if (state === 'dying') {
         const sd = dt * 0.35;
@@ -2276,7 +2501,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         overT += dt;
       }
       updateFx(state === 'dying' ? dt * 0.5 : dt);
-      if (netRole === 'host' && performance.now() - lastNetSend >= SNAP_MS) sendSnapshot();
+      if (netRole === 'host' && state === 'play' && performance.now() - lastNetSend >= SNAP_MS) sendSnapshot();
     }
     bannerT = Math.max(0, bannerT - dt);
 
@@ -2286,7 +2511,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     drawBackground();
     ctx.save();
     if (shake > 0.2) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
-    drawSpawns(); drawMeteors(); drawTrainZones(); drawEnemies(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer(); drawCursors(); drawFx();
+    drawSpawns(); drawMeteors(); drawTrainZones(); drawEnemies(); drawTrainCharge(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer(); drawCursors(); drawFx();
     ctx.restore();
 
     if (hurtFlash > 0) {
