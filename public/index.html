@@ -214,40 +214,59 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const s = pl.S;
     switch (id) {
       case 'rate': return [s.fireDelay.toFixed(2) + '秒', (BASE_DELAY / (s.rate + 0.15)).toFixed(2) + '秒'];
-      case 'dmg': return [s.dmg + '', (s.dmg + DMG_BASE) + ''];
+      case 'dmg': return [s.dmg + '', (s.dmg + 10) + ''];
       case 'multi': return [formatChance(s.shots), formatChance(s.shots + 0.5)];
-      case 'speed': return [Math.round(s.bspeed) + '', (Math.round(s.bspeed + 62)) + ''];
+      case 'speed': return [Math.round(s.bspeed) + '', Math.round(s.bspeed * 1.1) + ''];
       case 'pierce': return [formatChance(s.pierce), formatChance(s.pierce + 0.5)];
       case 'homing': return [s.guideLevel + '段階', (s.guideLevel + 1) + '段階'];
       case 'burst': return [s.burstLv ? 'Lv ' + s.burstLv : 'なし', 'Lv ' + (s.burstLv + 1)];
       case 'ricochet': return [formatChance(s.ric), formatChance(s.ric + 0.5)];
       case 'crit': return [formatPercent(s.critChance), formatPercent(s.critChance + 0.05)];
       case 'critdmg': return [formatPercent(s.critDmg - 1), formatPercent(s.critDmg + 0.25 - 1)];
-      case 'size': return [s.bsize.toFixed(1), (s.bsize + 0.45).toFixed(1)];
-      case 'move': return [pl.speed + '', (pl.speed + 25) + ''];
+      case 'size': return [(Math.round((s.bsize / 4.5 - 1) * 100)) + '%', (Math.round((s.bsize * 1.15 / 4.5 - 1) * 100)) + '%'];
+      case 'move': return [pl.speed + '', (pl.speed * 1.1).toFixed(0) + ''];
       case 'armor': return [pl.maxHp + ' / ' + Math.ceil(pl.hp) + ' HP', (pl.maxHp + 20) + ' / ' + Math.min(pl.maxHp + 20, Math.ceil(pl.hp) + 20) + ' HP'];
       case 'heal': return [Math.ceil(pl.hp) + ' / ' + pl.maxHp + ' HP', Math.min(pl.maxHp, Math.ceil(pl.hp) + 40) + ' / ' + pl.maxHp + ' HP'];
+      case 'burstkb': return ['Lv ' + s.burstKb, 'Lv ' + (s.burstKb + 1)];
+      case 'critburst': return [s.critBurst ? 'ON' : 'OFF', 'ON'];
+      case 'dashstun': return [s.dashStun ? 'ON' : 'OFF', 'ON'];
+      case 'speeddmg': return [s.speedDmg ? 'Lv ' + s.speedDmg : 'OFF', 'Lv ' + (s.speedDmg + 1)];
+      case 'kbstun': return [s.knockbackStun ? 'ON' : 'OFF', 'ON'];
+      case 'berserk': return [s.berserk ? 'Lv ' + s.berserk : 'OFF', 'Lv ' + (s.berserk + 1)];
+      case 'armorburst': return [s.armor ? Math.round(s.armor * 100) + '%軽減' : 'OFF', Math.round((s.armor + 0.15) * 100) + '%軽減'];
       default: return ['-', '-'];
     }
   }
   function formatChance(v) { const n = Math.floor(v) + (v % 1 >= 0.5 ? 1 : 0); return (n * 100 + Math.round((v % 1) * 100)) + '%相当'; }
   function formatPercent(v) { return Math.round(v * 100) + '%'; }
+  const RARITY = {
+    common: { name: 'コモン', color: '#9ca3af', weight: 3 },
+    rare: { name: 'レア', color: '#60a5fa', weight: 2 },
+    epic: { name: 'エピック', color: '#c084fc', weight: 1 }
+  };
   const UPG = [
-    { id: 'rate', name: '連射強化', desc: '時間あたりの攻撃回数 +15%', color: '#ffd76a', apply: (s) => { s.rate += 0.15; s.fireDelay = BASE_DELAY / s.rate; } },
-    { id: 'dmg', name: '火力強化', desc: '弾のダメージ +' + DMG_BASE, color: '#ff7a59', apply: (s) => { s.dmg += DMG_BASE; } },
-    { id: 'multi', name: 'マルチショット', desc: '同時発射チャンス +50%(弾数に応じて威力減衰)', color: '#c49bff', weight: 0.35, apply: (s) => { s.shots += 0.5; } },
-    { id: 'speed', name: '高速弾', desc: '弾速 +10% / ノックバック微増', color: '#6ec5ff', apply: (s) => { s.bspeed += 62; s.kb += 0.3; } },
-    { id: 'pierce', name: '貫通弾', desc: '敵貫通チャンス +50%(100%ごとに必ず1回貫通)', color: '#5ee6d0', weight: 0.35, apply: (s) => { s.pierce += 0.5; } },
-    { id: 'homing', name: '誘導弾', desc: '誘導性能が上昇 (強化ごとの伸び幅は減衰)', color: '#ff9b55', weight: 0.7, apply: (s) => { s.guideLevel += 1; s.missileHoming = true; } },
-    { id: 'burst', name: '炸裂弾', desc: '着弾・貫通時に攻撃力20%の範囲ダメージ(直撃した敵にも入る)。強化でダメージ +4%。範囲は弾サイズに比例', color: '#ff8a3d', apply: (s) => { s.burstLv += 1; } },
-    { id: 'ricochet', name: '反射弾', desc: '壁で跳ね返る確率 +50%(100%ごとに必ず1回跳ね返る)', color: '#a0e7ff', weight: 0.35, apply: (s) => { s.ric += 0.5; } },
-    { id: 'crit', name: 'クリティカル率強化', desc: 'クリティカル率 +5%(100%ごとに必ず1重のクリティカル)', color: '#ffe36e', apply: (s) => { s.critChance += 0.05; } },
-    { id: 'critdmg', name: 'クリティカルダメージ強化', desc: 'クリティカルダメージ +25%(基本 200%)', color: '#ffc14d', apply: (s) => { s.critDmg += 0.25; } },
-    { id: 'size', name: '大口径', desc: '弾のサイズ +10%(炸裂範囲も拡大)', color: '#ffa8d1', apply: (s) => { s.bsize += 0.45; } },
-    { id: 'move', name: 'スラスター', desc: '移動速度 +10%', color: '#9be564', apply: (s, p) => { p.speed += 25; } },
-    { id: 'armor', name: '装甲強化', desc: '最大体力 +20 / 体力 +20 回復', color: '#ff8fa0', apply: (s, p) => { p.maxHp += 20; p.hp = Math.min(p.maxHp, p.hp + 20); } },
-    { id: 'heal', name: '応急修復', desc: '体力を 40 回復する', color: '#7df0a8', apply: (s, p) => { p.hp = Math.min(p.maxHp, p.hp + 40); } }
-  ];
+    { id: 'rate', name: '攻撃速度増加', rarity: 'common', desc: '時間あたりの攻撃回数 +15%', apply: (s) => { s.rate += 0.15; s.fireDelay = BASE_DELAY / s.rate; } },
+    { id: 'dmg', name: '攻撃力増加', rarity: 'common', desc: '攻撃力 +10', apply: (s) => { s.dmg += 10; } },
+    { id: 'speed', name: '弾速増加', rarity: 'common', desc: '弾の速度 +10%、弾によるノックバック増加', apply: (s) => { s.bspeed *= 1.1; s.kb += 0.4; } },
+    { id: 'crit', name: 'クリティカル率増加', rarity: 'common', desc: 'クリティカル率 +5%', apply: (s) => { s.critChance += 0.05; } },
+    { id: 'size', name: '弾大型化', rarity: 'common', desc: '弾のサイズ +15%、炸裂範囲 +30%', apply: (s) => { s.bsize *= 1.15; s.burstRange += 0.30; } },
+    { id: 'move', name: '移動速度増加', rarity: 'common', desc: '自機の移動速度 +10%', apply: (s, p) => { p.speed *= 1.1; } },
+    { id: 'armor', name: '最大体力増加', rarity: 'common', desc: '最大体力 +20、回復 20', apply: (s, p) => { p.maxHp += 20; p.hp = Math.min(p.maxHp, p.hp + 20); } },
+    { id: 'pierce', name: '貫通弾', rarity: 'rare', desc: '敵貫通確率 +50%。貫通するごとに次の確率が半減', apply: (s) => { s.pierce += 0.5; } },
+    { id: 'ricochet', name: '反射弾', rarity: 'rare', desc: '壁反射確率 +50%。反射するごとに次の確率が半減', apply: (s) => { s.ric += 0.5; } },
+    { id: 'burst', name: '炸裂弾', rarity: 'rare', desc: '攻撃力の20%で炸裂。レベルアップで炸裂ダメージ +5%', apply: (s) => { s.burstLv += 1; } },
+    { id: 'homing', name: '誘導弾', rarity: 'rare', desc: '弾の誘導性能が微増', apply: (s) => { s.guideLevel += 1; s.missileHoming = true; } },
+    { id: 'critdmg', name: 'クリティカルダメージ増加', rarity: 'rare', desc: 'クリティカルダメージ +50%', apply: (s) => { s.critDmg += 0.5; } },
+    { id: 'heal', name: '応急修復', rarity: 'rare', desc: '体力を 40 回復', apply: (s, p) => { p.hp = Math.min(p.maxHp, p.hp + 40); } },
+    { id: 'burstkb', name: '炸裂ノックバック', rarity: 'rare', desc: '炸裂によるノックバックが増加', apply: (s) => { s.burstKb += 1; } },
+    { id: 'critburst', name: 'クリティカル炸裂', rarity: 'rare', desc: 'クリティカル発生時に炸裂が追加発生', apply: (s) => { s.critBurst += 1; } },
+    { id: 'dashstun', name: 'ダッシュ突撃', rarity: 'rare', desc: 'ダッシュ中にぶつかった敵を短時間スタン', apply: (s) => { s.dashStun += 1; } },
+    { id: 'speeddmg', name: '速度攻撃力ボーナス', rarity: 'rare', desc: '移動速度と弾速の一部を攻撃力に転換', apply: (s, p) => { s.speedDmg += 1; } },
+    { id: 'multi', name: 'マルチショット', rarity: 'epic', desc: '発射数増加チャンス +50%。1発ごとの攻撃力が減衰', apply: (s) => { s.shots += 0.5; } },
+    { id: 'kbstun', name: 'ノックバックスタン', rarity: 'epic', desc: 'ノックバックの強さに応じて敵をスタン', apply: (s) => { s.knockbackStun += 1; } },
+    { id: 'berserk', name: '戦闘狂', rarity: 'epic', desc: '体力が少ないほど与えるダメージが増加', apply: (s) => { s.berserk += 1; } },
+    { id: 'armorburst', name: '消弾装甲', rarity: 'epic', desc: '被弾時のダメージを減少し、周囲の敵弾を消す。クールダウンあり', apply: (s) => { s.armor += 0.15; s.armorCd = 2.5; } }
+  ].map((u) => ({ ...u, color: RARITY[u.rarity].color, weight: RARITY[u.rarity].weight }));
 
   /* ---------- state ---------- */
   let state = 'title';          // title | play | clear | upgrade | dying | over
@@ -290,7 +309,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function pushEv(a) { if (!muteEv && evq.length < (bullets.length > 120 ? 48 : 160) && hosting()) evq.push(a); }
   function localOnly(fn) { const m = muteEv; muteEv = true; try { fn(); } finally { muteEv = m; } }
   const lerp = (a, b, t) => a + (b - a) * t;
-  const myPlayer = () => (netRole === 'guest' ? remotePlayer : P);
+  const myPlayer = () => (netRole === 'guest' ? (remotePlayer || P) : P);
   const coop = () => netRole === 'guest' || (netRole === 'host' && peerConnected);
   const playerColor = (id) => PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length];
   const hostRemotePlayers = () => netRole === 'host' ? roomRoster.filter((entry) => !entry.isHost).map((entry) => remotePlayers.get(entry.playerId)).filter(Boolean) : [];
@@ -331,7 +350,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const isAuthority = () => netRole !== 'guest';
 
   function newStats() {
-    return { fireDelay: BASE_DELAY, rate: 1, dmg: DMG_BASE, kb: 3, ric: 0, shots: 1, bspeed: 620, pierce: 0, bsize: 4.5, spread: 0.15, missileHoming: false, guideLevel: 0, burstLv: 0, critChance: 0, critDmg: 2 };
+    return {
+      fireDelay: BASE_DELAY, rate: 1, dmg: DMG_BASE, kb: 3, ric: 0, shots: 1, bspeed: 620,
+      pierce: 0, bsize: 4.5, spread: 0.15, missileHoming: false, guideLevel: 0,
+      burstLv: 0, burstRange: 0, critChance: 0, critDmg: 2, burstKb: 0, critBurst: 0,
+      dashStun: 0, knockbackStun: 0, berserk: 0, armor: 0, armorCd: 0, speedDmg: 0
+    };
   }
   // プレイヤーごとに独立した強化状態(S)・取得レベル・アップグレード選択肢を持つ
   function newPlayer(x, y, color) {
@@ -512,6 +536,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl.x = Math.max(pl.r + 6, Math.min(W - pl.r - 6, pl.x)); pl.y = Math.max(pl.r + 6, Math.min(H - pl.r - 6, pl.y));
       if (trailEnabled) parts.push({ x: pl.x, y: pl.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: pl.r * 0.7, color: pl.color || '#ffffff' });
       pl.inv = Math.max(pl.inv, 0.1);
+      if (pl.S.dashStun > 0) {
+        for (const e of nearbyEnemies(pl.x, pl.y, 120)) {
+          if (bodyHit(e, pl.x, pl.y, e.r + pl.r)) { e.stun = Math.max(e.stun || 0, 0.45 + pl.S.dashStun * 0.15); }
+        }
+      }
       if (pl.dashT <= 0) { pl.dashT = 0; pl.dashCd = DASH_CD; }
     } else if (pl.dashCd > 0) pl.dashCd = Math.max(0, pl.dashCd - dt);
   }
@@ -529,7 +558,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         vx: c * S.bspeed, vy: s * S.bspeed,
         r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, bounceChance: S.ric, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
         homing: !!S.missileHoming, owner: shooter.id || 1,
-        crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, guide: S.guideLevel   // 弾ごとに発射時の強化を保持
+        crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, guide: S.guideLevel,
+        burstKb: S.burstKb, burstRange: S.burstRange, critBurst: S.critBurst, knockbackStun: S.knockbackStun,
+        berserk: S.berserk, speedDmg: S.speedDmg
       });
     }
     const c = Math.cos(a), s = Math.sin(a);
@@ -576,8 +607,24 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
 
+  function applyKnockbackStun(enemy, strength, fromX, fromY) {
+    if (!enemy) return;
+    const stun = Math.min(1.2, Math.max(0.12, strength * 0.035));
+    enemy.stun = Math.max(enemy.stun || 0, stun);
+    const a = Math.atan2(enemy.y - fromY, enemy.x - fromX);
+    enemy.bx += Math.cos(a) * strength * 4; enemy.by += Math.sin(a) * strength * 4;
+  }
   function hurtPlayer(amount, fromX, fromY) {
     if (P.hp <= 0) return;
+    P.armorCd = Math.max(0, P.armorCd || 0);
+    if (P.S.armor > 0 && P.armorCd <= 0) {
+      amount *= 1 - P.S.armor;
+      P.armorCd = P.S.armorCd || 2.5;
+      for (let i = ebullets.length - 1; i >= 0; i--) {
+        if (Math.hypot(ebullets[i].x - P.x, ebullets[i].y - P.y) < 170) ebullets.splice(i, 1);
+      }
+      ring(P.x, P.y, 170, 0.35, '#c084fc', 3); burst(P.x, P.y, 12, '#c084fc', 260, 0.35, 3);
+    }
     P.hp -= amount; P.inv = 0.75;
     const a = Math.atan2(P.y - fromY, P.x - fromX);
     P.kx += Math.cos(a) * 380; P.ky += Math.sin(a) * 380;
@@ -600,6 +647,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function hurtRemotePlayer(rp, amount, fromX, fromY) {
     if (!rp || rp.inv > 0 || rp.hp <= 0) return;
+    rp.armorCd = Math.max(0, rp.armorCd || 0);
+    if (rp.S.armor > 0 && rp.armorCd <= 0) {
+      amount *= 1 - rp.S.armor;
+      rp.armorCd = rp.S.armorCd || 2.5;
+      for (let i = ebullets.length - 1; i >= 0; i--) {
+        if (Math.hypot(ebullets[i].x - rp.x, ebullets[i].y - rp.y) < 170) ebullets.splice(i, 1);
+      }
+      ring(rp.x, rp.y, 170, 0.35, '#c084fc', 3);
+    }
     rp.hp -= amount; rp.inv = 0.75;
     const a = Math.atan2(rp.y - fromY, rp.x - fromX);
     pushEv(['k', rp.id, r1(Math.cos(a) * 380), r1(Math.sin(a) * 380), 1]);
@@ -1059,12 +1115,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   // 炸裂弾: 着弾・貫通のたびに、直撃した敵以外へ攻撃力25%の範囲ダメージ。Lvごとに範囲 +5%(加算)
   function explodeBullet(b, hitEnemy) {
-    const radius = 40 * (b.r / 4.5), dmg = b.dmg * (0.20 + 0.04 * (b.burst - 1));
+    const radius = 40 * (b.r / 4.5) * (1 + (b.burstRange || 0)), dmg = b.dmg * (0.20 + 0.05 * (b.burst - 1));
     ring(b.x, b.y, radius, 0.28, '#ff8a3d', 3);
     burst(b.x, b.y, 8, '#ff8a3d', 200, 0.3, 2.6);
     for (const o of enemies) {
       if (o.hp <= 0) continue;
-      if (bodyHit(o, b.x, b.y, radius + o.r * 0.8)) { o.hp -= dmg; o.flash = 0.09; damagePop(o.x, o.y - o.r - 4, dmg, false, '#ff8a3d'); }
+      if (bodyHit(o, b.x, b.y, radius + o.r * 0.8)) {
+        o.hp -= dmg; o.flash = 0.09;
+        damagePop(o.x, o.y - o.r - 4, dmg, false, '#ff8a3d');
+        if (b.burstKb > 0) applyKnockbackStun(o, b.kb + b.burstKb * 3, b.x, b.y);
+      }
     }
   }
 
@@ -1181,6 +1241,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         P.x = Math.max(P.r + 6, Math.min(W - P.r - 6, P.x));
         P.y = Math.max(P.r + 6, Math.min(H - P.r - 6, P.y));
         P.inv = Math.max(0, P.inv - dt);
+        P.armorCd = Math.max(0, (P.armorCd || 0) - dt);
         updateDash(P, dt);
         P.cool -= dt;
         if (input && mouse.down && P.cool <= 0) { fire(); P.cool = P.S.fireDelay; }
@@ -1194,6 +1255,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         const sk = Math.min(1, dt * 24);
         rp.sx += (rp.x - rp.sx) * sk; rp.sy += (rp.y - rp.sy) * sk;      // ホスト画面での表示用の平滑化(判定は rp.x / rp.y)
         rp.inv = Math.max(0, rp.inv - dt);
+        rp.armorCd = Math.max(0, (rp.armorCd || 0) - dt);
         if (ri.dashT > 0) {
           rp.inv = Math.max(rp.inv, ri.dashT + 0.1);
           if (rp.dashT <= 0) localOnly(() => { ring(rp.x, rp.y, 40, 0.25, '#ffffff', 2); sfx.dash(); });
@@ -1217,8 +1279,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     updateTrain(dt);
     updateTrainZones(dt);
     for (const e of enemies) {
+      e.stun = Math.max(0, (e.stun || 0) - dt);
       e.born += dt; e.flash = Math.max(0, e.flash - dt);
       e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'trap' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
+      if (e.stun > 0) {
+        e.bx += e.vx * dt * 0.05; e.by += e.vy * dt * 0.05;
+        e.bx = Math.max(e.r + 8, Math.min(W - e.r - 8, e.bx)); e.by = Math.max(e.r + 8, Math.min(H - e.r - 8, e.by));
+        e.x = e.bx; e.y = e.by;
+        continue;
+      }
       if (ET[e.type].boss) {
         if (e.type === 'stardust') updateBoss(e, dt);
         else if (e.type === 'trinity') updateTrinity(e, dt);
@@ -1385,6 +1454,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           const cc = Math.max(0, b.crit || 0);
           const stacks = Math.floor(cc) + (Math.random() < cc % 1 ? 1 : 0);
           let dealt = b.dmg;
+          if (b.speedDmg > 0) dealt *= 1 + b.speedDmg * (0.08 * (b.vx * b.vx + b.vy * b.vy) / (620 * 620));
+          if (b.berserk > 0) {
+            const shooter = partyPlayers().find((pl) => pl.id === (b.owner || 1));
+            if (shooter) dealt *= 1 + b.berserk * (1 - shooter.hp / shooter.maxHp) * 0.5;
+          }
           if (stacks > 0) {
             dealt = b.dmg * (1 + stacks * ((b.cdmg || 2) - 1));
             burst(b.x, b.y, 8, '#ffb347', 260, 0.25, 2.6);
@@ -1393,10 +1467,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           damagePop(e.x, e.y - e.r - 4, dealt, stacks > 0);
           const l = Math.hypot(b.vx, b.vy) || 1;
           e.bx += (b.vx / l) * b.kb; e.by += (b.vy / l) * b.kb;
+          if (b.knockbackStun > 0) applyKnockbackStun(e, b.kb, b.x, b.y);
           burst(b.x, b.y, 6, C.bullet, 220, 0.22, 2.2);
           shake = Math.max(shake, 2);
           sfx.hit();
           if (b.burst > 0) explodeBullet(b, e);
+          if (stacks > 0 && b.critBurst > 0) explodeBullet(b, e);
           if (e.type === 'train' || !(b.pierceChance >= 1 || Math.random() < b.pierceChance)) { dead = true; break; }
           b.pierceChance *= 0.5;
         }
@@ -1441,6 +1517,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else { rollChoices(p); p.picked = null; }
     }
     checkUpgradeDone();
+    if (hosting()) sendSnapshot();
   }
   function applyPick(pl, i) {
     if (state !== 'upgrade' || pl.picked !== null) return null;
@@ -2021,7 +2098,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   function drawUpgrade() {
-    const pl = myPlayer(), choices = pl.choices || [], done = iHavePicked();     // 自分専用の選択肢を表示
+    const pl = myPlayer();
+    const choices = Array.isArray(pl && pl.choices) ? pl.choices : [];
+    const done = iHavePicked();     // 自分専用の選択肢を表示
     ctx.fillStyle = 'rgba(6,8,14,' + Math.min(0.78, upT * 3) + ')';
     ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
@@ -2043,6 +2122,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.strokeStyle = hov || chosen ? u.color : '#262c42'; ctx.lineWidth = hov || chosen ? 2.5 : 1.5;
       ctx.strokeRect(r.x, y, CARD_W, CARD_H);
       ctx.fillStyle = u.color; ctx.fillRect(r.x, y, CARD_W, 6);
+      ctx.fillStyle = u.color; setFont(12, 700); spaced(2);
+      ctx.fillText(RARITY[u.rarity].name, r.x + CARD_W - 22, y + 32);
+      spaced(0);
       // key number
       ctx.textAlign = 'left'; ctx.fillStyle = u.color; setFont(46, 700);
       ctx.fillText(String(i + 1), r.x + 22, y + 74);
@@ -2311,7 +2393,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     state = cur.st; wave = cur.w; phaseIdx = cur.ph; phaseCount = cur.pc; kills = cur.k;
     if (state !== prev) {
       if (state === 'play') { hideMenuScreens(); setNetStatus('協力プレイ中 — ルーム ' + netRoom); }
-      if (state === 'upgrade') { bullets.length = 0; upT = 0; hoverIdx = -1; guestPicked = false; myPickIdx = -1; mouse.down = false; }
+      if (state === 'upgrade') { bullets.length = 0; upT = 0; hoverIdx = -1; mouse.down = false; if (!guestPicked) myPickIdx = -1; }
       if (state === 'over') { overT = 0; mouse.down = false; }
     }
     if (cur.up) {
@@ -2321,10 +2403,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         pl.picked = entry[1] === -1 ? null : entry[1] === -2 ? 'dead' : UPG[entry[1]] ? UPG[entry[1]].id : null;
       }
       const mine = cur.up.players.find((entry) => entry[0] === playerId);
-      if (mine && remotePlayer) {
-        remotePlayer.choices = mine[2].map((i) => UPG[i]).filter(Boolean);
-        remotePlayer.levels = mine[3] || {};
-        guestPicked = mine[1] !== -1;
+      if (mine) {
+        const pl = remotePlayer || P;
+        pl.choices = Array.isArray(mine[2]) ? mine[2].map((i) => UPG[i]).filter(Boolean) : [];
+        pl.levels = mine[3] && typeof mine[3] === 'object' ? mine[3] : {};
+        if (mine[1] !== -1) guestPicked = true;
       }
     }
     const bn = cur.bn;
@@ -2392,6 +2475,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function updateGuestPlayer(dt) {                           // 自機は入力に即応(ホストの反映待ちをしない)
     const g = remotePlayer; if (!g) return;
+    g.armorCd = Math.max(0, (g.armorCd || 0) - dt);
+    if (state === 'upgrade') { g.dashT = 0; guestDash = false; return; }
     const live = (state === 'play' || state === 'clear') && g.hp > 0;
     if (live) {
       const d = keyDir(), dx = d[0], dy = d[1];
@@ -2501,7 +2586,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         overT += dt;
       }
       updateFx(state === 'dying' ? dt * 0.5 : dt);
-      if (netRole === 'host' && state === 'play' && performance.now() - lastNetSend >= SNAP_MS) sendSnapshot();
+      if (netRole === 'host' && (state === 'play' || state === 'upgrade' || state === 'clear') && performance.now() - lastNetSend >= SNAP_MS) sendSnapshot();
     }
     bannerT = Math.max(0, bannerT - dt);
 
