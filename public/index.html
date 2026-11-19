@@ -304,6 +304,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let evq = [], muteEv = false;            // ホスト: ゲストへ送る演出イベントのキュー
   let snapBuf = [], clockOff = null, lastCurT = -1;   // ゲスト: 受信バッファ / ホストとの時計差 / 最後に反映した離散状態
   let guestPicked = false;                            // ゲスト: アップグレード選択状況
+  let upgradeId = 0, guestUpgradeId = -1;
   const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
   function hosting() { return netRole === 'host' && peerConnected && !!netSocket && netSocket.connected; }
   function pushEv(a) { if (!muteEv && evq.length < (bullets.length > 120 ? 48 : 160) && hosting()) evq.push(a); }
@@ -394,7 +395,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     enemies = []; bullets = []; ebullets = []; parts = []; rings = []; spawns = []; texts = []; meteors = []; items = []; trainZones = [];
     kills = 0; wave = 0; phaseIdx = 0; phaseCount = 1; wavePhases = []; trainCid = 1;
     shake = 0; hurtFlash = 0; pickFlash = 0;
-    hoverIdx = -1; myPickIdx = -1; guestPicked = false;
+    hoverIdx = -1; myPickIdx = -1; guestPicked = false; upgradeId = 0; guestUpgradeId = -1;
   }
   resetRun();
 
@@ -1512,6 +1513,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const participants = () => partyPlayers();
   function startUpgrade() {                                 // ホスト側: 全員分の選択肢を用意
     hoverIdx = -1; myPickIdx = -1;
+    upgradeId++;
     for (const p of participants()) {
       if (p.hp <= 0) { p.choices = []; p.picked = 'dead'; }   // 戦闘不能の人は選択不要
       else { rollChoices(p); p.picked = null; }
@@ -2292,7 +2294,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     netSocket.on('upgrade-pick', d => {                            // ホスト: ゲストの強化選択(ゲスト自身の強化にだけ反映)
       if (netRole !== 'host' || !d || !Number.isInteger(d.playerId) || !Number.isInteger(d.index)) return;
       const pl = remotePlayers.get(d.playerId);
-      if (pl && applyPick(pl, d.index)) checkUpgradeDone();
+      if (pl && applyPick(pl, d.index)) { checkUpgradeDone(); if (hosting()) sendSnapshot(); }
     });
   }
   function createOnlineRoom() {
@@ -2338,7 +2340,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       it: items.map((it) => { if (!it.id) it.id = ++uid; return [it.id, r1(it.x), r1(it.y), r1(it.life), r2(it.ph)]; }),
       bn: [r2(bannerT), bannerText, bannerCol], sk: r1(shake), ev
     };
-    if (state === 'upgrade') d.up = { players: partyPlayers().map((pl) => [pl.id || 1, pickCode(pl), pl.choices.map((u) => UPG.indexOf(u)), pl.levels]) };
+    if (state === 'upgrade') d.up = { id: upgradeId, players: partyPlayers().map((pl) => [pl.id || 1, pickCode(pl), pl.choices.map((u) => UPG.indexOf(u)), pl.levels]) };
     return d;
   }
   function sendSnapshot() {
@@ -2393,10 +2395,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     state = cur.st; wave = cur.w; phaseIdx = cur.ph; phaseCount = cur.pc; kills = cur.k;
     if (state !== prev) {
       if (state === 'play') { hideMenuScreens(); setNetStatus('協力プレイ中 — ルーム ' + netRoom); }
-      if (state === 'upgrade') { bullets.length = 0; upT = 0; hoverIdx = -1; mouse.down = false; if (!guestPicked) myPickIdx = -1; }
+      if (state === 'upgrade') { bullets.length = 0; upT = 0; hoverIdx = -1; mouse.down = false; }
       if (state === 'over') { overT = 0; mouse.down = false; }
     }
     if (cur.up) {
+      const nextUpgradeId = Number.isInteger(cur.up.id) ? cur.up.id : 0;
+      if (nextUpgradeId !== guestUpgradeId) {
+        guestUpgradeId = nextUpgradeId;
+        guestPicked = false;
+        myPickIdx = -1;
+        mouse.down = false;
+      }
       remotePickStates = new Map(cur.up.players.map((entry) => [entry[0], entry[1]]));
       for (const entry of cur.up.players) {
         const pl = entry[0] === 1 ? P : getRemotePlayer(entry[0]);
