@@ -40,6 +40,28 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .net-controls button { border: 1px solid #3d7e78; border-radius: 3px; padding: 9px 14px; background: #12302f; color: var(--accent); font: 700 13px var(--font-body); cursor: pointer; }
 .net-controls button:hover { background: #1b4542; }
 #netStatus { color: var(--muted); font-size: 12px; min-height: 1.4em; }
+.stage { position: relative; }
+.screen-layer { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 18px; overflow: auto; background: rgba(5, 8, 15, .78); }
+.screen-layer[hidden] { display: none; }
+.screen-panel { width: min(460px, 100%); max-height: 100%; overflow: auto; border: 1px solid #37405b; border-radius: 4px; padding: 22px; background: rgba(13, 18, 30, .96); box-shadow: 0 18px 60px rgba(0,0,0,.4); }
+.screen-kicker { color: var(--accent); font: 700 11px var(--font-display); letter-spacing: .14em; }
+.screen-panel h2 { margin: 8px 0 6px; font: 700 27px var(--font-display); }
+.screen-copy { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+.screen-actions { display: grid; gap: 9px; }
+.screen-actions button { min-height: 42px; border: 1px solid #3d7e78; border-radius: 3px; padding: 9px 14px; background: #12302f; color: var(--accent); font: 700 14px var(--font-body); cursor: pointer; }
+.screen-actions button:hover:not(:disabled) { background: #1b4542; }
+.screen-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.screen-actions .secondary { border-color: #394157; background: #171d2b; color: var(--fg); }
+.screen-fields { display: grid; gap: 8px; margin-top: 12px; }
+.screen-fields input { min-width: 0; width: 100%; border: 1px solid #30384f; border-radius: 3px; padding: 10px; background: #090d17; color: var(--fg); font: inherit; }
+.screen-join { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.screen-join button { min-height: 40px; border: 1px solid #394157; border-radius: 3px; padding: 8px 12px; background: #171d2b; color: var(--fg); font: 700 13px var(--font-body); cursor: pointer; }
+.screen-status { min-height: 1.4em; margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+.room-code { margin: 12px 0; color: var(--accent); font: 700 24px var(--font-display); letter-spacing: .12em; }
+.lobby-list { display: grid; gap: 5px; margin: 12px 0 16px; padding: 0; list-style: none; }
+.lobby-list li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #252b3d; padding: 7px 2px; color: var(--fg); font-size: 13px; }
+.lobby-list .lobby-state { color: var(--muted); }
+@media (max-width: 520px) { .screen-panel { padding: 16px; } .screen-panel h2 { font-size: 23px; } }
 </style>
 
 <div class="wrap">
@@ -47,23 +69,38 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     <h1>Triangle Drift</h1>
     <span>ローグライクシューター プロトタイプ</span>
   </header>
-  <div class="stage"><canvas id="cv" tabindex="0" aria-label="ゲーム画面"></canvas></div>
+  <div class="stage">
+    <canvas id="cv" tabindex="0" aria-label="ゲーム画面"></canvas>
+    <section id="mainMenu" class="screen-layer" aria-label="メインメニュー">
+      <div class="screen-panel">
+        <div class="screen-kicker">TRIANGLE DRIFT / ARCADE</div>
+        <h2>メインメニュー</h2>
+        <p class="screen-copy">プレイ人数 1 - 8 人</p>
+        <div class="screen-actions"><button id="soloStart">ソロで始める</button><button id="createRoom" class="secondary">マルチプレイを作成</button></div>
+        <div class="screen-fields">
+          <input id="serverUrl" type="url" placeholder="サーバーURL (例: https://your-game-server.example)" aria-label="サーバーURL">
+          <div class="screen-join"><input id="roomCode" type="text" maxlength="6" placeholder="ルームコード" aria-label="ルームコード"><button id="joinRoom">参加</button></div>
+        </div>
+        <p id="netStatus" class="screen-status" role="status">ソロプレイ / オンライン接続待機中</p>
+      </div>
+    </section>
+    <section id="lobbyScreen" class="screen-layer" aria-label="マルチプレイ待機室" hidden>
+      <div class="screen-panel">
+        <div class="screen-kicker">ONLINE CO-OP / 8 PLAYERS</div>
+        <h2>マルチプレイ待機室</h2>
+        <p id="lobbyCode" class="room-code"></p>
+        <ol id="lobbyPlayers" class="lobby-list" aria-label="参加者"></ol>
+        <div class="screen-actions"><button id="startRoom">ゲーム開始</button><button id="leaveRoom" class="secondary">退出</button></div>
+        <p id="lobbyStatus" class="screen-status" role="status">参加者を待っています</p>
+      </div>
+    </section>
+  </div>
   <div class="hint">
     <span>移動 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 矢印キー</span>
     <span>射撃 マウス左クリック長押し</span>
     <span>ダッシュ マウス右クリック(移動方向)</span>
     <span>アップグレード選択 クリック or <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span>
   </div>
-  <section class="net-panel" aria-label="オンライン協力プレイ">
-    <div class="net-title">ONLINE CO-OP</div>
-    <div class="net-controls">
-      <input id="serverUrl" type="url" placeholder="サーバーURL (例: https://your-game-server.example)" aria-label="サーバーURL">
-      <button id="createRoom">ルーム作成</button>
-      <input id="roomCode" type="text" maxlength="6" placeholder="ルームコード" aria-label="ルームコード">
-      <button id="joinRoom">参加</button>
-    </div>
-    <div id="netStatus" role="status">ソロプレイ / オンライン接続待機中</div>
-  </section>
 </div>
 
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
@@ -100,7 +137,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const BOSS_COL = '#ffe36e', BOUNCE_COL = '#7ad7ff';
   const BOSS_EVERY = 10;
   const BOSS_ORDER = ['stardust', 'trinity', 'train'];   // ボスの出現順(循環)。ボスを追加したらここに並べる
-  const bossHp = () => 620 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 400;
+  const bossHp = () => 620 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 520;
 
   /* ---------- canvas sizing ---------- */
   let scale = 1, dpr = 1;
@@ -172,10 +209,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const UPG = [
     { id: 'rate', name: '連射強化', desc: '時間あたりの攻撃回数 +15%', color: '#ffd76a', apply: (s) => { s.rate += 0.15; s.fireDelay = BASE_DELAY / s.rate; } },
     { id: 'dmg', name: '火力強化', desc: '弾のダメージ +' + DMG_BASE, color: '#ff7a59', apply: (s) => { s.dmg += DMG_BASE; } },
-    { id: 'multi', name: 'マルチショット', desc: '同時発射チャンス +50%(100%ごとに必ず1発追加)', color: '#c49bff', weight: 0.35, apply: (s) => { s.shots += 0.5; } },
+    { id: 'multi', name: 'マルチショット', desc: '同時発射チャンス +50%(弾数に応じて威力減衰)', color: '#c49bff', weight: 0.35, apply: (s) => { s.shots += 0.5; } },
     { id: 'speed', name: '高速弾', desc: '弾速 +10% / ノックバック微増', color: '#6ec5ff', apply: (s) => { s.bspeed += 62; s.kb += 0.3; } },
     { id: 'pierce', name: '貫通弾', desc: '敵貫通チャンス +50%(100%ごとに必ず1回貫通)', color: '#5ee6d0', weight: 0.35, apply: (s) => { s.pierce += 0.5; } },
-    { id: 'homing', name: '誘導弾', desc: '誘導能力が上昇し、弾が敵を追いやすくなる', color: '#ff9b55', weight: 0.7, apply: (s) => { s.guideLevel += 1; s.missileHoming = true; } },
+    { id: 'homing', name: '誘導弾', desc: '誘導性能が上昇 (強化ごとの伸び幅は減衰)', color: '#ff9b55', weight: 0.7, apply: (s) => { s.guideLevel += 1; s.missileHoming = true; } },
     { id: 'burst', name: '炸裂弾', desc: '着弾・貫通時に攻撃力20%の範囲ダメージ(直撃した敵にも入る)。強化でダメージ +4%。範囲は弾サイズに比例', color: '#ff8a3d', apply: (s) => { s.burstLv += 1; } },
     { id: 'ricochet', name: '反射弾', desc: '壁で跳ね返る確率 +50%(100%ごとに必ず1回跳ね返る)', color: '#a0e7ff', weight: 0.35, apply: (s) => { s.ric += 0.5; } },
     { id: 'crit', name: 'クリティカル率強化', desc: 'クリティカル率 +5%(100%ごとに必ず1重のクリティカル)', color: '#ffe36e', apply: (s) => { s.critChance += 0.05; } },
@@ -188,7 +225,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   /* ---------- state ---------- */
   let state = 'title';          // title | play | clear | upgrade | dying | over
-  let P, enemies, bullets, ebullets, parts, rings, spawns, texts, meteors, items;
+  let P, enemies, bullets, ebullets, parts, rings, spawns, texts, meteors, items, trainZones;
   let wave = 0, kills = 0, time = 0;
   let phaseIdx = 0, phaseCount = 1, wavePhases = [];     // ウェーブ内フェーズ
   let trainCid = 1;                                      // Train のチェーンID採番
@@ -200,9 +237,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let guestDash = false;
   const mouse = { x: W / 2, y: H / 2, down: false };
   let netSocket = null, netRole = 'solo', netRoom = '', peerConnected = false;
+  const MAX_PLAYERS = 8;
+  const PLAYER_COLORS = ['#ffffff', '#5ee6d0', '#ffbd69', '#e68cff', '#8ee06c', '#ff7a86', '#72b7ff', '#f4e66a'];
+  let playerId = 1, roomRoster = [{ playerId: 1, isHost: true }];
   const freshRemoteInput = () => ({ has: false, x: W / 2 + 45, y: H / 2, aimX: W / 2, aimY: H / 2, firing: false, dashT: 0, dashCd: 0 });
-  let remoteInput = freshRemoteInput();
   let remotePlayer = null, lastNetSend = 0, lastInputAt = 0, lastSnapshotAt = 0, netConnected = false;
+  let remotePlayers = new Map(), remoteInputs = new Map(), remoteCursors = new Map(), remotePickStates = new Map();
   /* --- 通信まわりの共通状態 ---
      ホスト: 敵・弾・当たり判定など「位置関係の計算」だけを行い、約30Hzで軽量スナップショットを送る。
      ゲスト: スナップショットを INTERP_MS だけ過去の時刻で補間して描画する。パーティクル / リング / ダメージ表示 / 効果音は
@@ -212,17 +252,50 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let uid = 0;                             // 敵・弾などのネットワークID(送信時に遅延採番)
   let evq = [], muteEv = false;            // ホスト: ゲストへ送る演出イベントのキュー
   let snapBuf = [], clockOff = null, lastCurT = -1;   // ゲスト: 受信バッファ / ホストとの時計差 / 最後に反映した離散状態
-  let guestPicked = false, partnerPick = -1;          // ゲスト: アップグレード選択状況
+  let guestPicked = false;                            // ゲスト: アップグレード選択状況
   const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
   function hosting() { return netRole === 'host' && peerConnected && !!netSocket && netSocket.connected; }
   function pushEv(a) { if (!muteEv && evq.length < 160 && hosting()) evq.push(a); }
   function localOnly(fn) { const m = muteEv; muteEv = true; try { fn(); } finally { muteEv = m; } }
   const lerp = (a, b, t) => a + (b - a) * t;
   const myPlayer = () => (netRole === 'guest' ? remotePlayer : P);
-  const partnerPlayer = () => (netRole === 'guest' ? P : remotePlayer);
   const coop = () => netRole === 'guest' || (netRole === 'host' && peerConnected);
+  const playerColor = (id) => PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length];
+  const hostRemotePlayers = () => netRole === 'host' ? roomRoster.filter((entry) => !entry.isHost).map((entry) => remotePlayers.get(entry.playerId)).filter(Boolean) : [];
+  const partyPlayers = () => [P, ...hostRemotePlayers()];
+  const visiblePlayers = () => netRole === 'guest' ? [P, ...[...remotePlayers.entries()].sort((a, b) => a[0] - b[0]).map((entry) => entry[1])] : partyPlayers();
   const netStatus = document.getElementById('netStatus');
-  const setNetStatus = (msg) => { if (netStatus) netStatus.textContent = msg; };
+  const lobbyStatus = document.getElementById('lobbyStatus');
+  const setNetStatus = (msg) => { if (netStatus) netStatus.textContent = msg; if (lobbyStatus) lobbyStatus.textContent = msg; };
+  function showMainMenu() {
+    document.getElementById('mainMenu').hidden = false;
+    document.getElementById('lobbyScreen').hidden = true;
+  }
+  function showLobbyScreen(isHost) {
+    document.getElementById('mainMenu').hidden = true;
+    document.getElementById('lobbyScreen').hidden = false;
+    document.getElementById('startRoom').hidden = !isHost;
+    document.getElementById('lobbyCode').textContent = netRoom || '接続中…';
+    renderLobbyRoster();
+  }
+  function hideMenuScreens() {
+    document.getElementById('mainMenu').hidden = true;
+    document.getElementById('lobbyScreen').hidden = true;
+  }
+  function renderLobbyRoster() {
+    const list = document.getElementById('lobbyPlayers');
+    if (!list) return;
+    list.replaceChildren();
+    for (const entry of roomRoster) {
+      const item = document.createElement('li'), name = document.createElement('span'), status = document.createElement('span');
+      name.textContent = (entry.isHost ? 'ホスト' : 'プレイヤー') + ' P' + entry.playerId + (entry.playerId === playerId ? ' (あなた)' : '');
+      name.style.color = playerColor(entry.playerId);
+      status.className = 'lobby-state'; status.textContent = entry.isHost ? 'ホスト' : '接続中';
+      item.append(name, status); list.append(item);
+    }
+    const start = document.getElementById('startRoom');
+    if (start) start.disabled = playerId !== 1 || roomRoster.length < 2;
+  }
   const isAuthority = () => netRole !== 'guest';
 
   function newStats() {
@@ -232,21 +305,46 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function newPlayer(x, y, color) {
     return { x, y, sx: x, sy: y, r: 14, hp: 100, maxHp: 100, speed: 250, kx: 0, ky: 0, inv: 0, cool: 0, dashT: 0, dashCd: 0, dvx: 0, dvy: 0, lx: 0, ly: 0, color, S: newStats(), levels: {}, choices: [], picked: null };
   }
+  function getRemotePlayer(id) {
+    let pl = remotePlayers.get(id);
+    if (!pl) {
+      const a = id * 2.4;
+      pl = newPlayer(W / 2 + Math.cos(a) * (28 + id * 3), H / 2 + Math.sin(a) * (28 + id * 3), playerColor(id));
+      pl.id = id; remotePlayers.set(id, pl);
+    }
+    return pl;
+  }
+  function syncRoster(players) {
+    roomRoster = (players || []).filter((entry) => Number.isInteger(entry.playerId) && entry.playerId >= 1 && entry.playerId <= MAX_PLAYERS).sort((a, b) => a.playerId - b.playerId);
+    if (!roomRoster.some((entry) => entry.playerId === 1)) roomRoster.unshift({ playerId: 1, isHost: true });
+    peerConnected = netRole === 'host' && roomRoster.length > 1;
+    const activeIds = new Set(roomRoster.filter((entry) => entry.playerId > 1).map((entry) => entry.playerId));
+    for (const id of activeIds) {
+      const pl = getRemotePlayer(id); pl.color = playerColor(id);
+      if (!remoteInputs.has(id)) remoteInputs.set(id, freshRemoteInput());
+    }
+    for (const id of remotePlayers.keys()) if (!activeIds.has(id)) { remotePlayers.delete(id); remoteInputs.delete(id); remoteCursors.delete(id); }
+    remotePlayer = netRole === 'guest' ? remotePlayers.get(playerId) || getRemotePlayer(playerId) : remotePlayers.get(2) || null;
+    renderLobbyRoster();
+  }
   function resetRun() {
     P = newPlayer(W / 2, H / 2, '#ffffff');
-    remotePlayer = newPlayer(W / 2 + 45, H / 2, '#5ee6d0');
-    remoteInput = freshRemoteInput(); evq = [];
-    enemies = []; bullets = []; ebullets = []; parts = []; rings = []; spawns = []; texts = []; meteors = []; items = [];
+    P.id = 1;
+    remotePlayers = new Map(); remoteInputs = new Map(); remoteCursors = new Map(); remotePickStates = new Map();
+    for (const entry of roomRoster) if (entry.playerId > 1) { getRemotePlayer(entry.playerId); remoteInputs.set(entry.playerId, freshRemoteInput()); }
+    remotePlayer = netRole === 'guest' ? getRemotePlayer(playerId) : remotePlayers.get(2) || null;
+    evq = [];
+    enemies = []; bullets = []; ebullets = []; parts = []; rings = []; spawns = []; texts = []; meteors = []; items = []; trainZones = [];
     kills = 0; wave = 0; phaseIdx = 0; phaseCount = 1; wavePhases = []; trainCid = 1;
     shake = 0; hurtFlash = 0; pickFlash = 0;
-    hoverIdx = -1; myPickIdx = -1; guestPicked = false; partnerPick = -1;
+    hoverIdx = -1; myPickIdx = -1; guestPicked = false;
   }
   resetRun();
 
   function beginWave(n) {
     wave = n; state = 'play';
     bannerT = 1.8; bannerText = 'WAVE ' + n;
-    bullets.length = 0; ebullets.length = 0; meteors.length = 0; items.length = 0;
+    bullets.length = 0; ebullets.length = 0; meteors.length = 0; items.length = 0; trainZones.length = 0;
     if (n % BOSS_EVERY === 0) {
       const bossIndex = Math.floor(n / BOSS_EVERY) - 1;
       const bt = BOSS_ORDER[bossIndex % BOSS_ORDER.length];
@@ -289,7 +387,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function farFromPlayers(x, y) {
     if (Math.hypot(x - P.x, y - P.y) <= 170) return false;
-    if (netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0 && Math.hypot(x - remotePlayer.x, y - remotePlayer.y) <= 170) return false;
+    for (const pl of hostRemotePlayers()) if (pl.hp > 0 && Math.hypot(x - pl.x, y - pl.y) <= 170) return false;
     return true;
   }
   function startPhase(idx) {
@@ -309,6 +407,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function startGame() {
     if (netRole === 'guest') return;
+    hideMenuScreens();
     resetRun();
     sfx.start();
     ring(P.x, P.y, 90, 0.5, '#ffffff', 3);
@@ -373,15 +472,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const S = shooter.S;                              // 強化はプレイヤーごと
     let a = Math.atan2(aimY - shooter.y, aimX - shooter.x);
     const n = Math.floor(S.shots) + (Math.random() < S.shots % 1 ? 1 : 0);
-    const pierceCount = Math.floor(S.pierce) + (Math.random() < S.pierce % 1 ? 1 : 0);
+    const shotDamage = S.dmg / Math.sqrt(n);
     for (let i = 0; i < n; i++) {
-      const ricCount = Math.floor(S.ric) + (Math.random() < S.ric % 1 ? 1 : 0);
       const ang = a + (i - (n - 1) / 2) * S.spread;
       const c = Math.cos(ang), s = Math.sin(ang);
       bullets.push({
         x: shooter.x + c * (shooter.r + 6), y: shooter.y + s * (shooter.r + 6),
         vx: c * S.bspeed, vy: s * S.bspeed,
-        r: S.bsize, dmg: S.dmg, pierceLeft: pierceCount, bounceLeft: ricCount, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
+        r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, bounceChance: S.ric, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
         homing: !!S.missileHoming, owner: 'player',
         crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, guide: S.guideLevel   // 弾ごとに発射時の強化を保持
       });
@@ -415,6 +513,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       burst(e.x, e.y, 40, '#ffffff', 420, 0.7, 3.2);
       ring(e.x, e.y, 280, 0.8, et.color, 4);
       ring(e.x, e.y, 170, 0.6, '#ffffff', 3);
+      const party = partyPlayers();
+      for (const pl of party) if (pl.hp <= 0) {
+        pl.hp = pl.maxHp * 0.5; pl.inv = 1.5; pl.kx = 0; pl.ky = 0;
+        ring(pl.x, pl.y, 90, 0.55, pl.color, 3); burst(pl.x, pl.y, 24, pl.color, 240, 0.6, 3);
+      }
+      if (party.some((pl) => pl.hp > 0)) { state = 'play'; dyT = 0; overT = 0; }
+      trainZones.length = 0;
       shake = 22;
       sfx.clear();
     } else if (et.seg && !e.silent) {                    // 部位破壊: 連結が切れて分裂
@@ -435,7 +540,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     sfx.hurt();
     if (P.hp <= 0) {
       P.hp = 0;
-      if (!(netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0)) state = 'dying';
+      if (!partyPlayers().some((pl) => pl.hp > 0)) state = 'dying';
       if (state === 'dying') dyT = 1.2;
       burst(P.x, P.y, 60, '#ffffff', 520, 1.0, 4);
       burst(P.x, P.y, 30, '#ff5d6a', 420, 1.1, 4);
@@ -445,11 +550,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
 
-  function hurtRemotePlayer(amount, fromX, fromY) {
-    const rp = remotePlayer; if (!rp || rp.inv > 0 || rp.hp <= 0) return;
+  function hurtRemotePlayer(rp, amount, fromX, fromY) {
+    if (!rp || rp.inv > 0 || rp.hp <= 0) return;
     rp.hp -= amount; rp.inv = 0.75;
     const a = Math.atan2(rp.y - fromY, rp.x - fromX);
-    pushEv(['k', r1(Math.cos(a) * 380), r1(Math.sin(a) * 380), 1]);   // 位置はゲスト側が持つので、ノックバックと被弾フラッシュはイベントで伝える
+    pushEv(['k', rp.id, r1(Math.cos(a) * 380), r1(Math.sin(a) * 380), 1]);
     shake = Math.max(shake, 8);
     burst(rp.x, rp.y, 14, '#5ee6d0', 280, 0.45, 3);
     ring(rp.x, rp.y, 58, 0.3, '#5ee6d0', 3);
@@ -460,13 +565,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       burst(rp.x, rp.y, 50, '#ffffff', 480, 0.9, 4);
       burst(rp.x, rp.y, 26, '#5ee6d0', 400, 1.0, 4);
       ring(rp.x, rp.y, 200, 0.8, '#ffffff', 4);
-      if (P.hp <= 0) { state = 'dying'; dyT = 1.2; sfx.over(); }
+      if (!partyPlayers().some((pl) => pl.hp > 0)) { state = 'dying'; dyT = 1.2; sfx.over(); }
     }
   }
 
   function getTargetPlayer(x, y) {
-    const candidates = [P];
-    if (netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0) candidates.push(remotePlayer);
+    const candidates = partyPlayers();
     const alive = candidates.filter(p => p.hp > 0);
     return alive.sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] || P;
   }
@@ -475,9 +579,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const target = getTargetPlayer(e.x, e.y);
     const a = Math.atan2(target.y - e.y, target.x - e.x), c = Math.cos(a), s = Math.sin(a);
     const elite = e.type === 'epent', col = ET[e.type].color;
-    for (let k = elite ? -1 : 0; k <= (elite ? 1 : 0); k++) {            // エリートは3way
-      const aa = a + k * 0.3, cc = Math.cos(aa), ss = Math.sin(aa);
-      ebullets.push({ x: e.x + cc * e.r, y: e.y + ss * e.r, vx: cc * 210, vy: ss * 210, r: 5, life: 5, color: elite ? col : undefined });
+    for (let k = elite ? -2 : 0; k <= (elite ? 2 : 0); k++) {
+      const aa = a + k * (elite ? 0.22 : 0.3), cc = Math.cos(aa), ss = Math.sin(aa), speed = elite ? 225 : 210;
+      ebullets.push({ x: e.x + cc * e.r, y: e.y + ss * e.r, vx: cc * speed, vy: ss * speed, r: elite ? 5.5 : 5, life: 5, color: elite ? col : undefined });
     }
     burst(e.x + c * e.r, e.y + s * e.r, 6, col, 150, 0.22, 2.4);
     ring(e.x, e.y, 40, 0.25, col, 2);
@@ -561,7 +665,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (let i = 0; i < n; i++) {
       meteors.push({
         x: 50 + Math.random() * (W - 100), y: 100 + Math.random() * (H - 150),
-        t: -i * 0.12, warn: 0.9, fall: 0.3, r: 40, fell: false
+        t: -i * 0.12, warn: 0.9, fall: 0.3, r: 160, fell: false
       });
     }
     ring(e.x, e.y, 90, 0.35, BOSS_COL, 3);
@@ -569,10 +673,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     sfx.bossCall();
   }
   function bossBounce(e) {
-    const base = Math.PI / 4;                       // 斜め4方向のみ
+    const base = e.rot;
     const bn = e.p2 ? 5 : 3;
-    for (let i = 0; i < 4; i++) {
-      const a = base + i * Math.PI / 2, c = Math.cos(a), s = Math.sin(a);
+    for (let i = 0; i < 8; i++) {
+      const a = base + i * TAU / 8, c = Math.cos(a), s = Math.sin(a);
       ebullets.push({
         x: e.x + c * e.r * 0.8, y: e.y + s * e.r * 0.8, vx: c * 210, vy: s * 210,
         r: 8, life: 9, bounce: bn, star: true, color: BOUNCE_COL, dmg: 12, rot: 0
@@ -585,7 +689,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   /* ---------- boss: Trinity ---------- */
   // 3つの三角形。合体(中央で回転しながら3方向レーザー＋各三角形から3方向弾) ⇄ 分離(距離を取り、順番に3way弾×3連射)
-  const TRI_WARN = 1.2, TRI_ACT = 4.4, TRI_SPLIT_T = 0.9, TRI_MERGE_T = 1.0, TRI_TURNS = 6, TRI_OFS = ET.trinity.r * ET.trinity.vr;   // 重心までの距離=三角形の外接円半径 → 頂点が隣と一致(トライフォース配置)
+  const TRI_WARN = 1.2, TRI_ACT = 4.4, TRI_SPLIT_T = 0.9, TRI_MERGE_T = 1.0, TRI_OFS = ET.trinity.r * ET.trinity.vr;   // 重心までの距離=三角形の外接円半径 → 頂点が隣と一致(トライフォース配置)
   const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
   function chase(p, tx, ty, gain, maxSp, dt) {
     let dx = (tx - p.x) * Math.min(1, dt * gain), dy = (ty - p.y) * Math.min(1, dt * gain);
@@ -596,11 +700,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function initTrinity(e) {
     e.form = 'merged'; e.ft = 0; e.beam = 0; e.bp = 0; e.dir = Math.random() < 0.5 ? -1 : 1;
     e.la = Math.random() * TAU; e.phi = 0; e.vT = 0.3;
-    e.turn = 0; e.sStage = 0; e.sT = 0; e.bursts = 0;
+    e.turn = 0; e.sStage = 0; e.sT = 0; e.bursts = 0; e.rageT = 0;
     e.cx = e.x; e.cy = e.y;
     e.parts = [0, 1, 2].map((i) => {
       const a = e.la + i * TAU / 3;
-      return { x: e.x + Math.cos(a) * TRI_OFS, y: e.y + Math.sin(a) * TRI_OFS, rot: a, chg: 0 };
+      return { x: e.x + Math.cos(a) * TRI_OFS, y: e.y + Math.sin(a) * TRI_OFS, rot: a, chg: 0, atkT: 0 };
     });
   }
   function trinityBullet(x, y, a, sp, r) {
@@ -618,27 +722,25 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ring(e.cx, e.cy, 54, 0.25, ET.trinity.color, 2);
     sfx.eshoot();
   }
-  function trinityVolley(e, p, tk) {                    // 分離: 狙い撃ち3way
-    const tp = getTargetPlayer(p.x, p.y), a0 = Math.atan2(tp.y - p.y, tp.x - p.x), col = ET.trinity.color;
-    for (let k = -1; k <= 1; k++) {
-      const a = a0 + k * 0.3;
-      trinityBullet(p.x + Math.cos(a) * e.r, p.y + Math.sin(a) * e.r, a, (e.p2 ? 255 : 225) * tk, 5.5);
-    }
-    burst(p.x + Math.cos(a0) * e.r, p.y + Math.sin(a0) * e.r, 6, col, 150, 0.22, 2.4);
-    ring(p.x, p.y, 40, 0.25, col, 2);
+  function trinitySplitAttack(e, p, tk) {
+    const target = getTargetPlayer(p.x, p.y), aim = Math.atan2(target.y - p.y, target.x - p.x), mode = Math.floor(Math.random() * 4);
+    const fire = (a, speed) => trinityBullet(p.x + Math.cos(a) * e.r, p.y + Math.sin(a) * e.r, a, speed * tk, 5);
+    if (mode === 0) for (let i = -2; i <= 2; i++) fire(aim + i * 0.4, 145);
+    else if (mode === 1) for (let i = -1; i <= 1; i++) fire(aim + i * 0.24, 165);
+    else if (mode === 2) for (let i = -1; i <= 1; i += 2) fire(aim + i * 0.12, 155);
+    else for (let i = 0; i < 6; i++) fire(i * TAU / 6 + e.phi, 135);
+    ring(p.x, p.y, 36, 0.2, ET.trinity.color, 2);
     sfx.eshoot();
   }
   function trinityBeamHit(e) {                          // レーザー判定
-    const cands = [];
-    if (state !== 'dying' && P.hp > 0 && P.inv <= 0) cands.push([P, false]);
-    if (netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0 && remotePlayer.inv <= 0) cands.push([remotePlayer, true]);
-    for (const [pl, remote] of cands) {
+    const cands = partyPlayers().filter((pl) => pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying'));
+    for (const pl of cands) {
       for (let i = 0; i < 3; i++) {
         const a = e.la + i * TAU / 3, c = Math.cos(a), s = Math.sin(a);
         const rx = pl.x - e.cx, ry = pl.y - e.cy;
         if (rx * c + ry * s <= 0) continue;
         if (Math.abs(rx * s - ry * c) < 6 + pl.r * 0.55) {
-          if (remote) hurtRemotePlayer(12, e.cx, e.cy); else hurtPlayer(12, e.cx, e.cy);
+          if (pl === P) hurtPlayer(12, e.cx, e.cy); else hurtRemotePlayer(pl, 12, e.cx, e.cy);
           break;
         }
       }
@@ -651,7 +753,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const tier = Math.min(Math.max(1, Math.floor(wave / BOSS_EVERY)) - 1, 4), tk = 1 + tier * 0.06;
     if (e.born < 0.8) { centroid(); return; }
     if (!e.p2 && e.hp <= e.maxHp * 0.5) {
-      e.p2 = true;
+      e.p2 = true; e.rageT = 0;
       ring(e.x, e.y, 170, 0.6, ET.trinity.color, 4);
       floatText(e.x, e.y - 74, 'ENRAGED', ET.trinity.color);
       shake = Math.max(shake, 10); sfx.boss();
@@ -665,7 +767,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else if (e.ft < TRI_WARN + act) {
         if (e.beam !== 2) sfx.bossCall();
         e.beam = 2; e.bp = e.ft - TRI_WARN;
-        e.la += e.dir * (e.p2 ? 1.0 : 0.72) * tk * Math.min(1, e.bp / 0.7) * dt;
+        if (e.p2) e.rageT = Math.min(1.4, e.rageT + dt);
+        const spin = e.p2 ? lerp(e.dir * 0.72, -e.dir * 0.38, e.rageT / 1.4) : e.dir * 0.72;
+        e.la += spin * tk * Math.min(1, e.bp / 0.7) * dt;
         if (e.bp > 0.12) trinityBeamHit(e);
         e.vT -= dt;
         if (e.vT <= 0) { trinitySpiral(e, tk); e.vT = e.p2 ? 0.5 : 0.64; }
@@ -674,26 +778,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         ring(e.cx, e.cy, 120, 0.4, ET.trinity.color, 3); shake = Math.max(shake, 6); sfx.impact();
       }
     } else if (e.form === 'splitting') {
-      if (e.ft >= TRI_SPLIT_T) { e.form = 'split'; e.ft = 0; e.turn = 0; e.sStage = 0; e.sT = e.p2 ? 0.38 : 0.5; }
+      if (e.ft >= TRI_SPLIT_T) { e.form = 'split'; e.ft = 0; parts.forEach((q, i) => { q.atkT = 0.08 + i * 0.06; }); }
     } else if (e.form === 'merging') {
       if (e.ft >= TRI_MERGE_T) { e.form = 'merged'; e.ft = 0; e.vT = 0.3; e.dir *= -1; ring(e.cx, e.cy, 100, 0.4, ET.trinity.color, 3); sfx.impact(); }
     }
-    // --- 順番に3way×3連射
+    // --- 分離中は各個体が別々の攻撃をランダムに選ぶ
     if (e.form === 'split') {
-      const chargeDur = e.p2 ? 0.38 : 0.5, burstGap = e.p2 ? 0.17 : 0.22, gap = e.p2 ? 0.18 : 0.3;
-      const p = parts[e.turn % 3];
-      e.sT -= dt;
-      if (e.sStage === 0) {
-        p.chg = Math.max(0, Math.min(1, 1 - e.sT / chargeDur));
-        if (e.sT <= 0) { e.sStage = 1; e.bursts = 3; e.sT = 0; p.chg = 0; }
-      } else if (e.sStage === 1) {
-        if (e.sT <= 0) {
-          trinityVolley(e, p, tk);
-          if (--e.bursts <= 0) { e.sStage = 2; e.sT = gap; } else e.sT = burstGap;
+      if (e.ft >= (e.p2 ? 5 : 6)) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; }); }
+      else {
+        for (const q of parts) {
+          q.atkT -= dt;
+          q.chg = Math.max(0, Math.min(1, 1 - q.atkT / 0.28));
+          if (q.atkT <= 0) { trinitySplitAttack(e, q, tk); q.atkT = 0.85 + Math.random() * 0.15; q.chg = 0; }
         }
-      } else if (e.sT <= 0) {
-        e.turn++; e.sStage = 0; e.sT = chargeDur;
-        if (e.turn >= TRI_TURNS) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; }); }
       }
     } else parts.forEach((q) => { q.chg = 0; });
     // --- 位置
@@ -714,7 +811,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const m = e.r * 1.2;
       for (const q of parts) { q.x = Math.max(m, Math.min(W - m, q.x)); q.y = Math.max(m, Math.min(H - m, q.y)); }
       parts.forEach((q, i) => {                                                    // 発射準備中〜発射中はプレイヤーへ先端を向ける
-        const active = e.form === 'split' && i === e.turn % 3 && e.sStage < 2;
+        const active = e.form === 'split' && q.chg > 0;
         if (active) { const tp = getTargetPlayer(q.x, q.y); q.rot += angDiff(Math.atan2(tp.y - q.y, tp.x - q.x), q.rot) * Math.min(1, dt * 12); }
         else q.rot += dt * (i % 2 ? -1.3 : 1.3);
       });
@@ -756,7 +853,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
   function spawnEnemy(type, x, y, quiet, summoned) {
-    const et = ET[type], bh = 2 + Math.floor((wave - 1) / 2);
+    const et = ET[type], bh = 2 + Math.floor((wave - 1) / 1.5);
     const hp = HP_SCALE * (et.boss ? bossHp() : type === 'sq' ? bh * 2 + 1 : type === 'pent' ? bh * 2 + 1
       : type === 'trap' ? bh + 3 : type === 'hex' ? bh * 2 + 1 : (type === 'etri' || type === 'epent') ? bh * 3 + 4 : type === 'cross' ? bh * 2 + 4 : bh + 1);
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
@@ -777,16 +874,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   /* ---------- boss: Train (部位破壊で分裂するワーム) ---------- */
-  const TRAIN_LEN = 22, TRAIN_GAP = 34, TRAIN_SPEED = 175, TRAIN_ENTRY = 360;
+  const TRAIN_LEN = 22, TRAIN_GAP = 34, TRAIN_SPEED = 225, TRAIN_ENTRY = 360;
   function spawnTrain(sp) {
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1];
     const hx = sp.edge === 0 ? -40 : sp.edge === 1 ? W + 40 : sp.x, hy = sp.edge === 2 ? -40 : sp.edge === 3 ? H + 40 : sp.y;
-    const per = Math.round(HP_SCALE * bossHp() / TRAIN_LEN), cid = trainCid++, col = ET.train.color;
+    const per = Math.round(HP_SCALE * bossHp() * 1.35 / TRAIN_LEN), cid = trainCid++, col = ET.train.color;
     for (let i = 0; i < TRAIN_LEN; i++) {
       const x = hx - ux * TRAIN_GAP * i, y = hy - uy * TRAIN_GAP * i;
       enemies.push({
         type: 'train', x, y, bx: x, by: y, r: 19, hp: per, maxHp: per, maxTotal: per * TRAIN_LEN,
-        cid, ci: i, ang: Math.atan2(uy, ux), ent: i === 0, boost: 0, ph: Math.random() * TAU, rot: 0, flash: 0, born: 1,
+        cid, ci: i, ang: Math.atan2(uy, ux), ent: i === 0, boost: 0, trailT: Math.random() * 0.5, ph: Math.random() * TAU, rot: 0, flash: 0, born: 1,
         vx: 0, vy: 0, fireT: 9, cd: 9, atk: 0, volley: 0, p2: false, spin: 0, mode: 'drift', dashT: 9, healT: 9, inv: 0
       });
     }
@@ -825,12 +922,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (h.x > 90 && h.x < W - 90 && h.y > 90 && h.y < H - 90) h.ent = false;
       } else {
         const out = h.x < 40 || h.x > W - 40 || h.y < 40 || h.y > H - 40;
+        const surge = (Math.sin(time * 1.3 + h.ph) + 1) * 0.5;
         let tx, ty;
         if (out) { tx = W / 2; ty = H / 2; } else { const tg = getTargetPlayer(h.x, h.y); tx = tg.x; ty = tg.y; }
-        const want = Math.atan2(ty - h.y, tx - h.x) + (out ? 0 : Math.sin(time * 1.6 + h.ph) * 0.5);
-        const turn = 1.9 * dt, d = wrap(want - h.ang);
+        const want = Math.atan2(ty - h.y, tx - h.x) + (out ? 0 : surge > 0.58 ? 0 : Math.sin(time * 1.6 + h.ph) * 0.5);
+        const turn = (surge > 0.58 ? 3.6 : 1.9) * dt, d = wrap(want - h.ang);
         h.ang += Math.max(-turn, Math.min(turn, d));
-        sp = TRAIN_SPEED * (1 + 0.3 * Math.sin(time * 1.3 + h.ph)) * (1 + split);
+        sp = TRAIN_SPEED * (0.65 + surge * 0.8) * (1 + split);
         if (h.boost > 0) { h.boost -= dt; sp *= 1.5; }
       }
       h.x += Math.cos(h.ang) * sp * dt; h.y += Math.sin(h.ang) * sp * dt;
@@ -839,6 +937,25 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         const a = Math.atan2(pv.y - sg.y, pv.x - sg.x);
         sg.ang = a;
         sg.x = pv.x - Math.cos(a) * TRAIN_GAP; sg.y = pv.y - Math.sin(a) * TRAIN_GAP;
+      }
+      for (const sg of ch) {
+        sg.trailT -= dt;
+        if (sg.trailT <= 0) {
+          if (trainZones.length >= 100) trainZones.shift();
+          trainZones.push({ x: sg.x, y: sg.y, r: 28, life: 2, max: 2, hits: new Set() });
+          sg.trailT = 0.5;
+        }
+      }
+    }
+  }
+
+  function updateTrainZones(dt) {
+    for (let i = trainZones.length - 1; i >= 0; i--) {
+      const z = trainZones[i]; z.life -= dt;
+      if (z.life <= 0) { trainZones.splice(i, 1); continue; }
+      for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && !z.hits.has(pl.id) && Math.hypot(pl.x - z.x, pl.y - z.y) < z.r + pl.r) {
+        z.hits.add(pl.id);
+        if (pl === P) hurtPlayer(8, z.x, z.y); else hurtRemotePlayer(pl, 8, z.x, z.y);
       }
     }
   }
@@ -872,9 +989,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const it = items[i]; it.life -= dt;
       if (it.life <= 0) { items.splice(i, 1); continue; }
       let got = null;
-      const cands = [P];
-      if (netRole === 'host' && peerConnected && remotePlayer) cands.push(remotePlayer);
-      for (const pl of cands) {
+      for (const pl of partyPlayers()) {
         if (pl.hp <= 0 || state === 'dying') continue;
         const dx = pl.x - it.x, dy = pl.y - it.y, d = Math.hypot(dx, dy);
         if (d < 80 && d > 1) { const sp = 200 * dt; it.x += dx / d * Math.min(sp, d); it.y += dy / d * Math.min(sp, d); }   // 近づくと引き寄せ
@@ -899,8 +1014,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       burst(m.x, m.y, 6, '#ffffff', 200, 0.3, 2.2);
       ring(m.x, m.y, m.r + 14, 0.35, BOSS_COL, 3);
       shake = Math.max(shake, 6); sfx.impact();
-      if (state !== 'dying' && P.hp > 0 && P.inv <= 0 && Math.hypot(m.x - P.x, m.y - P.y) < m.r + P.r * 0.4) hurtPlayer(15, m.x, m.y);
-      if (netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0 && remotePlayer.inv <= 0 && Math.hypot(m.x - remotePlayer.x, m.y - remotePlayer.y) < m.r + remotePlayer.r * 0.4) hurtRemotePlayer(15, m.x, m.y);
+      for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && Math.hypot(m.x - pl.x, m.y - pl.y) < m.r + pl.r * 0.4) {
+        if (pl === P) hurtPlayer(15, m.x, m.y); else hurtRemotePlayer(pl, 15, m.x, m.y);
+      }
     }
   }
 
@@ -949,9 +1065,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         P.cool -= dt;
         if (input && mouse.down && P.cool <= 0) { fire(); P.cool = P.S.fireDelay; }
       }
-      if (netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0) {
-        // ゲストの位置・ダッシュ状態はゲスト側(入力に即応)から届く。ホストは当たり判定・ダメージ・弾の発射を担当する
-        const rp = remotePlayer, ri = remoteInput;
+      for (const rp of hostRemotePlayers()) if (rp.hp > 0) {
+        const ri = remoteInputs.get(rp.id) || freshRemoteInput();
         if (ri.has) {
           rp.x = Math.max(rp.r + 6, Math.min(W - rp.r - 6, ri.x));
           rp.y = Math.max(rp.r + 6, Math.min(H - rp.r - 6, ri.y));
@@ -980,6 +1095,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     // enemies
     if (state !== 'dying') separate(dt);
     updateTrain(dt);
+    updateTrainZones(dt);
     for (const e of enemies) {
       e.born += dt; e.flash = Math.max(0, e.flash - dt);
       e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'trap' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
@@ -1041,7 +1157,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
       if ((e.type === 'pent' || e.type === 'epent') && state !== 'dying' && e.born > 0.4) {
         e.fireT -= dt;
-        if (e.fireT <= 0) { enemyShoot(e); e.fireT = 2.4; }
+        if (e.fireT <= 0) {
+          enemyShoot(e);
+          if (e.type === 'epent' && e.burstLeft > 0) { e.burstLeft--; e.fireT = 0.18; }
+          else { if (e.type === 'epent') e.burstLeft = 3; e.fireT = e.type === 'epent' ? 2.6 + Math.random() * 0.8 : 2.4; }
+        }
       }
       if (e.type === 'cross' && state !== 'dying' && e.born > 0.4) {      // 十字: 一定間隔で周囲を回復
         e.healT -= dt;
@@ -1049,10 +1169,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
       const hitDamage = ET[e.type].boss ? 15 : e.mode === 'dash' ? 14 : 10;
       const contact = player => bodyHit(e, player.x, player.y, e.r * 0.85 * (ET[e.type].hk || 1) + player.r);
-      if (state !== 'dying' && P.hp > 0 && P.inv <= 0 && contact(P)) {
-        hurtPlayer(hitDamage, e.x, e.y);
-      } else if (netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0 && remotePlayer.inv <= 0 && contact(remotePlayer)) {
-        hurtRemotePlayer(hitDamage, e.x, e.y);
+      for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && contact(pl)) {
+        if (pl === P) hurtPlayer(hitDamage, e.x, e.y); else hurtRemotePlayer(pl, hitDamage, e.x, e.y);
       }
     }
     // enemy bullets
@@ -1070,13 +1188,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (hit) { b.bounce--; burst(b.x, b.y, 4, b.color, 100, 0.2, 2); }
       }
       if (b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) { ebullets.splice(i, 1); continue; }
-      const hitLocal = state !== 'dying' && P.hp > 0 && Math.hypot(b.x - P.x, b.y - P.y) < b.r + P.r;
-      const hitRemote = netRole === 'host' && peerConnected && remotePlayer && remotePlayer.hp > 0 && Math.hypot(b.x - remotePlayer.x, b.y - remotePlayer.y) < b.r + remotePlayer.r;
-      if (hitLocal || hitRemote) {
+      const hitPlayer = partyPlayers().find((pl) => pl.hp > 0 && (pl !== P || state !== 'dying') && Math.hypot(b.x - pl.x, b.y - pl.y) < b.r + pl.r);
+      if (hitPlayer) {
         burst(b.x, b.y, 6, b.color || ET.pent.color, 180, 0.25, 2.4);
         const bx = b.x - b.vx * 0.1, by = b.y - b.vy * 0.1; ebullets.splice(i, 1);
-        if (hitLocal && P.inv <= 0) hurtPlayer(b.dmg || 10, bx, by);
-        else if (hitRemote && remotePlayer.inv <= 0) hurtRemotePlayer(b.dmg || 10, bx, by);
+        if (hitPlayer.inv <= 0) {
+          if (hitPlayer === P) hurtPlayer(b.dmg || 10, bx, by); else hurtRemotePlayer(hitPlayer, b.dmg || 10, bx, by);
+        }
       }
     }
     updateMeteors(dt);
@@ -1095,18 +1213,22 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           const desired = Math.atan2(target.y - b.y, target.x - b.x);
           const current = Math.atan2(b.vy, b.vx);
           const turn = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
-          const turnRate = 0.45 + (b.guide || 0) * 0.55;
+          const turnRate = 0.3 + 1.2 * (1 - Math.exp(-(b.guide || 0) * 0.45));
           const next = current + Math.max(-turnRate * dt, Math.min(turnRate * dt, turn));
           const speed = Math.hypot(b.vx, b.vy);
           b.vx = Math.cos(next) * speed; b.vy = Math.sin(next) * speed;
         }
       }
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-      if (b.bounceLeft > 0) {                         // 反射弾: 壁で跳ね返る
+      if (b.bounceChance > 0) {                       // 反射弾: 成功するたび確率が半減
         let rb = false;
         if (b.x < 0) { b.x = -b.x; b.vx = Math.abs(b.vx); rb = true; } else if (b.x > W) { b.x = 2 * W - b.x; b.vx = -Math.abs(b.vx); rb = true; }
         if (b.y < 0) { b.y = -b.y; b.vy = Math.abs(b.vy); rb = true; } else if (b.y > H) { b.y = 2 * H - b.y; b.vy = -Math.abs(b.vy); rb = true; }
-        if (rb) { b.bounceLeft--; b.life += 0.8; b.hit = new Set(); b.px = b.x; b.py = b.y; burst(b.x, b.y, 4, '#a0e7ff', 120, 0.2, 2); }
+        if (rb) {
+          if (b.bounceChance >= 1 || Math.random() < b.bounceChance) {
+            b.bounceChance *= 0.5; b.life += 0.8; b.hit = new Set(); b.px = b.x; b.py = b.y; burst(b.x, b.y, 4, '#a0e7ff', 120, 0.2, 2);
+          } else b.life = 0;
+        }
       }
       if (b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) {
         if (b.x < 0 || b.x > W || b.y < 0 || b.y > H) burst(Math.max(0, Math.min(W, b.x)), Math.max(0, Math.min(H, b.y)), 3, C.bullet, 100, 0.2, 1.8);
@@ -1134,8 +1256,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           shake = Math.max(shake, 2);
           sfx.hit();
           if (b.burst > 0) explodeBullet(b, e);
-          if (b.pierceLeft <= 0) { dead = true; break; }
-          b.pierceLeft--;
+          if (e.type === 'train' || !(b.pierceChance >= 1 || Math.random() < b.pierceChance)) { dead = true; break; }
+          b.pierceChance *= 0.5;
         }
       }
       if (dead) bullets.splice(i, 1);
@@ -1170,13 +1292,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl.choices.push(pool.splice(idx, 1)[0]);
     }
   }
-  const participants = () => (netRole === 'host' && peerConnected ? [P, remotePlayer] : [P]);
+  const participants = () => partyPlayers();
   function startUpgrade() {                                 // ホスト側: 全員分の選択肢を用意
     hoverIdx = -1; myPickIdx = -1;
-    const co = netRole === 'host' && peerConnected;
-    for (const p of [P, remotePlayer]) {
-      if (p !== P && !co) { p.choices = []; p.picked = 'skip'; }
-      else if (p.hp <= 0) { p.choices = []; p.picked = 'dead'; }   // 戦闘不能の人は選択不要
+    for (const p of participants()) {
+      if (p.hp <= 0) { p.choices = []; p.picked = 'dead'; }   // 戦闘不能の人は選択不要
       else { rollChoices(p); p.picked = null; }
     }
     checkUpgradeDone();
@@ -1219,11 +1339,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const iHavePicked = () => (netRole === 'guest' ? guestPicked : P.picked !== null);
   function partnerPickText() {
     if (!coop()) return '';
-    const code = netRole === 'guest' ? partnerPick : pickCode(remotePlayer);
-    const label = netRole === 'guest' ? 'P1' : 'P2';
-    if (code === -1) return label + ': 選択中…';
-    if (code === -2) return label + ': 戦闘不能';
-    return UPG[code] ? label + ': 「' + UPG[code].name + '」を選択' : '';
+    const waiting = netRole === 'host'
+      ? participants().filter((p) => p !== P && p.hp > 0 && p.picked === null).length
+      : [...remotePickStates.entries()].filter(([id, pick]) => id !== playerId && pick === -1).length;
+    return waiting ? waiting + '人の選択待ち…' : '全員の選択が完了';
   }
 
   /* ---------- upgrade card layout ---------- */
@@ -1434,6 +1553,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.restore();
   }
 
+  function drawTrainZones() {
+    ctx.save();
+    for (const z of trainZones) {
+      const fade = z.life / z.max;
+      ctx.globalAlpha = 0.2 * fade;
+      ctx.fillStyle = '#ff5d6a'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 0.55 * fade; ctx.strokeStyle = '#ff7a86'; ctx.lineWidth = 2;
+      ctx.setLineDash([5, 6]); ctx.lineDashOffset = time * 18;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawEnemies() {
     drawTrainLinks();
     for (const e of enemies) {
@@ -1556,6 +1688,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function drawBullets() {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.38;
     for (const b of bullets) {
       ctx.strokeStyle = 'rgba(255,215,106,.45)'; ctx.lineWidth = b.r * 1.6; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(b.px - b.vx * 0.012, b.py - b.vy * 0.012); ctx.lineTo(b.x, b.y); ctx.stroke();
@@ -1585,16 +1718,32 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   function drawPlayer() {
-    if (state === 'dying' || state === 'over') return;
-    if (coop() && remotePlayer && remotePlayer.hp > 0) drawOnePlayer(remotePlayer, '#5ee6d0');
-    if (P.hp > 0) drawOnePlayer(P, '#ffffff');
+    if (state !== 'dying' && state !== 'over') {
+      for (const player of visiblePlayers()) if (player.hp > 0) drawOnePlayer(player, player.color || playerColor(player.id || 1));
+    }
+  }
+  function drawCursorDot(x, y, color) {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > W || y < 0 || y > H) return;
+    ctx.save(); ctx.globalAlpha = 0.8; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, TAU); ctx.fill(); ctx.restore();
+  }
+  function drawCursors() {
+    if (state !== 'play' && state !== 'clear') return;
+    drawCursorDot(mouse.x, mouse.y, playerColor(playerId));
+    if (netRole === 'host') {
+      for (const pl of hostRemotePlayers()) {
+        const input = remoteInputs.get(pl.id);
+        if (input && input.has) drawCursorDot(input.aimX, input.aimY, pl.color);
+      }
+    } else if (netRole === 'guest') for (const [id, cursor] of remoteCursors) if (id !== playerId) drawCursorDot(cursor[0], cursor[1], playerColor(id));
   }
   function drawOnePlayer(player, color) {
     // ホスト画面のゲスト機は、届いた位置を平滑化した座標(sx, sy)で描く
-    const dp = (netRole === 'host' && player === remotePlayer) ? Object.assign({}, player, { x: player.sx, y: player.sy }) : player;
+    const dp = (netRole === 'host' && player !== P) ? Object.assign({}, player, { x: player.sx, y: player.sy }) : player;
     if (coop()) {
       ctx.save(); ctx.fillStyle = color; ctx.globalAlpha = 0.85; ctx.textAlign = 'center'; setFont(11, 700); spaced(1);
-      ctx.fillText(player === myPlayer() ? 'YOU' : (player === P ? 'P1' : 'P2'), dp.x, dp.y - dp.r - 19);
+      ctx.fillText(player === myPlayer() ? 'YOU' : 'P' + (player.id || 1), dp.x, dp.y - dp.r - 19);
       spaced(0); ctx.restore();
     }
     if (dp.inv > 0 && Math.floor(dp.inv * 24) % 2 === 0) { drawHpRingFor(dp, color); return; }
@@ -1684,8 +1833,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     else drawPoly(ix, iy, 10, kind === 'sq' ? Math.PI / 4 : -Math.PI / 2, kt.sides);
     ctx.fill(); ctx.restore();
     spaced(0); ctx.fillStyle = C.muted; setFont(13, 500);
-    const meP = myPlayer(), mateP = partnerPlayer();
-    ctx.fillText('HP ' + Math.ceil(meP.hp) + ' / ' + meP.maxHp + (coop() ? '   ' + (netRole === 'guest' ? 'P1 ' : 'P2 ') + Math.ceil(mateP.hp) + ' / ' + mateP.maxHp : ''), W - 24, 58);
+    const hpLine = visiblePlayers().map((pl) => 'P' + (pl.id || 1) + ' ' + Math.ceil(pl.hp)).join('   ');
+    ctx.fillText(hpLine, W - 24, 58);
     const boss = enemies.find((e) => ET[e.type].boss);
     if (boss) {
       let ratio = Math.max(0, boss.hp / boss.maxHp);
@@ -1821,41 +1970,63 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function connectOnline(role) {
     if (!window.io) { setNetStatus('通信ライブラリを読み込めません。ネット接続を確認してください。'); return; }
     if (netSocket) netSocket.disconnect();
-    netRole = role; peerConnected = false; snapBuf = []; clockOff = null; lastCurT = -1; lastSnapshotAt = 0; evq = [];
+    netRole = role; playerId = 1; peerConnected = false;
+    roomRoster = role === 'host' ? [{ playerId: 1, isHost: true }] : [];
+    remotePlayers = new Map(); remoteInputs = new Map(); remoteCursors = new Map(); remotePickStates = new Map();
+    snapBuf = []; clockOff = null; lastCurT = -1; lastSnapshotAt = 0; evq = [];
     setNetStatus('サーバーに接続中…');
     netSocket = io(getServerUrl(), { transports: ['websocket', 'polling'], timeout: 10000 });
     netSocket.on('connect', () => { netConnected = true; setNetStatus('接続済み。ルーム処理中…'); });
     netSocket.on('connect_error', err => setNetStatus('接続失敗: ' + (err.message || 'サーバーを確認してください')));
-    netSocket.on('disconnect', () => { netConnected = false; peerConnected = false; setNetStatus('サーバーとの接続が切れました'); });
-    netSocket.on('room-created', d => { netRoom = d.code; document.getElementById('roomCode').value = d.code; setNetStatus('ルーム ' + d.code + ' を作成しました。相手にコードを共有してください。'); });
-    netSocket.on('room-joined', d => { netRoom = d.code; setNetStatus('ルーム ' + d.code + ' に参加しました。ホストの開始を待っています。'); });
-    netSocket.on('room-error', d => setNetStatus(d.message || 'ルーム処理に失敗しました'));
-    netSocket.on('peer-joined', () => {
-      if (netRole !== 'host') return;
-      peerConnected = true; remoteInput = freshRemoteInput();
-      remotePlayer.sx = remotePlayer.x; remotePlayer.sy = remotePlayer.y;
-      if (state === 'upgrade' && remotePlayer.picked === 'skip' && remotePlayer.hp > 0) { rollChoices(remotePlayer); remotePlayer.picked = null; }   // 強化選択中の途中参加
-      setNetStatus('プレイヤー2が参加しました。クリックまたはEnterで開始できます。');
-      sendSnapshot();
+    netSocket.on('disconnect', () => { netConnected = false; peerConnected = false; setNetStatus('サーバーとの接続が切れました'); showMainMenu(); });
+    netSocket.on('room-created', d => {
+      netRoom = d.code; playerId = d.playerId || 1; document.getElementById('roomCode').value = d.code;
+      syncRoster([{ playerId: 1, isHost: true }]); showLobbyScreen(true);
+      setNetStatus('ルーム ' + d.code + ' を作成しました。参加者を待っています。');
     });
-    netSocket.on('peer-left', () => {
-      peerConnected = false; evq = [];
-      if (netRole === 'host') { remoteInput = freshRemoteInput(); setNetStatus('相手が退出しました。ルームは維持されています。'); checkUpgradeDone(); }
-      else setNetStatus('ホストが退出しました');
+    netSocket.on('room-joined', d => {
+      netRoom = d.code; playerId = d.playerId || 2; getRemotePlayer(playerId); showLobbyScreen(false);
+      setNetStatus('ルーム ' + d.code + ' に参加しました。ホストの開始を待っています。');
+    });
+    netSocket.on('room-error', d => setNetStatus(d.message || 'ルーム処理に失敗しました'));
+    netSocket.on('room-roster', d => {
+      syncRoster(d && d.players);
+      renderLobbyRoster();
+      if (netRole === 'host') setNetStatus('待機中: ' + roomRoster.length + ' / ' + MAX_PLAYERS + ' 人');
+    });
+    netSocket.on('peer-joined', d => {
+      if (netRole !== 'host' || !d || !Number.isInteger(d.playerId)) return;
+      const pl = getRemotePlayer(d.playerId);
+      if (state === 'upgrade' && pl.hp > 0) { rollChoices(pl); pl.picked = null; }
+      renderLobbyRoster(); sendSnapshot();
+    });
+    netSocket.on('peer-left', d => {
+      if (d && Number.isInteger(d.playerId)) {
+        roomRoster = roomRoster.filter((entry) => entry.playerId !== d.playerId);
+        remotePlayers.delete(d.playerId); remoteInputs.delete(d.playerId); remoteCursors.delete(d.playerId);
+      }
+      peerConnected = netRole === 'host' && roomRoster.length > 1; evq = [];
+      renderLobbyRoster();
+      if (netRole === 'host') { setNetStatus('参加者が退出しました。ルームは維持されています。'); checkUpgradeDone(); }
+      else if (d && d.hostLeft) { setNetStatus('ホストが退出しました'); showMainMenu(); }
     });
     netSocket.on('input', d => {                                   // ホスト: ゲストの位置・ダッシュ・射撃入力
       if (netRole !== 'host' || !d) return;
       const n = (v, f) => (Number.isFinite(v) ? v : f);
-      remoteInput = {
+      const id = d.playerId;
+      if (!Number.isInteger(id) || id < 2 || id > MAX_PLAYERS || !roomRoster.some((entry) => entry.playerId === id)) return;
+      const next = {
         has: true, x: n(d.x, W / 2), y: n(d.y, H / 2), aimX: n(d.aimX, W / 2), aimY: n(d.aimY, H / 2), firing: !!d.firing,
         dashT: Math.max(0, Math.min(DASH_DUR, n(d.dashT, 0))), dashCd: Math.max(0, Math.min(DASH_CD, n(d.dashCd, 0)))
       };
+      remoteInputs.set(id, next);
     });
     netSocket.on('snapshot', applySnapshot);
-    netSocket.on('start-game', () => { if (netRole === 'guest') { resetRun(); sfx.start(); setNetStatus('協力プレイ中 — WASD/矢印で移動、クリック長押しで射撃'); } });
+    netSocket.on('start-game', () => { if (netRole === 'guest') { resetRun(); hideMenuScreens(); sfx.start(); setNetStatus('協力プレイ中'); } });
     netSocket.on('upgrade-pick', d => {                            // ホスト: ゲストの強化選択(ゲスト自身の強化にだけ反映)
-      if (netRole !== 'host' || !peerConnected || !d || !Number.isInteger(d.index)) return;
-      if (applyPick(remotePlayer, d.index)) checkUpgradeDone();
+      if (netRole !== 'host' || !d || !Number.isInteger(d.playerId) || !Number.isInteger(d.index)) return;
+      const pl = remotePlayers.get(d.playerId);
+      if (pl && applyPick(pl, d.index)) checkUpgradeDone();
     });
   }
   function createOnlineRoom() {
@@ -1887,16 +2058,21 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const ev = evq; evq = [];
     const d = {
       t: performance.now(), st: state, w: wave, ph: phaseIdx, pc: phaseCount, k: kills,
-      pl: [pSer(P), pSer(remotePlayer)],
+      pl: partyPlayers().map((pl) => {
+        const input = remoteInputs.get(pl.id) || freshRemoteInput();
+        const cursorX = pl === P ? mouse.x : input.aimX, cursorY = pl === P ? mouse.y : input.aimY;
+        return [pl.id || 1, pSer(pl), r1(cursorX), r1(cursorY)];
+      }),
       en: enemies.map(serEnemy),
       bu: bullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), r1(b.r)]; }),
       eb: ebullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0]; }),
       sp: spawns.map((s) => [r1(s.x), r1(s.y), r2(s.t), r2(s.delay), s.type, s.edge === undefined ? -1 : s.edge]),
       me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r]),
+      tz: trainZones.map((z) => [r1(z.x), r1(z.y), r2(z.life), z.r]),
       it: items.map((it) => { if (!it.id) it.id = ++uid; return [it.id, r1(it.x), r1(it.y), r1(it.life), r2(it.ph)]; }),
       bn: [r2(bannerT), bannerText, bannerCol], sk: r1(shake), ev
     };
-    if (state === 'upgrade') d.up = { pk: [pickCode(P), pickCode(remotePlayer)], ch: remotePlayer.choices.map((u) => UPG.indexOf(u)), lv: remotePlayer.levels };   // ゲスト専用の選択肢
+    if (state === 'upgrade') d.up = { players: partyPlayers().map((pl) => [pl.id || 1, pickCode(pl), pl.choices.map((u) => UPG.indexOf(u)), pl.levels]) };
     return d;
   }
   function sendSnapshot() {
@@ -1913,7 +2089,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     d.evDone = false;
     snapBuf.push(d);
     if (snapBuf.length > 40) snapBuf.shift();
-    if (!lastSnapshotAt) setNetStatus('協力プレイ中 — ルーム ' + netRoom + ' / ホストと同期中');
+    if (!lastSnapshotAt) setNetStatus(state === 'play' || state === 'clear' ? '協力プレイ中 — ルーム ' + netRoom + ' / ホストと同期中' : 'ルーム ' + netRoom + ' / ホストの開始を待っています');
     lastSnapshotAt = now;
   }
   function playEvents(list) {                                // ホストが起こした演出を、ゲスト自身の画面で再生
@@ -1925,7 +2101,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         case 't': floatText(e[1], e[2], e[3], e[4]); break;
         case 'd': damagePop(e[1], e[2], e[3], !!e[4], e[5] || undefined); break;
         case 's': if (sfx[e[1]]) sfx[e[1]](); break;
-        case 'k': if (remotePlayer) { remotePlayer.kx += e[1]; remotePlayer.ky += e[2]; } if (e[3]) hurtFlash = 1; break;
+        case 'k': if (remotePlayer && remotePlayer.id === e[1]) { remotePlayer.kx += e[2]; remotePlayer.ky += e[3]; } if (e[4] && remotePlayer && remotePlayer.id === e[1]) hurtFlash = 1; break;
       }
     }
   }
@@ -1950,14 +2126,22 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const prev = state;
     state = cur.st; wave = cur.w; phaseIdx = cur.ph; phaseCount = cur.pc; kills = cur.k;
     if (state !== prev) {
+      if (state === 'play') { hideMenuScreens(); setNetStatus('協力プレイ中 — ルーム ' + netRoom); }
       if (state === 'upgrade') { upT = 0; hoverIdx = -1; guestPicked = false; myPickIdx = -1; mouse.down = false; }
       if (state === 'over') { overT = 0; mouse.down = false; }
     }
     if (cur.up) {
-      remotePlayer.choices = cur.up.ch.map((i) => UPG[i]).filter(Boolean);
-      remotePlayer.levels = cur.up.lv || {};
-      partnerPick = cur.up.pk[0];
-      if (cur.up.pk[1] !== -1) guestPicked = true;
+      remotePickStates = new Map(cur.up.players.map((entry) => [entry[0], entry[1]]));
+      for (const entry of cur.up.players) {
+        const pl = entry[0] === 1 ? P : getRemotePlayer(entry[0]);
+        pl.picked = entry[1] === -1 ? null : entry[1] === -2 ? 'dead' : UPG[entry[1]] ? UPG[entry[1]].id : null;
+      }
+      const mine = cur.up.players.find((entry) => entry[0] === playerId);
+      if (mine && remotePlayer) {
+        remotePlayer.choices = mine[2].map((i) => UPG[i]).filter(Boolean);
+        remotePlayer.levels = mine[3] || {};
+        guestPicked = mine[1] !== -1;
+      }
     }
     const bn = cur.bn;
     if (bn && (bn[0] > bannerT + 0.15 || bn[1] !== bannerText)) { bannerT = bn[0]; bannerText = bn[1]; bannerCol = bn[2]; }
@@ -1977,12 +2161,25 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const cur = j < 0 ? snapBuf[0] : snapBuf[j];
     if (j > 1) snapBuf.splice(0, j - 1);
     if (cur.t !== lastCurT) { lastCurT = cur.t; applyDiscrete(cur); }
-
-    // players: ホスト機は補間、自機はローカル(位置はゲストが持つ)。HP等は描画時刻のスナップショットから
-    const dtc = Math.max(0, (rt - cur.t) / 1000), pa = a.pl[0], pb = b.pl[0], pc = cur.pl[0], qc = cur.pl[1], g = remotePlayer;
-    P.x = lerp(pa[0], pb[0], alpha); P.y = lerp(pa[1], pb[1], alpha);
-    P.hp = pc[2]; P.maxHp = pc[3]; P.inv = Math.max(0, pc[4] - dtc); P.dashT = Math.max(0, pc[5] - dtc); P.dashCd = Math.max(0, pc[6] - dtc);
-    g.hp = qc[2]; g.maxHp = qc[3]; g.inv = Math.max(0, qc[4] - dtc); g.speed = qc[7];
+    // Positions interpolate for every player except this guest's locally predicted ship.
+    const dtc = Math.max(0, (rt - cur.t) / 1000);
+    const previousPlayers = new Map(a.pl.map((entry) => [entry[0], entry]));
+    const nextPlayers = new Map(b.pl.map((entry) => [entry[0], entry]));
+    const discretePlayers = new Map(cur.pl.map((entry) => [entry[0], entry]));
+    remoteCursors.clear();
+    for (const [id, next] of nextPlayers) {
+      const previous = previousPlayers.get(id), current = discretePlayers.get(id) || next, values = current[1];
+      const pl = id === 1 ? P : getRemotePlayer(id);
+      pl.id = id;
+      if (id !== playerId) {
+        pl.x = previous ? lerp(previous[1][0], next[1][0], alpha) : next[1][0];
+        pl.y = previous ? lerp(previous[1][1], next[1][1], alpha) : next[1][1];
+        pl.dashT = Math.max(0, values[5] - dtc); pl.dashCd = Math.max(0, values[6] - dtc);
+      }
+      pl.hp = values[2]; pl.maxHp = values[3]; pl.inv = Math.max(0, values[4] - dtc); pl.speed = values[7];
+      remoteCursors.set(id, [current[2], current[3]]);
+    }
+    remotePlayer = remotePlayers.get(playerId) || remotePlayer;
 
     const EA = new Map(); for (const o of a.en) EA.set(o.i, o);
     enemies = b.en.map((o) => gEnemy(o, EA.get(o.i), alpha));
@@ -2005,6 +2202,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const ds = (rt - b.t) / 1000;                              // 予告・隕石はタイマーだけ進める(位置は固定)
     spawns = b.sp.map((s) => ({ x: s[0], y: s[1], t: Math.max(0, s[2] + ds), delay: s[3], type: s[4], edge: s[5] }));
     meteors = b.me.map((m) => ({ x: m[0], y: m[1], t: m[2] + ds, warn: m[3], fall: m[4], r: m[5] }));
+    trainZones = (b.tz || []).map((z) => ({ x: z[0], y: z[1], life: z[2], max: 2, r: z[3], hitP: true, hitR: true }));
   }
   function updateGuestPlayer(dt) {                           // 自機は入力に即応(ホストの反映待ちをしない)
     const g = remotePlayer; if (!g) return;
@@ -2024,8 +2222,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (!netSocket || !netSocket.connected || now - lastInputAt < 25) return;
     lastInputAt = now;
     const g = remotePlayer;
+    if (!g) return;
     netSocket.volatile.emit('input', {
-      x: r1(g.x), y: r1(g.y), aimX: r1(mouse.x), aimY: r1(mouse.y),
+      x: r1(g.x), y: r1(g.y), aimX: r1(mouse.x), aimY: r1(mouse.y), cursorX: r1(mouse.x), cursorY: r1(mouse.y),
       firing: mouse.down && (state === 'play' || state === 'clear') && g.hp > 0,
       dashT: r2(g.dashT), dashCd: r2(g.dashCd)
     });
@@ -2038,8 +2237,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     updateFx(dt);
     sendLocalInput(performance.now());
   }
+  document.getElementById('soloStart').addEventListener('click', () => { initAudio(); startGame(); });
   document.getElementById('createRoom').addEventListener('click', createOnlineRoom);
   document.getElementById('joinRoom').addEventListener('click', joinOnlineRoom);
+  document.getElementById('startRoom').addEventListener('click', () => { if (netRole === 'host' && roomRoster.length > 1) { initAudio(); startGame(); } });
+  document.getElementById('leaveRoom').addEventListener('click', () => {
+    if (netSocket) netSocket.disconnect();
+    netSocket = null; netRole = 'solo'; playerId = 1; netRoom = ''; peerConnected = false;
+    roomRoster = [{ playerId: 1, isHost: true }]; remotePlayers = new Map(); remoteInputs = new Map(); remoteCursors = new Map();
+    showMainMenu(); setNetStatus('ソロプレイ / オンライン接続待機中');
+  });
 
   /* ---------- main loop ---------- */
   let last = performance.now();
@@ -2079,7 +2286,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     drawBackground();
     ctx.save();
     if (shake > 0.2) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
-    drawSpawns(); drawMeteors(); drawEnemies(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer(); drawFx();
+    drawSpawns(); drawMeteors(); drawTrainZones(); drawEnemies(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer(); drawCursors(); drawFx();
     ctx.restore();
 
     if (hurtFlash > 0) {

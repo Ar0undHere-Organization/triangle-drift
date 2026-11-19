@@ -2,7 +2,7 @@
 
 /**
  * Triangle Drift - online co-op server
- * Supports one host + up to three guests (4 players total).
+ * Supports one host + up to seven guests (8 players total).
  * The host remains authoritative for the shared game state. This server only
  * manages rooms and relays validated messages between guests and the host.
  */
@@ -13,7 +13,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 
 const PORT = parsePort(process.env.PORT, 3000);
-const MAX_PLAYERS = 4;
+const MAX_PLAYERS = 8;
 const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PUBLIC_DIR = path.resolve(process.env.PUBLIC_DIR || path.join(__dirname, 'public'));
