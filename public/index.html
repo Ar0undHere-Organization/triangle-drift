@@ -149,6 +149,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     pent: { sides: 5, r: 23, vr: 1.05, color: '#b784ff', fill: '#1d1230' },
     // boss: Stardust (4-pointed star). hk = hit-radius multiplier
     stardust: { sides: 8, star: true, r: 46, vr: 1.15, color: '#ffe36e', fill: '#2a2408', hk: 0.85, boss: true, name: 'STARDUST' },
+    quadstar: { sides: 8, star: true, r: 24, vr: 1.1, color: '#7ad7ff', fill: '#102531', hk: 0.9 },
+    equadstar: { sides: 8, star: true, r: 29, vr: 1.1, color: '#b78cff', fill: '#241532', hk: 0.9, mass: 2, elite: true },
     // boss: Trinity (3つの三角形。合体⇄分離を繰り返す)。sy = 出現Y座標
     trinity: { sides: 3, r: 32, vr: 1.15, color: '#ff5cf0', fill: '#2a0f29', hk: 0.85, boss: true, name: 'TRINITY', sy: 270 },
     // boss: Train (一定ダメージで分裂する六角形の列)。seg = 複数パーツ型
@@ -164,7 +166,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     cross: { cross: true, sides: 12, r: 20, vr: 1.15, color: '#6cff8f', fill: '#0e2a18' },
     hexstar: { star: true, sides: 6, r: 25, vr: 1.05, color: '#ff66c4', fill: '#351026', hk: 0.9 }
   };
-  const ESQ_CHASE_WARN = 0.55, ESQ_CHASE_DURATION = 4, ESQ_CHASE_COOLDOWN = 2, ESQ_CHASE_SPEED = 320;
+  const ESQ_CHASE_WARN = 0.55, ESQ_CHASE_DURATION = 4, ESQ_CHASE_COOLDOWN = 2, ESQ_CHASE_SPEED = 360;
   const isTri = (t) => t === 'tri' || t === 'etri';
   const CROSS_R = 140, CROSS_INTERVAL = 2.6, CROSS_HEAL = 0.2;      // 回復範囲 / 間隔(秒) / 最大HPに対する回復割合
   const BOSS_COL = '#ffe36e', BOUNCE_COL = '#7ad7ff';
@@ -173,8 +175,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const FIELD_SCALE_PER_PLAYER = 1 / 8, ENEMY_COUNT_PER_PLAYER = 0.3, PHASE_CAPACITY_PER_PLAYER = 5, BOSS_HP_PER_PLAYER = 0.7;
   const bossHp = () => Math.round((360 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 600) * (1 + BOSS_HP_PER_PLAYER * (runPlayerCount - 1)));
   const FORTLESS_SIDES = 8, FORTLESS_PANEL_DEPTH = 16, FORTLESS_PANEL_HALF = 34;
-  const FORTLESS_PANEL_REPAIR = 9, FORTLESS_GUN_GAP = 0.18, FORTLESS_GUN_INTERVAL = 5.8;
-  const FORTLESS_SPAWN_INTERVAL = 10.5, FORTLESS_LASER_INTERVAL = 8, FORTLESS_LASER_WARN = 0.9, FORTLESS_LASER_ACT = 0.55;
+  const FORTLESS_PANEL_REPAIR = 9, FORTLESS_ATTACK_INTERVAL = 5.8;
+  const FORTLESS_SPAWN_INTERVAL = 10.5, FORTLESS_LASER_WARN = 0.9, FORTLESS_LASER_ACT = 0.55;
+  const QUADSTAR_ATTACK_RANGE = 300, EQUADSTAR_ATTACK_RANGE = 450;
+  const QUADSTAR_ATTACK_INITIAL = 1.6, EQUADSTAR_ATTACK_INITIAL = 2.0;
+  const QUADSTAR_ATTACK_INTERVAL = 2.7, EQUADSTAR_ATTACK_INTERVAL = 3.4;
+  const QUADSTAR_METEOR_RANGE = 180, EQUADSTAR_METEOR_RANGE = 270, QUADSTAR_METEOR_RADIUS = 54;
 
   /* ---------- canvas sizing ---------- */
   let scale = 1, dpr = 1;
@@ -524,6 +530,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (let i = 0; i < nEH; i++) types.push('ehex');
     const nL = n >= 8 ? Math.min(1 + Math.floor((n - 8) / 3), 3) : 0;
     for (let i = 0; i < nL; i++) types.push('hexstar');
+    const nQ = n >= 10 ? Math.min(1 + Math.floor((n - 10) / 3), 3) : 0;
+    for (let i = 0; i < nQ; i++) types.push('quadstar');
+    const nEQ = n >= 16 ? Math.min(1 + Math.floor((n - 16) / 5), 2) : 0;
+    for (let i = 0; i < nEQ; i++) types.push('equadstar');
     while (types.length < count) types.push('tri');
     for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const tmp = types[i]; types[i] = types[j]; types[j] = tmp; }
     // 人数に応じてフェーズ上限も広げ、敵を均等配分する
@@ -962,6 +972,29 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     burst(e.x, e.y, 10, BOSS_COL, 200, 0.4, 3);
     sfx.bossCall();
   }
+  function quadStarTarget(e, range) {
+    let target = null, nearest = range;
+    for (const pl of partyPlayers()) {
+      if (pl.hp <= 0) continue;
+      const pos = playerPosition(pl), distance = Math.hypot(pos.x - e.x, pos.y - e.y);
+      if (distance <= nearest) { target = pos; nearest = distance; }
+    }
+    return target;
+  }
+  function quadStarFall(e, target, elite) {
+    const targetAngle = Math.atan2(target.y - e.y, target.x - e.x);
+    const count = elite ? 3 : 1, maxDistance = elite ? EQUADSTAR_METEOR_RANGE : QUADSTAR_METEOR_RANGE;
+    const distance = Math.min(maxDistance, Math.max(36, Math.hypot(target.x - e.x, target.y - e.y) * 0.75));
+    for (let i = 0; i < count; i++) {
+      const spread = elite ? (i - 1) * 0.42 : 0;
+      const angle = targetAngle + spread + (Math.random() - 0.5) * 0.12;
+      const x = Math.max(QUADSTAR_METEOR_RADIUS, Math.min(W - QUADSTAR_METEOR_RADIUS, e.x + Math.cos(angle) * distance));
+      const y = Math.max(QUADSTAR_METEOR_RADIUS, Math.min(H - QUADSTAR_METEOR_RADIUS, e.y + Math.sin(angle) * distance));
+      meteors.push({ x, y, t: 0, warn: 0.8, fall: 0.28, r: QUADSTAR_METEOR_RADIUS, fell: false, color: ET[e.type].color });
+    }
+    ring(e.x, e.y, 42, 0.3, ET[e.type].color, 2);
+    sfx.bossCall();
+  }
   function bossBounce(e) {
     const base = e.rot;
     const bn = e.p2 ? 5 : 3;
@@ -1247,6 +1280,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     hit.plate.flash = 0.1;
     if (hit.plate.hp <= 0) {
       hit.plate.repairT = FORTLESS_PANEL_REPAIR;
+      hit.plate.exposedSpawnT = 1.2;
       hit.plate.laserPhase = 0;
       ring(hit.x, hit.y, 52, 0.35, ET.fortless.color, 3);
       burst(hit.x, hit.y, 14, ET.fortless.color, 260, 0.35, 3);
@@ -1259,35 +1293,43 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     e.laserPhase = 0; e.laserT = 4;
     const panelHp = Math.max(80, Math.round(e.maxHp * 0.025));
     e.plates = Array.from({ length: FORTLESS_SIDES }, (_, i) => ({
-      hp: panelHp, maxHp: panelHp, repairT: 0, flash: 0, laserPhase: 0, laserAngle: fortlessFaceAngle(e, i),
-      guns: [0, 1].map((g) => ({ fireT: 1.2 + (i * 2 + g) * 0.12, burst: 0 })),
+      hp: panelHp, maxHp: panelHp, repairT: 0, flash: 0, type: randomFortlessPlateType(),
+      attackT: 1.4 + Math.random() * 1.8, laserPhase: 0, laserT: 0, laserAngle: fortlessFaceAngle(e, i),
       spawnT: 2.8 + i * 0.4
     }));
   }
-  function fortlessGunFire(e, i, gun, tk) {
-    const mount = fortlessMount(e, i, gun === 0 ? -23 : 23, 5);
+  function randomFortlessPlateType() { return ['tri', 'bounce', 'laser'][Math.floor(Math.random() * 3)]; }
+  function fortlessGunFire(e, i, offset, tk) {
+    const mount = fortlessMount(e, i, offset, 12);
     const target = getTargetPlayer(mount.x, mount.y), base = Math.atan2(target.y - mount.y, target.x - mount.x);
-    const reflected = e.p2 && gun.burst === 2, speed = e.p2 ? 205 : 185;
+    const speed = e.p2 ? 205 : 185;
     for (let k = -1; k <= 1; k++) {
       const a = base + k * 0.25, c = Math.cos(a), s = Math.sin(a);
-      const extra = reflected ? { bounce: 3, star: true, rot: 0, life: 8, dmg: 12 } : undefined;
-      ebullets.push(Object.assign({ x: mount.x, y: mount.y, vx: c * speed * tk, vy: s * speed * tk, r: 5.5, life: 5.5, color: ET.fortless.color }, extra));
+      ebullets.push({ x: mount.x, y: mount.y, vx: c * speed * tk, vy: s * speed * tk, r: 5.5, life: 5.5, color: ET.fortless.color });
     }
     burst(mount.x, mount.y, 4, ET.fortless.color, 130, 0.18, 2.2);
     ring(mount.x, mount.y, 24, 0.18, ET.fortless.color, 2);
     sfx.eshoot();
   }
+  function fortlessBounceFire(e, i, offset, tk) {
+    const mount = fortlessMount(e, i, offset, 12), target = getTargetPlayer(mount.x, mount.y);
+    const a = Math.atan2(target.y - mount.y, target.x - mount.x), speed = (e.p2 ? 235 : 210) * tk;
+    ebullets.push({
+      x: mount.x, y: mount.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+      r: 9, life: 8, bounce: 3, star: true, rot: 0, color: BOUNCE_COL, dmg: 12
+    });
+    burst(mount.x, mount.y, 5, BOUNCE_COL, 150, 0.22, 2.6);
+    ring(mount.x, mount.y, 28, 0.2, BOUNCE_COL, 2);
+    sfx.eshoot();
+  }
   function fortlessSpawn(e, i) {
-    const count = e.p2 ? 3 : 2, mount = fortlessMount(e, i, 0, 20), tx = -Math.sin(mount.a), ty = Math.cos(mount.a);
-    for (let j = 0; j < count; j++) {
-      const offset = (j - (count - 1) / 2) * 24;
-      const type = e.p2 && j === 0 ? 'esq' : 'sq';
-      spawns.push({
-        x: Math.max(40, Math.min(W - 40, mount.x + tx * offset)),
-        y: Math.max(40, Math.min(H - 40, mount.y + ty * offset)),
-        t: 0, delay: 0.65, type, summoned: true
-      });
-    }
+    const plate = e.plates[i], type = plate.type === 'tri' ? 'tri' : plate.type === 'bounce' ? 'quadstar' : 'hexstar';
+    const mount = fortlessMount(e, i, 0, 20), tx = -Math.sin(mount.a), ty = Math.cos(mount.a);
+    spawns.push({
+      x: Math.max(40, Math.min(W - 40, mount.x + tx * (Math.random() - 0.5) * 22)),
+      y: Math.max(40, Math.min(H - 40, mount.y + ty * (Math.random() - 0.5) * 22)),
+      t: 0, delay: 0.65, type, summoned: true
+    });
     burst(mount.x, mount.y, 7, ET.fortless.color, 150, 0.25, 2.4);
     ring(mount.x, mount.y, 38, 0.25, ET.fortless.color, 2);
   }
@@ -1302,35 +1344,36 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
     }
   }
+  function fortlessExposedSpawn(e, i) {
+    const type = e.p2 && Math.random() < 0.35 ? 'ehex' : 'hex';
+    const mount = fortlessMount(e, i, 0, 20), tx = -Math.sin(mount.a), ty = Math.cos(mount.a);
+    spawns.push({
+      x: Math.max(40, Math.min(W - 40, mount.x + tx * (Math.random() - 0.5) * 22)),
+      y: Math.max(40, Math.min(H - 40, mount.y + ty * (Math.random() - 0.5) * 22)),
+      t: 0, delay: 0.65, type, summoned: true
+    });
+    ring(mount.x, mount.y, 38, 0.25, ET.fortless.color, 2);
+  }
   function updateFortlessLasers(e, dt) {
-    if (e.laserPhase === 0) {
-      e.laserT -= dt;
-      if (e.laserT <= 0) {
-        let exposed = 0;
-        for (let i = 0; i < FORTLESS_SIDES; i++) if (e.plates[i].hp <= 0) {
-          e.plates[i].laserPhase = 1; e.plates[i].laserAngle = fortlessFaceAngle(e, i); exposed++;
+    for (let i = 0; i < e.plates.length; i++) {
+      const plate = e.plates[i];
+      if (plate.hp <= 0 || plate.type !== 'laser') { plate.laserPhase = 0; continue; }
+      if (plate.laserPhase === 0) {
+        plate.attackT -= dt;
+        if (plate.attackT <= 0) {
+          plate.laserPhase = 1; plate.laserT = FORTLESS_LASER_WARN;
+          plate.laserAngle = fortlessFaceAngle(e, i);
         }
-        if (exposed) { e.laserPhase = 1; e.laserT = FORTLESS_LASER_WARN; }
-        else e.laserT = FORTLESS_LASER_INTERVAL;
-      }
-    } else if (e.laserPhase === 1) {
-      e.laserT -= dt;
-      for (let i = 0; i < FORTLESS_SIDES; i++) if (e.plates[i].laserPhase === 1) e.plates[i].laserAngle = fortlessFaceAngle(e, i);
-      if (e.laserT <= 0) {
-        e.laserPhase = 2; e.laserT = FORTLESS_LASER_ACT;
-        for (const plate of e.plates) if (plate.laserPhase === 1) plate.laserPhase = 2;
-      }
-    } else {
-      e.laserT -= dt;
-      for (let i = 0; i < FORTLESS_SIDES; i++) {
-        const plate = e.plates[i];
-        if (plate.laserPhase !== 2) continue;
-        plate.laserAngle = fortlessFaceAngle(e, i);
-        if (e.laserT > 0) fortlessLaserHit(e, plate, i);
-      }
-      if (e.laserT <= 0) {
-        e.laserPhase = 0; e.laserT = FORTLESS_LASER_INTERVAL;
-        for (const plate of e.plates) plate.laserPhase = 0;
+      } else if (plate.laserPhase === 1) {
+        plate.laserT -= dt; plate.laserAngle = fortlessFaceAngle(e, i);
+        if (plate.laserT <= 0) { plate.laserPhase = 2; plate.laserT = FORTLESS_LASER_ACT; }
+      } else {
+        plate.laserT -= dt; plate.laserAngle = fortlessFaceAngle(e, i);
+        if (plate.laserT > 0) fortlessLaserHit(e, plate, i);
+        else {
+          plate.laserPhase = 0;
+          plate.attackT = FORTLESS_ATTACK_INTERVAL + i * 0.12 + Math.random() * 0.35;
+        }
       }
     }
   }
@@ -1349,21 +1392,30 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       plate.flash = Math.max(0, plate.flash - dt);
       if (plate.hp <= 0) {
         plate.repairT -= dt;
+        plate.exposedSpawnT = Math.max(0, (plate.exposedSpawnT || 0) - dt);
+        if (plate.exposedSpawnT <= 0) {
+          fortlessExposedSpawn(e, i);
+          plate.exposedSpawnT = 3.8 + Math.random() * 1.2;
+        }
         if (plate.repairT <= 0) {
-          plate.hp = plate.maxHp; plate.repairT = 0; plate.flash = 0.4; plate.laserPhase = 0;
-          plate.guns.forEach((gun) => { gun.burst = 0; gun.fireT = 1.4; });
+          plate.hp = plate.maxHp; plate.repairT = 0; plate.flash = 0.4;
+          plate.type = randomFortlessPlateType(); plate.attackT = 1.4 + Math.random() * 1.8;
+          plate.laserPhase = 0; plate.laserT = 0; plate.exposedSpawnT = 0;
           plate.spawnT = 2.5;
           ring(fortlessPanelCenter(e, i).x, fortlessPanelCenter(e, i).y, 48, 0.35, ET.fortless.color, 3);
           burst(fortlessPanelCenter(e, i).x, fortlessPanelCenter(e, i).y, 10, ET.fortless.color, 220, 0.3, 2.6);
         }
         continue;
       }
-      for (const gun of plate.guns) {
-        gun.fireT -= dt;
-        if (gun.fireT > 0) continue;
-        fortlessGunFire(e, i, gun, tk);
-        if (++gun.burst < 3) gun.fireT = FORTLESS_GUN_GAP;
-        else { gun.burst = 0; gun.fireT = FORTLESS_GUN_INTERVAL + (i * 2 + plate.guns.indexOf(gun)) * 0.12; }
+      if (plate.type !== 'laser') {
+        plate.attackT -= dt;
+        if (plate.attackT <= 0) {
+          for (const offset of [-23, 23]) {
+            if (plate.type === 'tri') fortlessGunFire(e, i, offset, tk);
+            else fortlessBounceFire(e, i, offset, tk);
+          }
+          plate.attackT = FORTLESS_ATTACK_INTERVAL + i * 0.12 + Math.random() * 0.35;
+        }
       }
       plate.spawnT -= dt;
       if (plate.spawnT <= 0) {
@@ -1418,13 +1470,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function spawnEnemy(type, x, y, quiet, summoned) {
     const et = ET[type], bh = 2 + Math.floor((wave - 1) / 1.8);
-    const hp = HP_SCALE * (et.boss ? bossHp() : type === 'sq' ? bh * 2 + 1 : type === 'pent' ? bh * 2 + 1
-      : type === 'trap' ? bh + 3 : type === 'hex' || type === 'ehex' || type === 'esq' ? bh * 2 + 1 : (type === 'etri' || type === 'epent') ? bh * 3 + 4 : type === 'cross' ? bh * 2 + 4 : bh + 1);
+    const hp = HP_SCALE * (et.boss ? bossHp() : type === 'sq' ? bh * 2 + 1 : type === 'pent' || type === 'quadstar' ? bh * 2 + 1
+      : type === 'trap' ? bh + 3 : type === 'hex' || type === 'ehex' || type === 'esq' ? bh * 2 + 1 : (type === 'etri' || type === 'epent' || type === 'equadstar') ? bh * 3 + 4 : type === 'cross' ? bh * 2 + 4 : bh + 1);
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
     const enemy = {
       type, x, y, bx: x, by: y, r: et.r, hp, maxHp: hp, vx: Math.cos(va) * vs, vy: Math.sin(va) * vs,
       ph: Math.random() * TAU, rot: Math.random() * TAU, flash: 0, born: 0,
-      fireT: 1.8 + Math.random() * 0.8, cd: 1.6, atk: 0, volley: 0, p2: false,
+      fireT: type === 'quadstar' ? QUADSTAR_ATTACK_INITIAL : type === 'equadstar' ? EQUADSTAR_ATTACK_INITIAL : 1.8 + Math.random() * 0.8,
+      fireActive: false, fireTarget: null, cd: 1.6, atk: 0, volley: 0, p2: false,
       spin: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 1.5),
       mode: 'drift', dashT: 1.5 + Math.random() * 2, healT: 2 + Math.random() * 1.5,
       chasePhase: type === 'esq' ? 'warning' : undefined,
@@ -1687,9 +1740,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (!m.fell && m.t >= m.warn) { m.fell = true; sfx.meteor(); }
       if (m.t < m.warn + m.fall) continue;
       meteors.splice(i, 1);
-      burst(m.x, m.y, 16, BOSS_COL, 300, 0.5, 3.2);
+      const color = m.color || BOSS_COL;
+      burst(m.x, m.y, 16, color, 300, 0.5, 3.2);
       burst(m.x, m.y, 6, '#ffffff', 200, 0.3, 2.2);
-      ring(m.x, m.y, m.r + 14, 0.35, BOSS_COL, 3);
+      ring(m.x, m.y, m.r + 14, 0.35, color, 3);
       shake = Math.max(shake, 6); sfx.impact();
       for (const pl of partyPlayers()) {
         const pos = playerPosition(pl);
@@ -1819,7 +1873,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         e.x = e.bx; e.y = e.by;
       }
       e.born += dt; e.flash = Math.max(0, e.flash - dt);
-      e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'esq' ? 5.8 : e.type === 'trap' || e.type === 'fortless' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
+      e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'esq' ? (e.chasePhase === 'chase' ? 7 : 5.8) : e.type === 'trap' || e.type === 'fortless' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
       if (e.stun > 0) {
         const decay = Math.exp(-8 * dt);
         e.kbx = (e.kbx || 0) * decay; e.kby = (e.kby || 0) * decay;
@@ -1862,7 +1916,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             if (e.dashT <= 0) {
               const target = getTargetPlayer(e.x, e.y);
               const a = Math.atan2(target.y - e.y, target.x - e.x);
-              e.vx = Math.cos(a) * (390 + wave * 5); e.vy = Math.sin(a) * (390 + wave * 5);
+              e.vx = Math.cos(a) * 390; e.vy = Math.sin(a) * 390;
               e.mode = 'dash'; e.dashT = 0.72; burst(e.x, e.y, 8, ET.sq.color, 190, 0.22, 2.4); sfx.eshoot();
             }
           } else if (e.mode === 'dash') {
@@ -1905,6 +1959,24 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           enemyShoot(e);
           if (e.type === 'epent' && e.burstLeft > 0) { e.burstLeft--; e.fireT = 0.18; }
           else { if (e.type === 'epent') e.burstLeft = 2; e.fireT = e.type === 'epent' ? 2.6 + Math.random() * 0.8 : 2.4; }
+        }
+      }
+      if ((e.type === 'quadstar' || e.type === 'equadstar') && state !== 'dying' && e.born > 0.4) {
+        const elite = e.type === 'equadstar';
+        const range = elite ? EQUADSTAR_ATTACK_RANGE : QUADSTAR_ATTACK_RANGE;
+        const target = quadStarTarget(e, range);
+        if (target && !e.fireActive) {
+          e.fireActive = true;
+          e.fireTarget = { x: target.x, y: target.y };
+        }
+        if (e.fireActive) {
+          e.fireT -= dt;
+          if (e.fireT <= 0) {
+            quadStarFall(e, e.fireTarget, elite);
+            e.fireActive = false;
+            e.fireTarget = null;
+            e.fireT = (elite ? EQUADSTAR_ATTACK_INTERVAL : QUADSTAR_ATTACK_INTERVAL) + Math.random() * 0.4;
+          }
         }
       }
       if (e.type === 'hexstar' && state !== 'dying' && e.born > 0.4) {
@@ -2432,12 +2504,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
       ctx.restore();
       if (plate.hp <= 0) continue;
-      for (let g = 0; g < 2; g++) {
-        const mount = fortlessMount(e, i, g === 0 ? -23 : 23, 5);
-        ctx.save(); ctx.translate(mount.x, mount.y); ctx.rotate(mount.a - Math.PI / 2);
+      const weaponColor = plate.type === 'bounce' ? BOUNCE_COL : plate.type === 'laser' ? '#ff66c4' : '#b7e9ef';
+      for (const offset of [-23, 23]) {
+        const weapon = fortlessMount(e, i, offset, 8);
+        ctx.save(); ctx.translate(weapon.x, weapon.y); ctx.rotate(weapon.a - Math.PI / 2);
         ctx.fillStyle = '#527484'; ctx.fillRect(-7 * sc, -4 * sc, 14 * sc, 9 * sc);
         ctx.beginPath(); ctx.arc(0, 4 * sc, 7 * sc, 0, Math.PI); ctx.fill();
-        ctx.fillStyle = '#b7e9ef'; ctx.fillRect(-2 * sc, 5 * sc, 4 * sc, 10 * sc);
+        ctx.fillStyle = weaponColor;
+        ctx.fillRect((plate.type === 'bounce' ? -3 : -2) * sc, 5 * sc, (plate.type === 'bounce' ? 6 : 4) * sc, (plate.type === 'laser' ? 13 : 10) * sc);
         ctx.restore();
       }
       const spawner = fortlessMount(e, i, 0, 5);
@@ -2457,10 +2531,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const sc = 0.4 + 0.6 * (1 - Math.pow(1 - k, 3));
       ctx.save();
       const et = ET[e.type];
-      const ft = (e.type === 'pent' || e.type === 'epent') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : e.type === 'sq' && e.mode === 'wind' ? e.dashT : 9;
+      const ft = (e.type === 'pent' || e.type === 'epent' || e.type === 'quadstar' || e.type === 'equadstar') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : e.type === 'sq' && e.mode === 'wind' ? e.dashT : 9;
       const esqWarning = e.type === 'esq' && e.born > 0.4 && e.chasePhase === 'warning';
       const esqChasing = e.type === 'esq' && e.chasePhase === 'chase';
-      const ch = esqWarning ? 1 - e.chaseT / ESQ_CHASE_WARN : esqChasing ? e.chaseT / ESQ_CHASE_DURATION : ft < 0.45 ? 1 - ft / 0.45 : 0;
+      const starCharging = (e.type === 'quadstar' || e.type === 'equadstar') && e.fireActive;
+      const ch = esqWarning ? 1 - e.chaseT / ESQ_CHASE_WARN : esqChasing ? e.chaseT / ESQ_CHASE_DURATION : (starCharging || (e.type !== 'quadstar' && e.type !== 'equadstar')) && ft < 0.45 ? 1 - ft / 0.45 : 0;
+      if (e.type === 'quadstar' || e.type === 'equadstar') {
+        const range = e.type === 'equadstar' ? EQUADSTAR_ATTACK_RANGE : QUADSTAR_ATTACK_RANGE;
+        ctx.save(); ctx.globalAlpha = 0.3; ctx.strokeStyle = et.color; ctx.lineWidth = 1.5;
+        ctx.setLineDash([7, 7]); ctx.lineDashOffset = -time * 18;
+        ctx.beginPath(); ctx.arc(e.x, e.y, range, 0, TAU); ctx.stroke(); ctx.restore();
+      }
       if (e.type === 'cross') {                         // 回復範囲の目安
         ctx.save(); ctx.globalAlpha = 0.22; ctx.strokeStyle = et.color; ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 7]); ctx.lineDashOffset = -time * 20;
@@ -2589,17 +2670,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function drawMeteors() {
     for (const m of meteors) {
       if (m.t < 0) continue;
+      const color = m.color || BOSS_COL;
       ctx.save();
       if (m.t < m.warn) {                           // 着弾予告
         const p = m.t / m.warn;
         const blink = p > 0.6 ? (Math.floor(m.t * 16) % 2 ? 1 : 0.5) : 1;
         ctx.globalAlpha = (0.35 + 0.5 * p) * blink;
-        ctx.strokeStyle = BOSS_COL; ctx.lineWidth = 2;
+        ctx.strokeStyle = color; ctx.lineWidth = 2;
         ctx.setLineDash([6, 6]); ctx.lineDashOffset = -m.t * 40;
         ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, TAU); ctx.stroke();
         ctx.setLineDash([]);
         ctx.globalAlpha *= 0.3;
-        ctx.fillStyle = BOSS_COL;
+        ctx.fillStyle = color;
         ctx.beginPath(); ctx.arc(m.x, m.y, m.r * p, 0, TAU); ctx.fill();
       } else {                                      // 落下
         const p = Math.min(1, (m.t - m.warn) / m.fall), e = p * p;
@@ -2609,11 +2691,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         const tx = sx + (m.x - sx) * e0, ty = sy + (m.y - sy) * e0;
         ctx.globalCompositeOperation = 'lighter';
         ctx.lineCap = 'round';
-        ctx.strokeStyle = 'rgba(255,227,110,.5)'; ctx.lineWidth = 8;
+        ctx.strokeStyle = color; ctx.globalAlpha = 0.5; ctx.lineWidth = 8;
         ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(hx, hy); ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.globalAlpha = 1; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(tx + (hx - tx) * 0.4, ty + (hy - ty) * 0.4); ctx.lineTo(hx, hy); ctx.stroke();
-        ctx.shadowColor = BOSS_COL; ctx.shadowBlur = 16; ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = color; ctx.shadowBlur = 16; ctx.fillStyle = '#ffffff';
         drawStar(hx, hy, 14, time * 10, 0.4); ctx.fill();
       }
       ctx.restore();
@@ -2704,17 +2786,21 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke(); ctx.restore();
   }
   function drawCursors() {
-    if (state !== 'play' && state !== 'clear') return;
-    drawAimLine(myPlayer(), mouse.x, mouse.y, playerColor(playerId));
+    if (state !== 'play' && state !== 'clear' && state !== 'dying' && state !== 'over') return;
+    const self = myPlayer();
+    if (self.hp > 0) drawAimLine(self, mouse.x, mouse.y, playerColor(playerId));
     drawCursorDot(mouse.x, mouse.y, playerColor(playerId));
     if (netRole === 'host') {
       for (const pl of hostRemotePlayers()) {
         const input = remoteInputs.get(pl.id);
-        if (input && input.has) { drawAimLine(pl, input.aimX, input.aimY, pl.color); drawCursorDot(input.aimX, input.aimY, pl.color); }
+        if (input && input.has) {
+          if (pl.hp > 0) drawAimLine(pl, input.aimX, input.aimY, pl.color);
+          drawCursorDot(input.aimX, input.aimY, pl.color);
+        }
       }
     } else if (netRole === 'guest') for (const [id, cursor] of remoteCursors) if (id !== playerId) {
       const pl = remotePlayers.get(id);
-      if (pl) drawAimLine(pl, cursor[0], cursor[1], playerColor(id));
+      if (pl && pl.hp > 0) drawAimLine(pl, cursor[0], cursor[1], playerColor(id));
       drawCursorDot(cursor[0], cursor[1], playerColor(id));
     }
   }
@@ -2981,12 +3067,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     netSocket.on('disconnect', () => { netConnected = false; peerConnected = false; setNetStatus('サーバーとの接続が切れました'); showMainMenu(); });
     netSocket.on('room-created', d => {
       netRoom = d.code; playerId = d.playerId || 1; document.getElementById('roomCode').value = d.code;
-      syncRoster([{ playerId: 1, isHost: true, name: playerName }]); showLobbyScreen(true);
+      syncRoster([{ playerId: 1, isHost: true, name: playerName || 'P1' }]); showLobbyScreen(true);
       netSocket.emit('set-name', { name: playerName });
       setNetStatus('ルーム ' + d.code + ' を作成しました。参加者を待っています。');
     });
     netSocket.on('room-joined', d => {
-      netRoom = d.code; playerId = d.playerId || 2; getRemotePlayer(playerId).name = playerName; showLobbyScreen(false);
+      netRoom = d.code; playerId = d.playerId || 2; getRemotePlayer(playerId).name = playerName || 'P' + playerId; showLobbyScreen(false);
       netSocket.emit('set-name', { name: playerName });
       setNetStatus('ルーム ' + d.code + ' に参加しました。ホストの開始を待っています。');
     });
@@ -3072,8 +3158,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const pSer = (p) => [r1(p.x), r1(p.y), r1(p.hp), p.maxHp, r2(p.inv), r2(p.dashT), r2(p.dashCd), p.speed, p.S.armor, r2(p.armorCd || 0), p.S.armorCd, p.S.dashDamage, p.S.dashCooldown];
   function serEnemy(e) {
     if (!e.id) e.id = ++uid;
-    const ft = (e.type === 'pent' || e.type === 'epent') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : e.type === 'esq' ? e.chaseT : 9;
+    const ft = (e.type === 'pent' || e.type === 'epent' || e.type === 'quadstar' || e.type === 'equadstar') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : e.type === 'esq' ? e.chaseT : 9;
     const o = { i: e.id, ty: e.type, x: r1(e.x), y: r1(e.y), rt: r2(e.rot), r: e.r, hp: r1(e.hp), mh: Math.round(e.maxHp), b: r2(Math.min(e.born, 1)), f: e.flash > 0 ? 1 : 0, ft: r2(e.type === 'esq' ? ft : Math.min(ft, 1)) };
+    if (e.type === 'quadstar' || e.type === 'equadstar') o.fa = e.fireActive ? 1 : 0;
     if (e.type === 'esq') o.cp = e.chasePhase;
     if (e.mode && e.mode !== 'drift') o.m = e.mode;
     if (e.type === 'train') {
@@ -3082,7 +3169,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     if (e.plates) {
       o.p2 = e.p2 ? 1 : 0;
-      o.fp = e.plates.map((p) => [r1(p.hp), p.maxHp, r2(p.repairT), r2(p.flash), p.laserPhase, r2(p.laserAngle)]);
+      o.fp = e.plates.map((p) => [r1(p.hp), p.maxHp, r2(p.repairT), r2(p.flash), p.laserPhase, r2(p.laserAngle), p.type, r2(p.laserT)]);
     }
     if (e.parts) {
       o.fo = e.form || '';
@@ -3098,13 +3185,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl: partyPlayers().map((pl) => {
         const input = remoteInputs.get(pl.id) || freshRemoteInput();
         const cursorX = pl === P ? mouse.x : input.aimX, cursorY = pl === P ? mouse.y : input.aimY;
-        return [pl.id || 1, pSer(pl), r1(cursorX), r1(cursorY)];
+        return [pl.id || 1, pSer(pl), r1(cursorX), r1(cursorY), pl.name || 'P' + (pl.id || 1)];
       }),
       en: enemies.map(serEnemy),
       bu: bullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), r1(b.r), b.owner || 1]; }),
       eb: ebullets.filter((b) => !b.remove).map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0, b.dmg || 10, r2(b.delay || 0)]; }),
       sp: spawns.map((s) => [r1(s.x), r1(s.y), r2(s.t), r2(s.delay), s.type, s.edge === undefined ? -1 : s.edge]),
-      me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r]),
+      me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r, m.color || 0]),
 
       it: items.map((it) => { if (!it.id) it.id = ++uid; return [it.id, r1(it.x), r1(it.y), r1(it.life), r2(it.ph)]; }),
       bn: [r2(bannerT), bannerText, bannerCol], sk: r1(shake), ev
@@ -3146,7 +3233,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const angLerp = (a, b, t) => a + angDiff(b, a) * t;
   function gEnemy(o, p, al) {
     const L = (k) => (p ? lerp(p[k], o[k], al) : o[k]);
-    const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft, chaseT: p ? lerp(p.ft, o.ft, al) : o.ft, chasePhase: o.cp || 'warning' };
+    const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, fireActive: !!o.fa, cd: o.ft, healT: o.ft, dashT: o.ft, chaseT: p ? lerp(p.ft, o.ft, al) : o.ft, chasePhase: o.cp || 'warning' };
     e.bx = e.x; e.by = e.y;
     if (o.ty === 'train') {
       e.cid = o.cid; e.ci = o.ci; e.ang = p ? angLerp(p.an, o.an, al) : o.an; e.maxTotal = o.mt;
@@ -3162,7 +3249,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         const previousAngle = pq && pq[5] !== undefined ? pq[5] : laserAngle;
         return {
           hp: q[0], maxHp: q[1], repairT: q[2], flash: q[3], laserPhase: q[4] || 0,
-          laserAngle: pq ? angLerp(previousAngle, laserAngle, al) : laserAngle
+          laserAngle: pq ? angLerp(previousAngle, laserAngle, al) : laserAngle, type: q[6] || 'tri', laserT: q[7] || 0
         };
       });
     }
@@ -3249,6 +3336,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl.S.armor = values[8] || 0; pl.armorCd = Math.max(0, (values[9] || 0) - dtc);
       pl.S.armorCd = values[10] || 0; pl.S.dashDamage = values[11] || 0;
       pl.S.dashCooldown = values[12] || DASH_CD;
+      pl.name = current[4] || 'P' + id;
       remoteCursors.set(id, [current[2], current[3]]);
     }
     remotePlayer = remotePlayers.get(playerId) || remotePlayer;
@@ -3275,7 +3363,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     items = b.it.map((q) => { const p = IA.get(q[0]); return { x: p ? lerp(p[1], q[1], alpha) : q[1], y: p ? lerp(p[2], q[2], alpha) : q[2], life: q[3], ph: q[4] }; });
     const ds = (rt - b.t) / 1000;                              // 予告・隕石はタイマーだけ進める(位置は固定)
     spawns = b.sp.map((s) => ({ x: s[0], y: s[1], t: Math.max(0, s[2] + ds), delay: s[3], type: s[4], edge: s[5] }));
-    meteors = b.me.map((m) => ({ x: m[0], y: m[1], t: m[2] + ds, warn: m[3], fall: m[4], r: m[5] }));
+    meteors = b.me.map((m) => ({ x: m[0], y: m[1], t: m[2] + ds, warn: m[3], fall: m[4], r: m[5], color: m[6] || undefined }));
   }
   function updateGuestPlayer(dt) {                           // 自機は入力に即応(ホストの反映待ちをしない)
     const g = remotePlayer; if (!g) return;
@@ -3344,8 +3432,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function readPlayerName() {
     const field = document.getElementById('playerName');
-    playerName = (field && field.value.trim().slice(0, 16)) || 'P' + playerId;
-    if (P) P.name = playerName;
+    playerName = field ? field.value.trim().slice(0, 16) : '';
+    const ownPlayer = netRole === 'guest' ? (remotePlayer || remotePlayers.get(playerId) || P) : P;
+    if (ownPlayer) ownPlayer.name = playerName || 'P' + playerId;
+    if (netSocket && netSocket.connected) netSocket.emit('set-name', { name: playerName });
   }
   document.getElementById('playerName').addEventListener('change', readPlayerName);
   document.getElementById('soloStart').addEventListener('click', () => { readPlayerName(); initAudio(); startGame(); });
@@ -3408,7 +3498,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         overT += dt;
       }
       updateFx(state === 'dying' ? dt * 0.5 : dt);
-      if (netRole === 'host' && (state === 'play' || state === 'upgrade' || state === 'clear') && performance.now() - lastNetSend >= snapshotInterval()) sendSnapshot();
+      if (netRole === 'host' && (state === 'play' || state === 'upgrade' || state === 'clear' || state === 'dying' || state === 'over') && performance.now() - lastNetSend >= snapshotInterval()) sendSnapshot();
     }
     bannerT = Math.max(0, bannerT - dt);
 
@@ -3418,7 +3508,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     drawBackground();
     ctx.save();
     if (shake > 0.2) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
-    drawSpawns(); drawMeteors(); drawEnemies(); drawTrainCharge(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer(); drawCursors(); drawFx();
+    drawSpawns(); drawMeteors(); drawEnemies(); drawTrainCharge(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer();
+    if (state === 'play' || state === 'clear') drawCursors();
+    drawFx();
     ctx.restore();
 
     if (hurtFlash > 0) {
@@ -3433,6 +3525,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (state === 'upgrade') drawUpgrade();
     if (state === 'over') drawOver();
     if (state === 'title') drawTitle();
+    if (state === 'dying' || state === 'over') drawCursors();
 
     requestAnimationFrame(frame);
   }
