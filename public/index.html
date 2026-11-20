@@ -54,6 +54,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .screen-actions .secondary { border-color: #394157; background: #171d2b; color: var(--fg); }
 .screen-fields { display: grid; gap: 7px; margin-top: 8px; }
 .screen-fields input { min-width: 0; width: 100%; border: 1px solid #30384f; border-radius: 3px; padding: 10px; background: #090d17; color: var(--fg); font: inherit; }
+.debug-upgrade-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.debug-upgrade-grid label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 12px; }
+.debug-upgrade-grid input { min-width: 0; width: 100%; border: 1px solid #30384f; border-radius: 3px; padding: 8px; background: #090d17; color: var(--fg); font: inherit; }
+.debug-hint { margin: 6px 0; color: var(--muted); font-size: 11px; }
 .screen-join { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .screen-join button { min-height: 40px; border: 1px solid #394157; border-radius: 3px; padding: 8px 12px; background: #171d2b; color: var(--fg); font: 700 13px var(--font-body); cursor: pointer; }
 .screen-status { min-height: 1.4em; margin: 12px 0 0; color: var(--muted); font-size: 12px; }
@@ -78,18 +82,31 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         <p class="screen-copy">プレイ人数 1 - 8 人</p>
         <div class="screen-fields"><label for="dashModeSelect">ダッシュ方向</label><select id="dashModeSelect" aria-label="ダッシュ方向"><option value="mouse">マウス方向</option><option value="move">移動方向</option></select></div>
         <div class="screen-fields"><label><input id="bloomToggle" type="checkbox" checked> ブルーム</label><label><input id="trailToggle" type="checkbox" checked> 軌道表示</label></div>
-        <div class="screen-actions"><button id="soloStart">ソロで始める</button><button id="createRoom" class="secondary">マルチプレイを作成</button></div>
-        <div class="screen-fields">
-          <label for="testWave">テスト開始ウェーブ（5の倍数はボス、15はTrain）</label>
-          <input id="testWave" type="number" min="1" step="1" value="15" inputmode="numeric">
-          <button id="testStart">指定ウェーブでテスト開始</button>
-        </div>
+        <div class="screen-actions"><button id="soloStart">ソロで始める</button><button id="createRoom" class="secondary">マルチプレイを作成</button><button id="debugOpen" class="secondary">デバッグ</button></div>
         <div class="screen-fields">
           <input id="playerName" type="text" maxlength="16" placeholder="プレイヤー名" aria-label="プレイヤー名">
           <input id="serverUrl" type="url" placeholder="サーバーURL (例: https://your-game-server.example)" aria-label="サーバーURL">
           <div class="screen-join"><input id="roomCode" type="text" maxlength="6" placeholder="ルームコード" aria-label="ルームコード"><button id="joinRoom">参加</button></div>
         </div>
         <p id="netStatus" class="screen-status" role="status">ソロプレイ / オンライン接続待機中</p>
+      </div>
+    </section>
+    <section id="debugScreen" class="screen-layer" aria-label="デバッグ設定" hidden>
+      <div class="screen-panel">
+        <div class="screen-kicker">DEBUG / PLAY TEST</div>
+        <h2>デバッグ機能</h2>
+        <p class="screen-copy">開始ウェーブと各アップグレードのレベルを指定してプレイします。</p>
+        <div class="screen-fields">
+          <label for="debugWave">開始ウェーブ</label>
+          <input id="debugWave" type="number" min="1" step="1" value="15" inputmode="numeric">
+        </div>
+        <div class="screen-fields">
+          <span>アップグレードレベル</span>
+          <div id="debugUpgradeFields" class="debug-upgrade-grid"></div>
+          <p class="debug-hint">レベルは0〜99。0は未取得です。</p>
+        </div>
+        <div class="screen-actions"><button id="debugStart">指定条件でプレイ</button><button id="debugBack" class="secondary">戻る</button></div>
+        <p id="debugStatus" class="screen-status" role="status"></p>
       </div>
     </section>
     <section id="lobbyScreen" class="screen-layer" aria-label="マルチプレイ待機室" hidden>
@@ -256,6 +273,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     rare: { name: 'レア', color: '#60a5fa', weight: 2 },
     epic: { name: 'エピック', color: '#c084fc', weight: 1 }
   };
+  const NORMAL_EPIC_CHANCE = 0.05;
   const UPG = [
     { id: 'rate', name: '攻撃速度増加', rarity: 'common', desc: '時間あたりの攻撃回数 +15%', apply: (s) => { s.rate += 0.15; s.fireDelay = BASE_DELAY / s.rate; } },
     { id: 'dmg', name: '攻撃力増加', rarity: 'common', desc: '攻撃力 +10', apply: (s) => { s.dmg += 10; } },
@@ -275,6 +293,24 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     { id: 'berserk', name: '戦闘狂', rarity: 'epic', desc: '体力が少ないほど与えるダメージが増加', apply: (s) => { s.berserk += 1; } },
     { id: 'armorburst', name: '消弾装甲', rarity: 'epic', desc: '被弾時のダメージを減少し、周囲の敵弾を消す。クールダウンあり', apply: (s) => { s.armor += 0.15; s.armorCd = 2.5; } }
   ].map((u) => ({ ...u, color: RARITY[u.rarity].color, weight: RARITY[u.rarity].weight }));
+  const MAX_DEBUG_UPGRADE_LEVEL = 99;
+  function buildDebugUpgradeFields() {
+    const container = document.getElementById('debugUpgradeFields');
+    for (const upgrade of UPG) {
+      const label = document.createElement('label');
+      const name = document.createElement('span');
+      const input = document.createElement('input');
+      label.className = 'debug-upgrade-field';
+      name.textContent = upgrade.name;
+      input.id = 'debugUpgrade-' + upgrade.id;
+      input.type = 'number'; input.min = '0'; input.max = String(MAX_DEBUG_UPGRADE_LEVEL);
+      input.step = '1'; input.value = '0'; input.inputMode = 'numeric';
+      input.setAttribute('aria-label', upgrade.name + ' レベル');
+      label.append(name, input);
+      container.append(label);
+    }
+  }
+  buildDebugUpgradeFields();
 
   /* ---------- state ---------- */
   let state = 'title';          // title | play | clear | upgrade | dying | over
@@ -284,6 +320,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let enemyGrid = new Map();
   const LIMITS = { parts: 800, rings: 120, texts: 160, bullets: 240, ebullets: 800 };
   let wave = 0, kills = 0, time = 0;
+  let retryConfig = { startWave: 1, upgradeLevels: null };
   let phaseIdx = 0, phaseCount = 1, wavePhases = [];     // ウェーブ内フェーズ
   let trainCid = 1;                                      // Train のチェーンID採番
   const trainMap = new Map();
@@ -318,7 +355,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let snapBuf = [], clockOff = null, lastCurT = -1;   // ゲスト: 受信バッファ / ホストとの時計差 / 最後に反映した離散状態
   let guestPicked = false;                            // ゲスト: アップグレード選択状況
   let upgradeId = 0, guestUpgradeId = -1;
-  let epicDropAvailable = false;
+  let epicDropAvailable = false, upgradeEpicOnly = false;
   const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
   function hosting() { return netRole === 'host' && peerConnected && !!netSocket && netSocket.connected; }
   function pushEv(a) { if (!muteEv && evq.length < (bullets.length > 120 ? 48 : 160) && hosting()) evq.push(a); }
@@ -330,15 +367,31 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const hostRemotePlayers = () => netRole === 'host' ? roomRoster.filter((entry) => !entry.isHost).map((entry) => remotePlayers.get(entry.playerId)).filter(Boolean) : [];
   const partyPlayers = () => [P, ...hostRemotePlayers()];
   const visiblePlayers = () => netRole === 'guest' ? [P, ...[...remotePlayers.entries()].sort((a, b) => a[0] - b[0]).map((entry) => entry[1])] : partyPlayers();
+  function playerPosition(player) {
+    if (netRole !== 'host' || player === P) return player;
+    return {
+      x: Number.isFinite(player.sx) ? player.sx : player.x,
+      y: Number.isFinite(player.sy) ? player.sy : player.y
+    };
+  }
   const netStatus = document.getElementById('netStatus');
   const lobbyStatus = document.getElementById('lobbyStatus');
   const setNetStatus = (msg) => { if (netStatus) netStatus.textContent = msg; if (lobbyStatus) lobbyStatus.textContent = msg; };
   function showMainMenu() {
     document.getElementById('mainMenu').hidden = false;
+    document.getElementById('debugScreen').hidden = true;
     document.getElementById('lobbyScreen').hidden = true;
+  }
+  function showDebugScreen() {
+    document.getElementById('mainMenu').hidden = true;
+    document.getElementById('debugScreen').hidden = false;
+    document.getElementById('lobbyScreen').hidden = true;
+    document.getElementById('debugStatus').textContent = '';
+    document.getElementById('debugWave').focus();
   }
   function showLobbyScreen(isHost) {
     document.getElementById('mainMenu').hidden = true;
+    document.getElementById('debugScreen').hidden = true;
     document.getElementById('lobbyScreen').hidden = false;
     document.getElementById('startRoom').hidden = !isHost;
     document.getElementById('lobbyCode').textContent = netRoom || '接続中…';
@@ -346,6 +399,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function hideMenuScreens() {
     document.getElementById('mainMenu').hidden = true;
+    document.getElementById('debugScreen').hidden = true;
     document.getElementById('lobbyScreen').hidden = true;
   }
   function renderLobbyRoster() {
@@ -415,6 +469,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     kills = 0; wave = 0; phaseIdx = 0; phaseCount = 1; wavePhases = []; trainCid = 1;
     shake = 0; hurtFlash = 0; pickFlash = 0;
     hoverIdx = -1; myPickIdx = -1; guestPicked = false; upgradeId = 0; guestUpgradeId = -1;
+    epicDropAvailable = false; upgradeEpicOnly = false;
   }
   resetRun();
 
@@ -500,24 +555,51 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
 
-  function startGame(startWave = 1) {
+  function startGame(startWave = 1, initialUpgradeLevels = null) {
     if (netRole === 'guest') return;
+    retryConfig = {
+      startWave,
+      upgradeLevels: initialUpgradeLevels ? { ...initialUpgradeLevels } : null
+    };
     hideMenuScreens();
     resetRun();
+    if (retryConfig.upgradeLevels) {
+      for (const upgrade of UPG) {
+        const level = retryConfig.upgradeLevels[upgrade.id] || 0;
+        for (let i = 0; i < level; i++) upgrade.apply(P.S, P);
+        if (level > 0) P.levels[upgrade.id] = level;
+      }
+    }
     sfx.start();
     ring(P.x, P.y, 90, 0.5, '#ffffff', 3);
     beginWave(startWave);
     if (netRole === 'host' && netSocket && netSocket.connected) { netSocket.emit('start-game'); sendSnapshot(true); }
   }
-  function getTestWave() {
-    const field = document.getElementById('testWave');
-    const startWave = Number(field.value);
-    if (!Number.isSafeInteger(startWave) || startWave < 1) {
-      setNetStatus('テストウェーブは1以上の整数で入力してください。');
-      field.focus();
+  function retryGame() {
+    startGame(retryConfig.startWave, retryConfig.upgradeLevels);
+  }
+  function getDebugConfig() {
+    const status = document.getElementById('debugStatus');
+    const waveField = document.getElementById('debugWave');
+    const startWave = Number(waveField.value);
+    if (!waveField.value.trim() || !Number.isSafeInteger(startWave) || startWave < 1) {
+      status.textContent = '開始ウェーブは1以上の整数で入力してください。';
+      waveField.focus();
       return null;
     }
-    return startWave;
+    const upgradeLevels = {};
+    for (const upgrade of UPG) {
+      const field = document.getElementById('debugUpgrade-' + upgrade.id);
+      const level = Number(field.value);
+      if (!field.value.trim() || !Number.isSafeInteger(level) || level < 0 || level > MAX_DEBUG_UPGRADE_LEVEL) {
+        status.textContent = upgrade.name + 'のレベルは0〜' + MAX_DEBUG_UPGRADE_LEVEL + 'の整数で入力してください。';
+        field.focus();
+        return null;
+      }
+      upgradeLevels[upgrade.id] = level;
+    }
+    status.textContent = '';
+    return { startWave, upgradeLevels };
   }
 
   /* ---------- fx helpers ---------- */
@@ -631,7 +713,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const party = partyPlayers();
       for (const pl of party) {
         pl.hp = pl.maxHp; pl.inv = 1.5; pl.kx = 0; pl.ky = 0;
-        ring(pl.x, pl.y, 90, 0.55, pl.color, 3); burst(pl.x, pl.y, 24, pl.color, 240, 0.6, 3);
+        const pos = playerPosition(pl);
+        ring(pos.x, pos.y, 90, 0.55, pl.color, 3); burst(pos.x, pos.y, 24, pl.color, 240, 0.6, 3);
       }
       if (party.some((pl) => pl.hp > 0)) { state = 'play'; dyT = 0; overT = 0; }
       shake = 22;
@@ -713,27 +796,28 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function hurtRemotePlayer(rp, amount, fromX, fromY) {
     if (!rp || rp.inv > 0 || rp.hp <= 0) return;
+    const pos = playerPosition(rp);
     rp.armorCd = Math.max(0, rp.armorCd || 0);
     if (rp.S.armor > 0 && rp.armorCd <= 0) {
       amount *= 1 - rp.S.armor;
       rp.armorCd = rp.S.armorCd || 2.5;
-      clearEnemyBulletsNear(rp.x, rp.y, 170);
-      ring(rp.x, rp.y, 170, 0.35, '#c084fc', 3);
+      clearEnemyBulletsNear(pos.x, pos.y, 170);
+      ring(pos.x, pos.y, 170, 0.35, '#c084fc', 3);
     }
 
     rp.hp -= amount; rp.inv = 0.75;
-    const a = Math.atan2(rp.y - fromY, rp.x - fromX);
+    const a = Math.atan2(pos.y - fromY, pos.x - fromX);
     pushEv(['k', rp.id, r1(Math.cos(a) * 380), r1(Math.sin(a) * 380), 1]);
     shake = Math.max(shake, 8);
-    burst(rp.x, rp.y, 14, '#5ee6d0', 280, 0.45, 3);
-    ring(rp.x, rp.y, 58, 0.3, '#5ee6d0', 3);
-    floatText(rp.x, rp.y - 34, '-' + amount, '#5ee6d0');
+    burst(pos.x, pos.y, 14, '#5ee6d0', 280, 0.45, 3);
+    ring(pos.x, pos.y, 58, 0.3, '#5ee6d0', 3);
+    floatText(pos.x, pos.y - 34, '-' + amount, '#5ee6d0');
     sfx.hurt();
     if (rp.hp <= 0) {
       rp.hp = 0;
-      burst(rp.x, rp.y, 50, '#ffffff', 480, 0.9, 4);
-      burst(rp.x, rp.y, 26, '#5ee6d0', 400, 1.0, 4);
-      ring(rp.x, rp.y, 200, 0.8, '#ffffff', 4);
+      burst(pos.x, pos.y, 50, '#ffffff', 480, 0.9, 4);
+      burst(pos.x, pos.y, 26, '#5ee6d0', 400, 1.0, 4);
+      ring(pos.x, pos.y, 200, 0.8, '#ffffff', 4);
       if (!partyPlayers().some((pl) => pl.hp > 0)) { state = 'dying'; dyT = 1.2; sfx.over(); }
     }
   }
@@ -881,6 +965,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   /* ---------- boss: Trinity ---------- */
   // 3つの三角形。分離中は各パーツが順番に3way連射を行い、その後レーザーを撃つ
   const TRI_WARN = 1.2, TRI_ACT = 4.4, TRI_SPLIT_T = 0.9, TRI_MERGE_T = 1.0, TRI_TURNS = 6, TRI_SPLIT_LASER_WARN = 0.75, TRI_SPLIT_LASER_ACT = 0.42, TRI_OFS = ET.trinity.r * ET.trinity.vr;   // 重心までの距離=三角形の外接円半径 → 頂点が隣と一致(トライフォース配置)
+  const TRI_ENRAGED_LASER_SPIN = 1.2, TRI_ENRAGED_HALF_TURN_DURATION = 0.85;
   const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
   function chase(p, tx, ty, gain, maxSp, dt) {
     let dx = (tx - p.x) * Math.min(1, dt * gain), dy = (ty - p.y) * Math.min(1, dt * gain);
@@ -892,6 +977,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     e.form = 'merged'; e.ft = 0; e.beam = 0; e.bp = 0; e.dir = Math.random() < 0.5 ? -1 : 1;
     e.la = Math.random() * TAU; e.phi = 0; e.vT = 0.3;
     e.turn = 0; e.sStage = 0; e.sT = 0; e.bursts = 0;
+    e.beamTurnStart = 0; e.beamTurnDuration = 0; e.beamTurnProgress = 0;
     e.cx = e.x; e.cy = e.y;
     e.parts = [0, 1, 2].map((i) => {
       const a = e.la + i * TAU / 3;
@@ -923,7 +1009,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const c = Math.cos(p.laserAngle), s = Math.sin(p.laserAngle);
     const cands = partyPlayers().filter((pl) => pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying'));
     for (const pl of cands) {
-      const rx = pl.x - p.x, ry = pl.y - p.y;
+      const pos = playerPosition(pl);
+      const rx = pos.x - p.x, ry = pos.y - p.y;
       if (rx * c + ry * s <= 0 || Math.abs(rx * s - ry * c) >= 6 + pl.r * 0.55) continue;
       if (pl === P) hurtPlayer(12, p.x, p.y); else hurtRemotePlayer(pl, 12, p.x, p.y);
     }
@@ -941,7 +1028,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function trinitySplitSupport(e, source, tk) {
     if (!e.p2) return;
-    for (const p of e.parts) if (p !== source) trinityVolley(e, p, tk, 3);
+    for (const p of e.parts) if (p !== source) trinityVolley(e, p, tk, 1);
   }
   function trinitySplitAttack(e, p, tk) {
     const target = getTargetPlayer(p.x, p.y), aim = Math.atan2(target.y - p.y, target.x - p.x), mode = Math.floor(Math.random() * 4);
@@ -958,7 +1045,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (const pl of cands) {
       for (let i = 0; i < 3; i++) {
         const a = e.la + i * TAU / 3, c = Math.cos(a), s = Math.sin(a);
-        const rx = pl.x - e.cx, ry = pl.y - e.cy;
+        const pos = playerPosition(pl);
+        const rx = pos.x - e.cx, ry = pos.y - e.cy;
         if (rx * c + ry * s <= 0) continue;
         if (Math.abs(rx * s - ry * c) < 6 + pl.r * 0.55) {
           if (pl === P) hurtPlayer(12, e.cx, e.cy); else hurtRemotePlayer(pl, 12, e.cx, e.cy);
@@ -975,6 +1063,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (e.born < 0.8) { centroid(); return; }
     if (!e.p2 && e.hp <= e.maxHp * 0.5) {
       e.p2 = true;
+      if (e.form === 'merged' && e.beam === 2) {
+        const act = TRI_ACT + 0.6;
+        e.beamTurnStart = Math.max(e.bp, act * 0.5);
+        e.beamTurnDuration = Math.min(TRI_ENRAGED_HALF_TURN_DURATION, act - e.beamTurnStart);
+        e.beamTurnProgress = 0;
+      }
       ring(e.x, e.y, 170, 0.6, ET.trinity.color, 4);
       floatText(e.x, e.y - 74, 'ENRAGED', ET.trinity.color);
       shake = Math.max(shake, 10); sfx.boss();
@@ -986,10 +1080,21 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const act = e.p2 ? TRI_ACT + 0.6 : TRI_ACT;
       if (e.ft < TRI_WARN) { e.beam = 1; e.bp = e.ft / TRI_WARN; }
       else if (e.ft < TRI_WARN + act) {
-        if (e.beam !== 2) sfx.bossCall();
+        if (e.beam !== 2) {
+          sfx.bossCall();
+          e.beamTurnStart = e.p2 ? act * 0.5 : Infinity;
+          e.beamTurnDuration = e.p2 ? Math.min(TRI_ENRAGED_HALF_TURN_DURATION, act - e.beamTurnStart) : 0;
+          e.beamTurnProgress = 0;
+        }
         e.beam = 2; e.bp = e.ft - TRI_WARN;
-        const spin = e.dir * (e.p2 ? 1.4 : 0.72);
+        const spin = e.dir * (e.p2 ? TRI_ENRAGED_LASER_SPIN : 0.72);
         e.la += spin * tk * Math.min(1, e.bp / 0.7) * dt;
+        if (e.p2) {
+          const turnT = Math.max(0, Math.min(1, (e.bp - e.beamTurnStart) / e.beamTurnDuration));
+          const turnProgress = turnT * turnT * (3 - 2 * turnT);
+          e.la += e.dir * Math.PI * (turnProgress - e.beamTurnProgress);
+          e.beamTurnProgress = turnProgress;
+        }
         if (e.bp > 0.12) trinityBeamHit(e);
         e.vT -= dt;
         if (e.vT <= 0) { trinitySpiral(e, tk); e.vT = e.p2 ? 0.5 : 0.64; }
@@ -1016,7 +1121,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           if (e.sT <= 0) { e.sStage = 1; e.bursts = 0; e.sT = 0; p.chg = 0; }
         } else if (e.sStage === 1 && e.sT <= 0) {
           e.bursts++;
-          trinityVolley(e, p, tk, e.p2 && e.bursts === 3 ? 3 : 0);
+          trinityVolley(e, p, tk, e.p2 && e.bursts === 3 ? 1 : 0);
           if (e.bursts >= 3) { e.sStage = 2; e.sT = gap; } else e.sT = burstGap;
         } else if (e.sStage === 2 && e.sT <= 0) {
           e.turn++;
@@ -1180,7 +1285,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const face = fortlessFacePoint(e, i), c = Math.cos(p.laserAngle), s = Math.sin(p.laserAngle);
     for (const pl of partyPlayers()) {
       if (pl.hp <= 0 || pl.inv > 0 || (pl === P && state === 'dying')) continue;
-      const rx = pl.x - face.x, ry = pl.y - face.y;
+      const pos = playerPosition(pl);
+      const rx = pos.x - face.x, ry = pos.y - face.y;
       if (rx * c + ry * s > 0 && Math.abs(rx * s - ry * c) < 7 + pl.r * 0.5) {
         if (pl === P) hurtPlayer(12, face.x, face.y); else hurtRemotePlayer(pl, 12, face.x, face.y);
       }
@@ -1418,7 +1524,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     if (state === 'dying') return;
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-    const splitBoost = Math.min(0.5, 0.12 * (chains.length - 1));
     for (const chain of chains) {
       const head = chain[0];
       for (const segment of chain) {
@@ -1437,7 +1542,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         const want = Math.atan2(ty - head.y, tx - head.x) + (out ? 0 : surge > 0.58 ? 0 : Math.sin(time * 1.6 + head.ph) * 0.5);
         const turn = (surge > 0.58 ? 3.6 : 1.9) * dt, delta = wrap(want - head.ang);
         head.ang += Math.max(-turn, Math.min(turn, delta));
-        speed = TRAIN_SPEED * (0.65 + surge * 0.8) * (1 + splitBoost);
+        speed = TRAIN_SPEED * (0.65 + surge * 0.8);
         if (head.boost > 0) { head.boost -= dt; speed *= 1.5; }
         if (head.chargePhase === 0) {
           head.chargeCooldown -= dt;
@@ -1532,13 +1637,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       let got = null;
       for (const pl of partyPlayers()) {
         if (pl.hp <= 0 || state === 'dying') continue;
-        const dx = pl.x - it.x, dy = pl.y - it.y, d = Math.hypot(dx, dy);
+        const pos = playerPosition(pl);
+        const dx = pos.x - it.x, dy = pos.y - it.y, d = Math.hypot(dx, dy);
         if (d < 80 && d > 1) { const sp = 200 * dt; it.x += dx / d * Math.min(sp, d); it.y += dy / d * Math.min(sp, d); }   // 近づくと引き寄せ
-        if (d < pl.r + 12) { got = pl; break; }
+        if (d < pl.r + 12) { got = { player: pl, x: pos.x, y: pos.y }; break; }
       }
       if (got) {
-        const heal = Math.min(got.maxHp - got.hp, ITEM_HEAL);
-        got.hp += heal;
+        const heal = Math.min(got.player.maxHp - got.player.hp, ITEM_HEAL);
+        got.player.hp += heal;
         floatText(got.x, got.y - 34, '+' + Math.round(heal), '#7df0a8');
         ring(got.x, got.y, 50, 0.3, '#7df0a8', 2); burst(it.x, it.y, 8, '#7df0a8', 160, 0.3, 2.4);
         sfx.heal(); items.splice(i, 1);
@@ -1555,8 +1661,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       burst(m.x, m.y, 6, '#ffffff', 200, 0.3, 2.2);
       ring(m.x, m.y, m.r + 14, 0.35, BOSS_COL, 3);
       shake = Math.max(shake, 6); sfx.impact();
-      for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && Math.hypot(m.x - pl.x, m.y - pl.y) < m.r + pl.r * 0.4) {
-        if (pl === P) hurtPlayer(15, m.x, m.y); else hurtRemotePlayer(pl, 15, m.x, m.y);
+      for (const pl of partyPlayers()) {
+        const pos = playerPosition(pl);
+        if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && Math.hypot(m.x - pos.x, m.y - pos.y) < m.r + pl.r * 0.4) {
+          if (pl === P) hurtPlayer(15, m.x, m.y); else hurtRemotePlayer(pl, 15, m.x, m.y);
+        }
       }
     }
   }
@@ -1641,7 +1750,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           rp.y = Math.max(rp.r + 6, Math.min(H - rp.r - 6, ri.y));
         }
         const sk = Math.min(1, dt * 24);
-        rp.sx += (rp.x - rp.sx) * sk; rp.sy += (rp.y - rp.sy) * sk;      // ホスト画面での表示用の平滑化(判定は rp.x / rp.y)
+        rp.sx += (rp.x - rp.sx) * sk; rp.sy += (rp.y - rp.sy) * sk;      // 描画と被弾判定に使う共通座標
         rp.inv = Math.max(0, rp.inv - dt);
         rp.armorCd = Math.max(0, (rp.armorCd || 0) - dt);
         if (ri.dashT > 0) {
@@ -1776,7 +1885,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         } else {
           e.laserT -= dt;
           for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0) {
-            const rx = pl.x - e.x, ry = pl.y - e.y, c = Math.cos(e.laserAngle), s = Math.sin(e.laserAngle);
+            const pos = playerPosition(pl);
+            const rx = pos.x - e.x, ry = pos.y - e.y, c = Math.cos(e.laserAngle), s = Math.sin(e.laserAngle);
             const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
             if (along > 0 && side < 7 + pl.r * 0.5) { if (pl === P) hurtPlayer(12, e.x, e.y); else hurtRemotePlayer(pl, 12, e.x, e.y); }
           }
@@ -1788,7 +1898,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (e.healT <= 0) { crossHeal(e); e.healT = CROSS_INTERVAL; }
       }
       const hitDamage = ET[e.type].boss ? 15 : e.mode === 'dash' ? 14 : 10;
-      const contact = player => bodyHit(e, player.x, player.y, e.type === 'fortless' ? player.r : e.r * 0.85 * (ET[e.type].hk || 1) + player.r);
+      const contact = player => { const pos = playerPosition(player); return bodyHit(e, pos.x, pos.y, e.type === 'fortless' ? player.r : e.r * 0.85 * (ET[e.type].hk || 1) + player.r); };
       for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && contact(pl)) {
         if (e.type === 'esq') pl.inv = 0.375;
         if (pl === P) hurtPlayer(hitDamage, e.x, e.y); else hurtRemotePlayer(pl, hitDamage, e.x, e.y);
@@ -1812,7 +1922,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (hitWall) { b.bounce--; burst(b.x, b.y, 4, b.color, 100, 0.2, 2); }
       }
       if (b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) { b.remove = true; continue; }
-      const hitPlayer = partyPlayers().find((pl) => pl.hp > 0 && (pl !== P || state !== 'dying') && Math.hypot(b.x - pl.x, b.y - pl.y) < b.r + pl.r);
+      const hitPlayer = partyPlayers().find((pl) => {
+        const pos = playerPosition(pl);
+        return pl.hp > 0 && (pl !== P || state !== 'dying') && Math.hypot(b.x - pos.x, b.y - pos.y) < b.r + pl.r;
+      });
       if (hitPlayer) {
         burst(b.x, b.y, 6, b.color || ET.pent.color, 180, 0.25, 2.4);
         const bx = b.x - b.vx * 0.1, by = b.y - b.vy * 0.1; b.remove = true;
@@ -1940,11 +2053,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   // アップグレードはプレイヤーごとに別々の3択を抽選し、別々に強化する
-  function rollChoices(pl) {
+  function rollChoices(pl, epicOnly) {
     pl.choices = [];
-    if (epicDropAvailable) {
-      const epicPool = UPG.filter((u) => u.rarity === 'epic');
-      if (epicPool.length) pl.choices.push(epicPool[Math.floor(Math.random() * epicPool.length)]);
+    if (epicOnly) {
+      const pool = UPG.filter((u) => u.rarity === 'epic');
+      while (pl.choices.length < 3 && pool.length) {
+        pl.choices.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+      }
+      return;
+    }
+    const epicPool = UPG.filter((u) => u.rarity === 'epic');
+    if (epicPool.length && Math.random() < NORMAL_EPIC_CHANCE) {
+      pl.choices.push(epicPool[Math.floor(Math.random() * epicPool.length)]);
     }
     const pool = UPG.filter((u) => u.rarity !== 'epic');
     while (pl.choices.length < 3 && pool.length) {
@@ -1958,9 +2078,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function startUpgrade() {                                 // ホスト側: 全員分の選択肢を用意
     hoverIdx = -1; myPickIdx = -1;
     upgradeId++;
+    upgradeEpicOnly = epicDropAvailable;
     for (const p of participants()) {
       if (p.hp <= 0) { p.choices = []; p.picked = 'dead'; }   // 戦闘不能の人は選択不要
-      else { rollChoices(p); p.picked = null; }
+      else { rollChoices(p, upgradeEpicOnly); p.picked = null; }
     }
     checkUpgradeDone();
     epicDropAvailable = false;
@@ -2055,7 +2176,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (upT > 0.6 && hoverIdx >= 0) pick(hoverIdx);
       return;
     }
-    if (state === 'over') { if (overT > 0.7) startGame(); return; }
+    if (state === 'over') { if (overT > 0.7) retryGame(); return; }
     mouse.down = true;
   });
   cv.addEventListener('pointermove', (ev) => {
@@ -2073,11 +2194,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   window.addEventListener('blur', () => { mouse.down = false; for (const k in keys) keys[k] = false; });
   window.addEventListener('keydown', (ev) => {
     const k = ev.key.toLowerCase();
-    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k) && document.activeElement === cv) ev.preventDefault();
+    const active = document.activeElement, menuControlFocused = active && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName);
+    if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k) && active === cv) ev.preventDefault();
     keys[k] = true;
     if (state === 'upgrade' && upT > 0.6 && ['1', '2', '3'].includes(k)) { initAudio(); pick(Number(k) - 1); }
-    if (state === 'over' && overT > 0.7 && (k === 'r' || k === 'enter') && netRole !== 'guest') { initAudio(); startGame(); }
-    if (state === 'title' && (k === 'enter' || k === ' ') && netRole !== 'guest') { initAudio(); startGame(); }
+    if (state === 'over' && overT > 0.7 && (k === 'r' || k === 'enter') && netRole !== 'guest') { initAudio(); retryGame(); }
+    if (state === 'title' && document.getElementById('debugScreen').hidden && !menuControlFocused && (k === 'enter' || k === ' ') && netRole !== 'guest') { initAudio(); startGame(); }
   });
   window.addEventListener('keyup', (ev) => { keys[ev.key.toLowerCase()] = false; });
 
@@ -2537,8 +2659,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (!player || !Number.isFinite(x) || !Number.isFinite(y)) return;
     ctx.save(); ctx.globalAlpha = 0.28; ctx.strokeStyle = color; ctx.lineWidth = 1;
     ctx.setLineDash([5, 7]); ctx.lineDashOffset = -time * 20;
-    const px = Number.isFinite(player.x) ? player.x : 0;
-    const py = Number.isFinite(player.y) ? player.y : 0;
+    const pos = playerPosition(player);
+    const px = Number.isFinite(pos.x) ? pos.x : 0;
+    const py = Number.isFinite(pos.y) ? pos.y : 0;
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke(); ctx.restore();
   }
   function drawCursors() {
@@ -2557,8 +2680,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
   function drawOnePlayer(player, color) {
-    // ホスト画面のゲスト機は、届いた位置を平滑化した座標(sx, sy)で描く
-    const dp = (netRole === 'host' && player !== P) ? Object.assign({}, player, { x: player.sx, y: player.sy }) : player;
+    const pos = playerPosition(player);
+    const dp = pos === player ? player : Object.assign({}, player, pos);
     if (coop()) {
       ctx.save(); ctx.fillStyle = color; ctx.globalAlpha = 0.85; ctx.textAlign = 'center'; setFont(11, 700); spaced(1);
       const label = player.name || 'P' + (player.id || 1);
@@ -2841,7 +2964,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     netSocket.on('peer-joined', d => {
       if (netRole !== 'host' || !d || !Number.isInteger(d.playerId)) return;
       const pl = getRemotePlayer(d.playerId);
-      if (state === 'upgrade' && pl.hp > 0) { rollChoices(pl); pl.picked = null; }
+      if (state === 'upgrade' && pl.hp > 0) { rollChoices(pl, upgradeEpicOnly); pl.picked = null; }
       renderLobbyRoster(); sendSnapshot();
     });
     netSocket.on('peer-left', d => {
@@ -3180,10 +3303,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   document.getElementById('playerName').addEventListener('change', readPlayerName);
   document.getElementById('soloStart').addEventListener('click', () => { readPlayerName(); initAudio(); startGame(); });
-  document.getElementById('testStart').addEventListener('click', () => {
-    const startWave = getTestWave();
-    if (startWave === null) return;
-    readPlayerName(); initAudio(); startGame(startWave);
+  document.getElementById('debugOpen').addEventListener('click', () => {
+    if (netRole !== 'solo') { setNetStatus('デバッグ機能はソロプレイで使用してください。'); return; }
+    showDebugScreen();
+  });
+  document.getElementById('debugBack').addEventListener('click', showMainMenu);
+  document.getElementById('debugStart').addEventListener('click', () => {
+    if (netRole !== 'solo') {
+      document.getElementById('debugStatus').textContent = 'デバッグ機能はソロプレイで使用してください。';
+      return;
+    }
+    const config = getDebugConfig();
+    if (!config) return;
+    readPlayerName(); initAudio(); startGame(config.startWave, config.upgradeLevels);
   });
   document.getElementById('dashModeSelect').addEventListener('change', (event) => { dashMode = event.target.value === 'move' ? 'move' : 'mouse'; });
   document.getElementById('bloomToggle').addEventListener('change', (event) => { bloomEnabled = event.target.checked; try { localStorage.setItem('td-bloom', bloomEnabled ? '1' : '0'); } catch (_) {} });
