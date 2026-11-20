@@ -185,6 +185,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     cv.width = Math.round(cw * dpr);
     cv.height = Math.round(cw * (H / W) * dpr);
   }
+  function syncWorldSize(playerCount) {
+    if (!Number.isInteger(playerCount) || playerCount < 1 || playerCount > MAX_PLAYERS || playerCount === runPlayerCount) return;
+    runPlayerCount = playerCount;
+    const fieldScale = 1 + FIELD_SCALE_PER_PLAYER * (runPlayerCount - 1);
+    W = Math.round(BASE_W * fieldScale); H = Math.round(BASE_H * fieldScale);
+    resize();
+  }
   window.addEventListener('resize', resize);
   resize();
 
@@ -239,7 +246,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   /* ---------- upgrades ---------- */
   const BASE_DELAY = 0.28;
-  const DASH_DUR = 0.2, DASH_SPEED = 900, DASH_CD = 1.0;   // ダッシュ(右クリック): 時間 / 速度 / ダッシュ後のクールダウン
+  const DASH_DUR = 0.2, DASH_SPEED = 900, DASH_CD = 1.0, DASH_CD_MIN = 0.3, DASH_CD_STEP = 0.1;   // ダッシュ: 持続時間 / 速度 / クールダウン
   const PHASE_MIN = 20, PHASE_MAX = 30;        // 1人プレイ時の基準フェーズサイズ
   const DMG_BASE = 20, HP_SCALE = 12;          // 弾の基本ダメージ / 敵HPの倍率
   const ITEM_DROP = 0.15, ITEM_HEAL = 10;      // 十字撃破時の回復アイテム: ドロップ率 / 回復量
@@ -263,6 +270,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       case 'speeddmg': return [s.speedDmg ? '速度比 Lv ' + s.speedDmg : 'OFF', '速度比 Lv ' + (s.speedDmg + 1)];
       case 'berserk': return [s.berserk ? 'Lv ' + s.berserk : 'OFF', 'Lv ' + (s.berserk + 1)];
       case 'armorburst': return [s.armor ? Math.round(s.armor * 100) + '%軽減' : 'OFF', Math.round((s.armor + 0.15) * 100) + '%軽減'];
+      case 'dashcool': return [(s.dashCooldown || DASH_CD).toFixed(2) + '秒', Math.max(DASH_CD_MIN, (s.dashCooldown || DASH_CD) - DASH_CD_STEP).toFixed(2) + '秒'];
+      case 'dashattack': return [formatPercent(s.dashDamage), formatPercent(s.dashDamage + 0.5)];
       default: return ['-', '-'];
     }
   }
@@ -291,7 +300,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     { id: 'speeddmg', name: '速度攻撃力ボーナス', rarity: 'rare', desc: '移動速度と弾速の一部を攻撃力に転換', apply: (s, p) => { s.speedDmg += 1; } },
     { id: 'multi', name: 'マルチショット', rarity: 'epic', desc: '同時発射数が必ず1つ増加。弾ごとの攻撃力が減衰', apply: (s) => { s.shots = Math.floor(s.shots) + 1; } },
     { id: 'berserk', name: '戦闘狂', rarity: 'epic', desc: '体力が少ないほど与えるダメージが増加', apply: (s) => { s.berserk += 1; } },
-    { id: 'armorburst', name: '消弾装甲', rarity: 'epic', desc: '被弾時のダメージを減少し、周囲の敵弾を消す。クールダウンあり', apply: (s) => { s.armor += 0.15; s.armorCd = 2.5; } }
+    { id: 'armorburst', name: '消弾装甲', rarity: 'epic', desc: '被弾時のダメージを減少し、周囲の敵弾を消す。クールダウンあり', apply: (s) => { s.armor += 0.15; s.armorCd = 2.5; } },
+    { id: 'dashcool', name: 'ダッシュクールダウン短縮', rarity: 'rare', desc: 'ダッシュ後のクールダウン -0.1秒。最低0.3秒', apply: (s) => { s.dashCooldown = Math.max(DASH_CD_MIN, (s.dashCooldown || DASH_CD) - DASH_CD_STEP); } },
+    { id: 'dashattack', name: 'ダッシュ攻撃', rarity: 'rare', desc: 'ダッシュ中に接触した敵へ攻撃力の50%ダメージ。レベルごとに+50%', apply: (s) => { s.dashDamage += 0.5; } }
   ].map((u) => ({ ...u, color: RARITY[u.rarity].color, weight: RARITY[u.rarity].weight }));
   const MAX_DEBUG_UPGRADE_LEVEL = 99;
   function buildDebugUpgradeFields() {
@@ -423,12 +434,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       fireDelay: BASE_DELAY, rate: 1, dmg: DMG_BASE, kb: 3, ric: 0, shots: 1, bspeed: 620,
       pierce: 0, bsize: 4.5, spread: 0.15, missileHoming: false, guideLevel: 0,
       burstLv: 0, burstRange: 0, critChance: 0.05, critDmg: 2, burstKb: 0,
-      berserk: 0, armor: 0, armorCd: 0, speedDmg: 0
+      berserk: 0, armor: 0, armorCd: 0, speedDmg: 0,
+      dashCooldown: DASH_CD, dashDamage: 0
     };
   }
   // プレイヤーごとに独立した強化状態(S)・取得レベル・アップグレード選択肢を持つ
   function newPlayer(x, y, color) {
-    return { x, y, sx: x, sy: y, r: 14, hp: 100, maxHp: 100, speed: 250, kx: 0, ky: 0, inv: 0, cool: 0, dashT: 0, dashCd: 0, dvx: 0, dvy: 0, lx: 0, ly: 0, color, name: 'P1', S: newStats(), levels: {}, choices: [], picked: null };
+    return { x, y, sx: x, sy: y, r: 14, hp: 100, maxHp: 100, speed: 250, kx: 0, ky: 0, inv: 0, armorCd: 0, cool: 0, dashT: 0, dashCd: 0, dashJustEnded: false, dashHits: null, dvx: 0, dvy: 0, lx: 0, ly: 0, color, name: 'P1', S: newStats(), levels: {}, choices: [], picked: null };
   }
   function getRemotePlayer(id) {
     let pl = remotePlayers.get(id);
@@ -643,10 +655,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     else { const ex = ax - pl.x, ey = ay - pl.y, d = Math.hypot(ex, ey); if (d > 1) { ux = ex / d; uy = ey / d; } else { ux = 1; uy = 0; } }
     pl.lx = ux; pl.ly = uy;
     pl.dvx = ux * DASH_SPEED; pl.dvy = uy * DASH_SPEED;
-    pl.dashT = DASH_DUR; pl.inv = Math.max(pl.inv, DASH_DUR + 0.1);
+    pl.dashT = DASH_DUR; pl.dashJustEnded = false;
+    pl.dashHits = pl.S.dashDamage > 0 ? new Set() : null;
+    pl.inv = Math.max(pl.inv, DASH_DUR + 0.1);
     ring(pl.x, pl.y, 40, 0.25, '#ffffff', 2); sfx.dash();
   }
   function updateDash(pl, dt) {
+    pl.dashJustEnded = false;
     if (pl.dashT > 0) {
       const step = Math.min(dt, pl.dashT);
       pl.dashT -= dt;
@@ -654,8 +669,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl.x = Math.max(pl.r + 6, Math.min(W - pl.r - 6, pl.x)); pl.y = Math.max(pl.r + 6, Math.min(H - pl.r - 6, pl.y));
       if (trailEnabled) parts.push({ x: pl.x, y: pl.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: pl.r * 0.7, color: pl.color || '#ffffff' });
       pl.inv = Math.max(pl.inv, 0.1);
-      if (pl.dashT <= 0) { pl.dashT = 0; pl.dashCd = DASH_CD; }
-    } else if (pl.dashCd > 0) pl.dashCd = Math.max(0, pl.dashCd - dt);
+      if (pl.dashT <= 0) { pl.dashT = 0; pl.dashCd = pl.S.dashCooldown || DASH_CD; pl.dashJustEnded = true; }
+    } else {
+      if (pl.dashCd > 0) pl.dashCd = Math.max(0, pl.dashCd - dt);
+      pl.dashHits = null;
+    }
   }
   function fire() { fireFrom(P, mouse.x, mouse.y); }
   function fireFrom(shooter, aimX, aimY) {
@@ -765,15 +783,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     floatText(enemy.x, enemy.y - enemy.r - 8, 'STUN', '#60a5fa');
     burst(enemy.x, enemy.y, 8, '#60a5fa', 180, 0.32, 2.4);
   }
+  function activateArmor(pl, x, y) {
+    pl.armorCd = Math.max(0, pl.armorCd || 0);
+    if (pl.S.armor <= 0 || pl.armorCd > 0) return false;
+    pl.armorCd = pl.S.armorCd || 2.5;
+    clearEnemyBulletsNear(x, y, 340);
+    ring(x, y, 340, 0.35, '#c084fc', 3);
+    burst(x, y, 12, '#c084fc', 260, 0.35, 3);
+    return true;
+  }
   function hurtPlayer(amount, fromX, fromY) {
     if (P.hp <= 0) return;
-    P.armorCd = Math.max(0, P.armorCd || 0);
-    if (P.S.armor > 0 && P.armorCd <= 0) {
-      amount *= 1 - P.S.armor;
-      P.armorCd = P.S.armorCd || 2.5;
-      clearEnemyBulletsNear(P.x, P.y, 170);
-      ring(P.x, P.y, 170, 0.35, '#c084fc', 3); burst(P.x, P.y, 12, '#c084fc', 260, 0.35, 3);
-    }
+    if (activateArmor(P, P.x, P.y)) amount *= 1 - P.S.armor;
     P.hp -= amount; P.inv = 0.75;
     const a = Math.atan2(P.y - fromY, P.x - fromX);
     P.kx += Math.cos(a) * 380; P.ky += Math.sin(a) * 380;
@@ -797,13 +818,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function hurtRemotePlayer(rp, amount, fromX, fromY) {
     if (!rp || rp.inv > 0 || rp.hp <= 0) return;
     const pos = playerPosition(rp);
-    rp.armorCd = Math.max(0, rp.armorCd || 0);
-    if (rp.S.armor > 0 && rp.armorCd <= 0) {
-      amount *= 1 - rp.S.armor;
-      rp.armorCd = rp.S.armorCd || 2.5;
-      clearEnemyBulletsNear(pos.x, pos.y, 170);
-      ring(pos.x, pos.y, 170, 0.35, '#c084fc', 3);
-    }
+    if (activateArmor(rp, pos.x, pos.y)) amount *= 1 - rp.S.armor;
 
     rp.hp -= amount; rp.inv = 0.75;
     const a = Math.atan2(pos.y - fromY, pos.x - fromX);
@@ -965,7 +980,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   /* ---------- boss: Trinity ---------- */
   // 3つの三角形。分離中は各パーツが順番に3way連射を行い、その後レーザーを撃つ
   const TRI_WARN = 1.2, TRI_ACT = 4.4, TRI_SPLIT_T = 0.9, TRI_MERGE_T = 1.0, TRI_TURNS = 6, TRI_SPLIT_LASER_WARN = 0.75, TRI_SPLIT_LASER_ACT = 0.42, TRI_OFS = ET.trinity.r * ET.trinity.vr;   // 重心までの距離=三角形の外接円半径 → 頂点が隣と一致(トライフォース配置)
-  const TRI_ENRAGED_LASER_SPIN = 1.2, TRI_ENRAGED_HALF_TURN_DURATION = 0.85;
+  const TRI_ENRAGED_LASER_SPIN = 1.2, TRI_ENRAGED_REVERSAL_DURATION = 0.85;
   const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
   function chase(p, tx, ty, gain, maxSp, dt) {
     let dx = (tx - p.x) * Math.min(1, dt * gain), dy = (ty - p.y) * Math.min(1, dt * gain);
@@ -977,7 +992,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     e.form = 'merged'; e.ft = 0; e.beam = 0; e.bp = 0; e.dir = Math.random() < 0.5 ? -1 : 1;
     e.la = Math.random() * TAU; e.phi = 0; e.vT = 0.3;
     e.turn = 0; e.sStage = 0; e.sT = 0; e.bursts = 0;
-    e.beamTurnStart = 0; e.beamTurnDuration = 0; e.beamTurnProgress = 0;
+    e.beamReverseStart = 0; e.beamReverseDuration = 0;
     e.cx = e.x; e.cy = e.y;
     e.parts = [0, 1, 2].map((i) => {
       const a = e.la + i * TAU / 3;
@@ -1065,9 +1080,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       e.p2 = true;
       if (e.form === 'merged' && e.beam === 2) {
         const act = TRI_ACT + 0.6;
-        e.beamTurnStart = Math.max(e.bp, act * 0.5);
-        e.beamTurnDuration = Math.min(TRI_ENRAGED_HALF_TURN_DURATION, act - e.beamTurnStart);
-        e.beamTurnProgress = 0;
+        e.beamReverseStart = e.bp;
+        e.beamReverseDuration = Math.min(TRI_ENRAGED_REVERSAL_DURATION, act - e.beamReverseStart);
       }
       ring(e.x, e.y, 170, 0.6, ET.trinity.color, 4);
       floatText(e.x, e.y - 74, 'ENRAGED', ET.trinity.color);
@@ -1082,19 +1096,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else if (e.ft < TRI_WARN + act) {
         if (e.beam !== 2) {
           sfx.bossCall();
-          e.beamTurnStart = e.p2 ? act * 0.5 : Infinity;
-          e.beamTurnDuration = e.p2 ? Math.min(TRI_ENRAGED_HALF_TURN_DURATION, act - e.beamTurnStart) : 0;
-          e.beamTurnProgress = 0;
+          e.beamReverseStart = 0;
+          e.beamReverseDuration = e.p2 ? Math.min(TRI_ENRAGED_REVERSAL_DURATION, act) : 0;
         }
         e.beam = 2; e.bp = e.ft - TRI_WARN;
-        const spin = e.dir * (e.p2 ? TRI_ENRAGED_LASER_SPIN : 0.72);
+        const reverseT = e.p2 ? Math.max(0, Math.min(1, (e.bp - e.beamReverseStart) / e.beamReverseDuration)) : 0;
+        const reverseProgress = reverseT * reverseT * (3 - 2 * reverseT);
+        const normalSpin = e.dir * 0.72, enragedSpin = -e.dir * TRI_ENRAGED_LASER_SPIN;
+        const spin = e.p2 ? normalSpin + (enragedSpin - normalSpin) * reverseProgress : normalSpin;
         e.la += spin * tk * Math.min(1, e.bp / 0.7) * dt;
-        if (e.p2) {
-          const turnT = Math.max(0, Math.min(1, (e.bp - e.beamTurnStart) / e.beamTurnDuration));
-          const turnProgress = turnT * turnT * (3 - 2 * turnT);
-          e.la += e.dir * Math.PI * (turnProgress - e.beamTurnProgress);
-          e.beamTurnProgress = turnProgress;
-        }
         if (e.bp > 0.12) trinityBeamHit(e);
         e.vT -= dt;
         if (e.vT <= 0) { trinitySpiral(e, tk); e.vT = e.p2 ? 0.5 : 0.64; }
@@ -1629,6 +1639,26 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (const q of e.parts) { const d = Math.hypot(q.x - x, q.y - y); if (d < bd) { bd = d; best = q; } }
     return best;
   }
+  function applyDashDamage(pl, enemy) {
+    if (pl.S.dashDamage <= 0) return;
+    if (!pl.dashHits) pl.dashHits = new Set();
+    const target = enemy.type === 'train' ? 'train:' + enemy.cid : enemy;
+    if (pl.dashHits.has(target)) return;
+    pl.dashHits.add(target);
+    const damage = Math.max(1, Math.round(pl.S.dmg * pl.S.dashDamage));
+    const pos = playerPosition(pl);
+    if (enemy.type === 'fortless') {
+      const hit = fortlessDamage(enemy, damage, pos.x, pos.y, pl.r);
+      if (!hit) return;
+      damagePop(hit.x, hit.y - 14, hit.damage, false, '#5ee6d0');
+    } else {
+      const dealt = applyEnemyDamage(enemy, damage);
+      if (dealt <= 0) return;
+      const hitPoint = nearPt(enemy, pos.x, pos.y);
+      damagePop(hitPoint.x, hitPoint.y - enemy.r - 4, dealt, false, '#5ee6d0');
+    }
+    sfx.hit();
+  }
 
   function updateItems(dt) {                         // 回復アイテム: 近づくと拾って回復
     for (let i = items.length - 1; i >= 0; i--) {
@@ -1754,9 +1784,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         rp.inv = Math.max(0, rp.inv - dt);
         rp.armorCd = Math.max(0, (rp.armorCd || 0) - dt);
         if (ri.dashT > 0) {
+          if (rp.dashT <= 0) rp.dashHits = rp.S.dashDamage > 0 ? new Set() : null;
+          rp.dashJustEnded = false;
           rp.inv = Math.max(rp.inv, ri.dashT + 0.1);
           if (rp.dashT <= 0) localOnly(() => { ring(rp.x, rp.y, 40, 0.25, '#ffffff', 2); sfx.dash(); });
           if (trailEnabled) parts.push({ x: rp.sx, y: rp.sy, vx: 0, vy: 0, life: 0.25, max: 0.25, size: rp.r * 0.7, color: rp.color });
+        } else {
+          rp.dashJustEnded = rp.dashT > 0;
+          if (!rp.dashJustEnded) rp.dashHits = null;
         }
         rp.dashT = ri.dashT; rp.dashCd = ri.dashCd;
         rp.cool -= dt;
@@ -1899,7 +1934,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
       const hitDamage = ET[e.type].boss ? 15 : e.mode === 'dash' ? 14 : 10;
       const contact = player => { const pos = playerPosition(player); return bodyHit(e, pos.x, pos.y, e.type === 'fortless' ? player.r : e.r * 0.85 * (ET[e.type].hk || 1) + player.r); };
-      for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && contact(pl)) {
+      for (const pl of partyPlayers()) {
+        if (pl.hp <= 0 || (pl === P && state === 'dying')) continue;
+        const collided = contact(pl);
+        if (collided && (pl.dashT > 0 || pl.dashJustEnded)) applyDashDamage(pl, e);
+        if (!collided || pl.inv > 0) continue;
         if (e.type === 'esq') pl.inv = 0.375;
         if (pl === P) hurtPlayer(hitDamage, e.x, e.y); else hurtRemotePlayer(pl, hitDamage, e.x, e.y);
       }
@@ -3030,7 +3069,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   /* ----- host: snapshot (位置・状態のみ。粒子や文字は含めない) ----- */
-  const pSer = (p) => [r1(p.x), r1(p.y), r1(p.hp), p.maxHp, r2(p.inv), r2(p.dashT), r2(p.dashCd), p.speed];
+  const pSer = (p) => [r1(p.x), r1(p.y), r1(p.hp), p.maxHp, r2(p.inv), r2(p.dashT), r2(p.dashCd), p.speed, p.S.armor, r2(p.armorCd || 0), p.S.armorCd, p.S.dashDamage, p.S.dashCooldown];
   function serEnemy(e) {
     if (!e.id) e.id = ++uid;
     const ft = (e.type === 'pent' || e.type === 'epent') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : e.type === 'esq' ? e.chaseT : 9;
@@ -3055,7 +3094,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function snapshotData() {
     const ev = evq; evq = [];
     const d = {
-      t: performance.now(), st: state, w: wave, ph: phaseIdx, pc: phaseCount, k: kills,
+      t: performance.now(), st: state, w: wave, ph: phaseIdx, pc: phaseCount, k: kills, np: runPlayerCount,
       pl: partyPlayers().map((pl) => {
         const input = remoteInputs.get(pl.id) || freshRemoteInput();
         const cursorX = pl === P ? mouse.x : input.aimX, cursorY = pl === P ? mouse.y : input.aimY;
@@ -3082,6 +3121,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   /* ----- guest: receive / interpolate / render ----- */
   function applySnapshot(d) {
     if (netRole !== 'guest' || !d || !d.pl) return;
+    syncWorldSize(d.np);
     const now = performance.now(), sample = now - d.t;       // ホストとゲストの時計は別物なので、最小の差(=最速到着)を基準にする
     if (clockOff === null || sample < clockOff) clockOff = sample; else clockOff += (sample - clockOff) * 0.01;
     d.evDone = false;
@@ -3206,6 +3246,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         pl.dashT = Math.max(0, values[5] - dtc); pl.dashCd = Math.max(0, values[6] - dtc);
       }
       pl.hp = values[2]; pl.maxHp = values[3]; pl.inv = Math.max(0, values[4] - dtc); pl.speed = values[7];
+      pl.S.armor = values[8] || 0; pl.armorCd = Math.max(0, (values[9] || 0) - dtc);
+      pl.S.armorCd = values[10] || 0; pl.S.dashDamage = values[11] || 0;
+      pl.S.dashCooldown = values[12] || DASH_CD;
       remoteCursors.set(id, [current[2], current[3]]);
     }
     remotePlayer = remotePlayers.get(playerId) || remotePlayer;
@@ -3268,9 +3311,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
       for (let i = ebullets.length - 1; i >= 0; i--) {
         const b = ebullets[i];
+        if (b.remove) { ebullets.splice(i, 1); continue; }
         if (Math.hypot(b.x - g.x, b.y - g.y) < b.r + g.r && g.inv <= 0) {
+          const baseDamage = b.dmg || 10;
+          const damage = activateArmor(g, g.x, g.y) ? baseDamage * (1 - g.S.armor) : baseDamage;
           if (netSocket && netSocket.connected) netSocket.emit('enemy-bullet-hit', { bulletId: i, fromX: b.x - b.vx * 0.1, fromY: b.y - b.vy * 0.1 });
-          g.hp = Math.max(0, g.hp - (b.dmg || 10)); g.inv = 0.75;
+          g.hp = Math.max(0, g.hp - damage); g.inv = 0.75;
           burst(g.x, g.y, 10, '#ff7a86', 220, 0.35, 2.5); ebullets.splice(i, 1);
         }
       }
