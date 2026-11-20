@@ -80,6 +80,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         <div class="screen-fields"><label><input id="bloomToggle" type="checkbox" checked> ブルーム</label><label><input id="trailToggle" type="checkbox" checked> 軌道表示</label></div>
         <div class="screen-actions"><button id="soloStart">ソロで始める</button><button id="createRoom" class="secondary">マルチプレイを作成</button></div>
         <div class="screen-fields">
+          <label for="testWave">テスト開始ウェーブ（5の倍数はボス、15はTrain）</label>
+          <input id="testWave" type="number" min="1" step="1" value="15" inputmode="numeric">
+          <button id="testStart">指定ウェーブでテスト開始</button>
+        </div>
+        <div class="screen-fields">
           <input id="playerName" type="text" maxlength="16" placeholder="プレイヤー名" aria-label="プレイヤー名">
           <input id="serverUrl" type="url" placeholder="サーバーURL (例: https://your-game-server.example)" aria-label="サーバーURL">
           <div class="screen-join"><input id="roomCode" type="text" maxlength="6" placeholder="ルームコード" aria-label="ルームコード"><button id="joinRoom">参加</button></div>
@@ -129,7 +134,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     stardust: { sides: 8, star: true, r: 46, vr: 1.15, color: '#ffe36e', fill: '#2a2408', hk: 0.85, boss: true, name: 'STARDUST' },
     // boss: Trinity (3つの三角形。合体⇄分離を繰り返す)。sy = 出現Y座標
     trinity: { sides: 3, r: 32, vr: 1.15, color: '#ff5cf0', fill: '#2a0f29', hk: 0.85, boss: true, name: 'TRINITY', sy: 270 },
-    // boss: Train(部位破壊・分裂するワーム状ボス。各車両が個別HP)。seg = 複数パーツ型
+    // boss: Train (一定ダメージで分裂する六角形の列)。seg = 複数パーツ型
     train: { sides: 4, r: 19, vr: 1, color: '#c3d0e0', fill: '#1b2230', boss: true, seg: true, name: 'TRAIN' },
     fortless: { sides: 8, r: 80, vr: 1, color: '#81d4df', fill: '#10232b', hk: 1, boss: true, name: 'FORTLESS', sy: 166 },
     hex: { sides: 6, r: 26, vr: 1.05, color: '#4ddcff', fill: '#0b2a33', mass: 3 },
@@ -274,10 +279,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   /* ---------- state ---------- */
   let state = 'title';          // title | play | clear | upgrade | dying | over
   let waveClearGuard = 0;
-  let P, enemies, bullets, ebullets, parts, rings, spawns, texts, meteors, items, trainZones;
+  let P, enemies, bullets, ebullets, parts, rings, spawns, texts, meteors, items;
   const COLLISION_CELL = 96;
   let enemyGrid = new Map();
-  const LIMITS = { parts: 800, rings: 120, texts: 160, bullets: 240, ebullets: 800, trainZones: 100 };
+  const LIMITS = { parts: 800, rings: 120, texts: 160, bullets: 240, ebullets: 800 };
   let wave = 0, kills = 0, time = 0;
   let phaseIdx = 0, phaseCount = 1, wavePhases = [];     // ウェーブ内フェーズ
   let trainCid = 1;                                      // Train のチェーンID採番
@@ -406,7 +411,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (const entry of roomRoster) if (entry.playerId > 1) { getRemotePlayer(entry.playerId); remoteInputs.set(entry.playerId, freshRemoteInput()); }
     remotePlayer = netRole === 'guest' ? getRemotePlayer(playerId) : remotePlayers.get(2) || null;
     evq = [];
-    enemies = []; bullets = []; ebullets = []; parts = []; rings = []; spawns = []; texts = []; meteors = []; items = []; trainZones = [];
+    enemies = []; bullets = []; ebullets = []; parts = []; rings = []; spawns = []; texts = []; meteors = []; items = [];
     kills = 0; wave = 0; phaseIdx = 0; phaseCount = 1; wavePhases = []; trainCid = 1;
     shake = 0; hurtFlash = 0; pickFlash = 0;
     hoverIdx = -1; myPickIdx = -1; guestPicked = false; upgradeId = 0; guestUpgradeId = -1;
@@ -416,7 +421,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function beginWave(n) {
     wave = n; state = 'play'; waveClearGuard = 1.2;
     bannerT = 1.8; bannerText = 'WAVE ' + n;
-    bullets.length = 0; ebullets.length = 0; meteors.length = 0; items.length = 0; trainZones.length = 0;
+    bullets.length = 0; ebullets.length = 0; meteors.length = 0; items.length = 0;
     if (n % BOSS_EVERY === 0) {
       const bossIndex = Math.floor(n / BOSS_EVERY) - 1;
       const bt = BOSS_ORDER[bossIndex % BOSS_ORDER.length];
@@ -495,14 +500,24 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
 
-  function startGame() {
+  function startGame(startWave = 1) {
     if (netRole === 'guest') return;
     hideMenuScreens();
     resetRun();
     sfx.start();
     ring(P.x, P.y, 90, 0.5, '#ffffff', 3);
-    beginWave(1);
+    beginWave(startWave);
     if (netRole === 'host' && netSocket && netSocket.connected) { netSocket.emit('start-game'); sendSnapshot(true); }
+  }
+  function getTestWave() {
+    const field = document.getElementById('testWave');
+    const startWave = Number(field.value);
+    if (!Number.isSafeInteger(startWave) || startWave < 1) {
+      setNetStatus('テストウェーブは1以上の整数で入力してください。');
+      field.focus();
+      return null;
+    }
+    return startWave;
   }
 
   /* ---------- fx helpers ---------- */
@@ -619,22 +634,49 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         ring(pl.x, pl.y, 90, 0.55, pl.color, 3); burst(pl.x, pl.y, 24, pl.color, 240, 0.6, 3);
       }
       if (party.some((pl) => pl.hp > 0)) { state = 'play'; dyT = 0; overT = 0; }
-      trainZones.length = 0;
       shake = 22;
       sfx.clear();
-    } else if (et.seg && !e.silent) {                    // 部位破壊: 連結が切れて分裂
+    } else if (et.seg && !e.silent) {                    // Trainの最後の1両を撃破
       ring(e.x, e.y, 110, 0.4, et.color, 3); burst(e.x, e.y, 16, et.color, 300, 0.45, 3);
       shake = Math.max(shake, 10);
     }
   }
 
+  function applyEnemyKnockback(enemy, x, y) {
+    if (!enemy || enemy.type === 'train') return;
+    enemy.kbx = (enemy.kbx || 0) + x;
+    enemy.kby = (enemy.kby || 0) + y;
+  }
+  function applyEnemyDamage(enemy, amount) {
+    if (enemy.type !== 'train') {
+      enemy.hp -= amount;
+      enemy.flash = 0.09;
+      return amount;
+    }
+    const chain = enemies.filter((segment) => segment.type === 'train' && segment.cid === enemy.cid && segment.hp > 0);
+    if (!chain.length) return 0;
+    const head = chain.find((segment) => segment.ci === 0) || chain[0];
+    if (head.splitPending) return 0;
+    const maxHp = head.chainMaxHp;
+    const chainHp = head.chainHp;
+    const splitThreshold = maxHp * (1 - TRAIN_SPLIT_DAMAGE_RATIO);
+    const nextHp = chain.length > 1 ? Math.max(splitThreshold, chainHp - amount) : Math.max(0, chainHp - amount);
+    const dealt = chainHp - nextHp;
+    if (chain.length > 1 && chainHp - amount <= splitThreshold) head.splitPending = true;
+    for (const segment of chain) {
+      segment.chainHp = nextHp;
+      segment.maxHp = maxHp / chain.length;
+      segment.hp = nextHp / chain.length;
+    }
+    enemy.flash = 0.09;
+    return dealt;
+  }
   function applyKnockbackStun(enemy, strength, fromX, fromY) {
-    if (!enemy) return;
+    if (!enemy || enemy.type === 'train') return;
     const stun = Math.min(1.2, Math.max(0.12, strength * 0.035));
     enemy.stun = Math.max(enemy.stun || 0, stun);
     const a = Math.atan2(enemy.y - fromY, enemy.x - fromX);
-    enemy.kbx = (enemy.kbx || 0) + Math.cos(a) * strength * 85;
-    enemy.kby = (enemy.kby || 0) + Math.sin(a) * strength * 85;
+    applyEnemyKnockback(enemy, Math.cos(a) * strength * 85, Math.sin(a) * strength * 85);
     ring(enemy.x, enemy.y, enemy.r + 46, 0.25, '#60a5fa', 3);
     ring(enemy.x, enemy.y, enemy.r + 20, 0.38, '#ffffff', 2);
     floatText(enemy.x, enemy.y - enemy.r - 8, 'STUN', '#60a5fa');
@@ -1284,118 +1326,158 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (!quiet) sfx.spawn();
   }
 
-  /* ---------- boss: Train (部位破壊で分裂するワーム) ---------- */
+  /* ---------- boss: Train ---------- */
   const TRAIN_LEN = 22, TRAIN_GAP = 34, TRAIN_SPEED = 150, TRAIN_ENTRY = 260;
+  const TRAIN_HEAD_RADIUS = 24, TRAIN_BODY_RADIUS = 19, TRAIN_SPLIT_DAMAGE_RATIO = 0.25;
+  const TRAIN_PART_SHOT_INTERVAL = 0.35, TRAIN_PART_SHOT_START = 1.2, TRAIN_CHARGE_INTERVAL = 4.2;
+  const TRAIN_CHARGE_WINDUP = 1.05, TRAIN_CHARGE_DASH_DURATION = 0.55, TRAIN_CHARGE_DASH_SPEED = 620;
+  const TRAIN_ROTATION_SPEED = 2.2;
   function spawnTrain(sp) {
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1];
     const hx = sp.edge === 0 ? -40 : sp.edge === 1 ? W + 40 : sp.x, hy = sp.edge === 2 ? -40 : sp.edge === 3 ? H + 40 : sp.y;
-    const per = Math.round(HP_SCALE * bossHp() * 1.35 / TRAIN_LEN), cid = trainCid++, col = ET.train.color;
+    const per = Math.round(HP_SCALE * bossHp() * 1.35 / TRAIN_LEN), totalHp = per * TRAIN_LEN, cid = trainCid++, col = ET.train.color;
     for (let i = 0; i < TRAIN_LEN; i++) {
       const x = hx - ux * TRAIN_GAP * i, y = hy - uy * TRAIN_GAP * i;
       enemies.push({
-        type: 'train', x, y, bx: x, by: y, r: 19, hp: per, maxHp: per, maxTotal: per * TRAIN_LEN,
-        cid, ci: i, ang: Math.atan2(uy, ux), ent: i === 0, boost: 0, trailT: Math.random() * 0.5, ph: Math.random() * TAU, rot: 0, flash: 0, born: 1,
-        enrageChargeT: 3.8 + Math.random() * 1.2, chargePhase: 0, chargeT: 0, chargeAngle: 0,
-        vx: 0, vy: 0, fireT: 9, cd: 9, atk: 0, volley: 0, p2: false, spin: 0, mode: 'drift', dashT: 9, healT: 9, inv: 0
+        type: 'train', x, y, bx: x, by: y, r: i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS, hp: per, maxHp: per, maxTotal: totalHp,
+        chainHp: totalHp, chainMaxHp: totalHp, splitPending: false,
+        cid, ci: i, ang: Math.atan2(uy, ux), ent: i === 0, boost: 0, ph: Math.random() * TAU, rot: 0, flash: 0, born: 1,
+        chargeCooldown: TRAIN_CHARGE_INTERVAL + Math.random() * 1.2, chargePhase: 0, chargeT: 0, chargeAngle: 0,
+        shootT: i === 0 ? TRAIN_PART_SHOT_START : 0, shootIndex: 0,
+        vx: 0, vy: 0, cd: 9, atk: 0, volley: 0, spin: 0, mode: 'drift', dashT: 9, healT: 9, inv: 0
       });
     }
     const ex = Math.max(0, Math.min(W, hx + ux * 30)), ey = Math.max(0, Math.min(H, hy + uy * 30));
     ring(ex, ey, 140, 0.6, col, 4); burst(ex, ey, 24, col, 400, 0.6, 3.4);
     shake = Math.max(shake, 10); sfx.impact();
   }
+  function collectTrainChains(segs) {
+    const chains = []; let cur = null;
+    for (const sg of segs) {
+      const last = cur && cur[cur.length - 1];
+      if (last && last.cid === sg.cid && last.ci === sg.ci - 1) cur.push(sg);
+      else { cur = [sg]; chains.push(cur); }
+    }
+    return chains;
+  }
+  function resetTrainHead(head) {
+    head.ent = false; head.boost = 1.2;
+    head.splitPending = false; head.chargePhase = 0; head.chargeT = 0;
+    head.chargeCooldown = TRAIN_CHARGE_INTERVAL + Math.random() * 1.2;
+    head.shootT = 0.5; head.shootIndex = 0;
+  }
+  function assignTrainChain(chain, cid, hp, maxHp) {
+    chain.forEach((segment, i) => {
+      segment.cid = cid; segment.ci = i;
+      segment.chainHp = hp; segment.chainMaxHp = maxHp;
+      segment.hp = hp / chain.length; segment.maxHp = maxHp / chain.length;
+      segment.splitPending = false;
+      segment.r = i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS;
+    });
+    resetTrainHead(chain[0]);
+  }
+  function fireTrainSplitVolley(x, y) {
+    for (let i = 0; i < 12; i++) {
+      const angle = i * TAU / 12, c = Math.cos(angle), s = Math.sin(angle);
+      ebullets.push({ x, y, vx: c * 190, vy: s * 190, r: 5.5, life: 5.5, color: ET.train.color });
+    }
+    if (ebullets.length > LIMITS.ebullets) ebullets.splice(0, ebullets.length - LIMITS.ebullets);
+    ring(x, y, 72, 0.3, ET.train.color, 3); sfx.eshoot();
+  }
   function updateTrain(dt) {
     const segs = enemies.filter((e) => e.type === 'train' && e.hp > 0);
     if (!segs.length) return;
     segs.sort((a, b) => a.cid - b.cid || a.ci - b.ci);
-    const chains = []; let cur = null;
-    for (const sg of segs) {                              // 連結の途切れ(=破壊された部位)で別の個体に分裂
-      const last = cur && cur[cur.length - 1];
-      if (last && last.cid === sg.cid && last.ci === sg.ci - 1) cur.push(sg); else { cur = [sg]; chains.push(cur); }
-    }
-    const seen = new Set(), col = ET.train.color;
-    for (const ch of chains) {
-      let cid = ch[0].cid; const newHead = ch[0].ci > 0;
+    let chains = collectTrainChains(segs);
+    const seen = new Set();
+    for (const chain of chains) {
+      let cid = chain[0].cid;
       if (seen.has(cid)) cid = trainCid++;
       seen.add(cid);
-      ch.forEach((sg, i) => { sg.cid = cid; sg.ci = i; sg.r = i === 0 ? 23 : i === ch.length - 1 ? 16 : 19; });
-      if (newHead) {                                      // 新しい頭: 少しのあいだ加速して暴れる
-        ch[0].boost = 1.2; ch[0].ent = false;
-        ring(ch[0].x, ch[0].y, 70, 0.4, col, 3); burst(ch[0].x, ch[0].y, 12, col, 260, 0.4, 3); sfx.impact();
-      }
+      chain.forEach((segment, i) => { segment.cid = cid; segment.ci = i; segment.r = i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS; });
+    }
+    const col = ET.train.color;
+    let didSplit = false;
+    if (state !== 'dying') for (const chain of chains) {
+      const head = chain[0];
+      if (!head.splitPending || chain.length < 2) continue;
+      const splitAt = Math.floor(chain.length / 2), first = chain.slice(0, splitAt), second = chain.slice(splitAt);
+      const x = (first[first.length - 1].x + second[0].x) / 2, y = (first[first.length - 1].y + second[0].y) / 2;
+      const parentHp = head.chainHp, firstRatio = first.length / chain.length;
+      const firstHp = parentHp * firstRatio, secondHp = parentHp - firstHp;
+      assignTrainChain(first, head.cid, firstHp, firstHp);
+      assignTrainChain(second, trainCid++, secondHp, secondHp);
+      fireTrainSplitVolley(x, y);
+      burst(x, y, 20, col, 320, 0.5, 3.2);
+      shake = Math.max(shake, 10); sfx.impact();
+      didSplit = true;
+    }
+    if (didSplit) {
+      segs.sort((a, b) => a.cid - b.cid || a.ci - b.ci);
+      chains = collectTrainChains(segs);
     }
     if (state === 'dying') return;
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-    const split = Math.min(0.5, 0.12 * (chains.length - 1));
-    for (const ch of chains) {
-      const h = ch[0];
-      let sp;
-      if (h.ent) {                                        // 進入: 画面端から直進
-        sp = TRAIN_ENTRY;
-        if (h.x > 90 && h.x < W - 90 && h.y > 90 && h.y < H - 90) h.ent = false;
+    const splitBoost = Math.min(0.5, 0.12 * (chains.length - 1));
+    for (const chain of chains) {
+      const head = chain[0];
+      for (const segment of chain) {
+        const direction = segment.ci % 2 === 0 ? 1 : -1;
+        segment.rot = (segment.rot + direction * TRAIN_ROTATION_SPEED * dt + TAU) % TAU;
+      }
+      let speed;
+      if (head.ent) {
+        speed = TRAIN_ENTRY;
+        if (head.x > 90 && head.x < W - 90 && head.y > 90 && head.y < H - 90) head.ent = false;
       } else {
-        const out = h.x < 40 || h.x > W - 40 || h.y < 40 || h.y > H - 40;
-        const surge = (Math.sin(time * 1.3 + h.ph) + 1) * 0.5;
+        const out = head.x < 40 || head.x > W - 40 || head.y < 40 || head.y > H - 40;
+        const surge = (Math.sin(time * 1.3 + head.ph) + 1) * 0.5;
         let tx, ty;
-        if (out) { tx = W / 2; ty = H / 2; } else { const tg = getTargetPlayer(h.x, h.y); tx = tg.x; ty = tg.y; }
-        const want = Math.atan2(ty - h.y, tx - h.x) + (out ? 0 : surge > 0.58 ? 0 : Math.sin(time * 1.6 + h.ph) * 0.5);
-        const turn = (surge > 0.58 ? 3.6 : 1.9) * dt, d = wrap(want - h.ang);
-        h.ang += Math.max(-turn, Math.min(turn, d));
-        sp = TRAIN_SPEED * (0.65 + surge * 0.8) * (1 + split);
-        if (h.boost > 0) { h.boost -= dt; sp *= 1.5; }
-      }
-      const hpRatio = segs.length ? (segs.filter((q) => q.cid === h.cid).reduce((sum, q) => sum + Math.max(0, q.hp), 0) / segs.filter((q) => q.cid === h.cid).reduce((sum, q) => sum + q.maxHp, 0)) : 1;
-      if (hpRatio < 0.5) {
-        h.p2 = true;
-        h.enrageChargeT -= dt;
-        h.fireT = (h.fireT || 3.2) - dt;
-        if (h.fireT <= 0) {
-          h.fireT = 2.4;
-          const target = getTargetPlayer(h.x, h.y), base = Math.atan2(target.y - h.y, target.x - h.x);
-          for (let k = -3; k <= 3; k++) {
-            const a = base + k * 0.16, c = Math.cos(a), s = Math.sin(a);
-            ebullets.push({ x: h.x + c * h.r, y: h.y + s * h.r, vx: c * 190, vy: s * 190, r: 5.5, life: 5.5, color: ET.train.color });
+        if (out) { tx = W / 2; ty = H / 2; } else { const target = getTargetPlayer(head.x, head.y); tx = target.x; ty = target.y; }
+        const want = Math.atan2(ty - head.y, tx - head.x) + (out ? 0 : surge > 0.58 ? 0 : Math.sin(time * 1.6 + head.ph) * 0.5);
+        const turn = (surge > 0.58 ? 3.6 : 1.9) * dt, delta = wrap(want - head.ang);
+        head.ang += Math.max(-turn, Math.min(turn, delta));
+        speed = TRAIN_SPEED * (0.65 + surge * 0.8) * (1 + splitBoost);
+        if (head.boost > 0) { head.boost -= dt; speed *= 1.5; }
+        if (head.chargePhase === 0) {
+          head.chargeCooldown -= dt;
+          if (head.chargeCooldown <= 0) {
+            head.chargePhase = 1; head.chargeT = TRAIN_CHARGE_WINDUP;
+            const target = getTargetPlayer(head.x, head.y);
+            head.chargeAngle = Math.atan2(target.y - head.y, target.x - head.x);
           }
-          ring(h.x, h.y, 70, 0.28, ET.train.color, 3); sfx.eshoot();
-        }
-        if (h.chargePhase === 0 && h.enrageChargeT <= 0) {
-          h.chargePhase = 1; h.chargeT = 1.05;
-          const target = getTargetPlayer(h.x, h.y); h.chargeAngle = Math.atan2(target.y - h.y, target.x - h.x);
-        }
-        if (h.chargePhase === 1) {
-          h.chargeT -= dt;
-          if (h.chargeT <= 0) { h.chargePhase = 2; h.chargeT = 0.55; }
-        } else if (h.chargePhase === 2) {
-          h.chargeT -= dt;
-          sp = 620;
-          h.ang = h.chargeAngle;
-          if (h.chargeT <= 0) { h.chargePhase = 0; h.enrageChargeT = 4.2 + Math.random() * 1.2; h.ang = h.chargeAngle; }
+        } else if (head.chargePhase === 1) {
+          head.chargeT -= dt;
+          if (head.chargeT <= 0) { head.chargePhase = 2; head.chargeT = TRAIN_CHARGE_DASH_DURATION; }
+        } else {
+          const remaining = Math.max(0, head.chargeT - dt);
+          const progress = 1 - remaining / TRAIN_CHARGE_DASH_DURATION;
+          const easedProgress = progress * progress * (3 - 2 * progress);
+          speed += (TRAIN_CHARGE_DASH_SPEED - speed) * (1 - easedProgress);
+          head.chargeT = remaining; head.ang = head.chargeAngle;
+          if (head.chargeT <= 0) {
+            head.chargePhase = 0; head.chargeCooldown = TRAIN_CHARGE_INTERVAL + Math.random() * 1.2;
+          }
         }
       }
-      h.x += Math.cos(h.ang) * sp * dt; h.y += Math.sin(h.ang) * sp * dt;
-      for (let i = 1; i < ch.length; i++) {               // 前の車両に一定間隔で追従
-        const pv = ch[i - 1], sg = ch[i];
-        const a = Math.atan2(pv.y - sg.y, pv.x - sg.x);
-        sg.ang = a;
-        sg.x = pv.x - Math.cos(a) * TRAIN_GAP; sg.y = pv.y - Math.sin(a) * TRAIN_GAP;
+      head.x += Math.cos(head.ang) * speed * dt; head.y += Math.sin(head.ang) * speed * dt;
+      for (let i = 1; i < chain.length; i++) {
+        const previous = chain[i - 1], segment = chain[i];
+        const angle = Math.atan2(previous.y - segment.y, previous.x - segment.x);
+        segment.ang = angle;
+        segment.x = previous.x - Math.cos(angle) * TRAIN_GAP;
+        segment.y = previous.y - Math.sin(angle) * TRAIN_GAP;
       }
-      for (const sg of ch) {
-        sg.trailT -= dt;
-        if (sg.trailT <= 0) {
-          if (trainZones.length >= 100) trainZones.shift();
-          trainZones.push({ x: sg.x, y: sg.y, r: 28, life: 2, max: 2, hits: new Set() });
-          sg.trailT = 0.5;
+      if (!head.ent) {
+        head.shootT -= dt;
+        if (head.shootT <= 0) {
+          const shooter = chain[head.shootIndex % chain.length], target = getTargetPlayer(shooter.x, shooter.y);
+          const angle = Math.atan2(target.y - shooter.y, target.x - shooter.x), c = Math.cos(angle), s = Math.sin(angle);
+          ebullets.push({ x: shooter.x + c * shooter.r, y: shooter.y + s * shooter.r, vx: c * 190, vy: s * 190, r: 5.5, life: 5.5, color: col });
+          shooter.flash = 0.08;
+          head.shootIndex = (head.shootIndex + 1) % chain.length;
+          head.shootT = TRAIN_PART_SHOT_INTERVAL; sfx.eshoot();
         }
-      }
-    }
-  }
-
-  function updateTrainZones(dt) {
-    for (let i = trainZones.length - 1; i >= 0; i--) {
-      const z = trainZones[i]; z.life -= dt;
-      if (z.life <= 0) { trainZones.splice(i, 1); continue; }
-      for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && !z.hits.has(pl.id) && Math.hypot(pl.x - z.x, pl.y - z.y) < z.r + pl.r) {
-        z.hits.add(pl.id);
-        if (pl === P) hurtPlayer(8, z.x, z.y); else hurtRemotePlayer(pl, 8, z.x, z.y);
       }
     }
   }
@@ -1405,22 +1487,24 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const radius = 40 * (b.r / 4.5) * (1 + (b.burstRange || 0)), dmg = b.dmg * (0.20 + 0.05 * (b.burst - 1)) * (critScale || 1);
     rings.push({ x: b.x, y: b.y, r: 0, maxR: radius, life: 0.28, max: 0.28, color: '#ff8a3d', lw: 3 });
     burst(b.x, b.y, 8, '#ff8a3d', 200, 0.3, 2.6);
+    const trainChainsHit = new Set();
     for (const o of enemies) {
       if (o.hp <= 0) continue;
+      if (o.type === 'train' && trainChainsHit.has(o.cid)) continue;
       if (bodyHit(o, b.x, b.y, radius + o.r * 0.8)) {
-      if (o.type === 'fortless') {
-        const hit = fortlessDamage(o, dmg, b.x, b.y, radius + o.r * 0.8);
-        if (!hit) continue;
-        damagePop(hit.x, hit.y - 14, hit.damage, false, '#ff8a3d');
-      } else {
-        o.hp -= dmg; o.flash = 0.09;
-        const hitPoint = nearPt(o, b.x, b.y);
-        damagePop(hitPoint.x, hitPoint.y - o.r - 4, dmg, false, '#ff8a3d');
-      }
+        if (o.type === 'train') trainChainsHit.add(o.cid);
+        if (o.type === 'fortless') {
+          const hit = fortlessDamage(o, dmg, b.x, b.y, radius + o.r * 0.8);
+          if (!hit) continue;
+          damagePop(hit.x, hit.y - 14, hit.damage, false, '#ff8a3d');
+        } else {
+          const dealt = applyEnemyDamage(o, dmg);
+          const hitPoint = nearPt(o, b.x, b.y);
+          if (dealt > 0) damagePop(hitPoint.x, hitPoint.y - o.r - 4, dealt, false, '#ff8a3d');
+        }
         if (b.burstKb > 0) {
           const l = Math.hypot(o.x - b.x, o.y - b.y) || 1;
-          o.kbx = (o.kbx || 0) + (o.x - b.x) / l * b.burstKb * 50;
-          o.kby = (o.kby || 0) + (o.y - b.y) / l * b.burstKb * 50;
+          applyEnemyKnockback(o, (o.x - b.x) / l * b.burstKb * 50, (o.y - b.y) / l * b.burstKb * 50);
         }
       }
     }
@@ -1526,7 +1610,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     time += dt;
     if (bullets.length > LIMITS.bullets) bullets.splice(0, bullets.length - LIMITS.bullets);
     if (ebullets.length > LIMITS.ebullets) ebullets.splice(0, ebullets.length - LIMITS.ebullets);
-    if (trainZones.length > LIMITS.trainZones) trainZones.splice(0, trainZones.length - LIMITS.trainZones);
     rebuildEnemyGrid();
     // player
     if (state !== 'dying') {
@@ -1582,7 +1665,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     // enemies
     if (state !== 'dying') separate(dt);
     updateTrain(dt);
-    updateTrainZones(dt);
     for (const e of enemies) {
       e.stun = Math.max(0, (e.stun || 0) - dt);
       e.kbx = e.kbx || 0; e.kby = e.kby || 0;
@@ -1799,15 +1881,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             const hit = fortlessDamage(e, dealt, b.x, b.y, b.r);
             if (hit) damagePop(hit.x, hit.y - 14, hit.damage, stacks > 0);
           } else {
-            e.hp -= dealt; e.flash = 0.09;
+            const actualDamage = applyEnemyDamage(e, dealt);
             const hitPoint = nearPt(e, b.x, b.y);
-            damagePop(hitPoint.x, hitPoint.y - e.r - 4, dealt, stacks > 0);
+            if (actualDamage > 0) damagePop(hitPoint.x, hitPoint.y - e.r - 4, actualDamage, stacks > 0);
           }
           const l = Math.hypot(b.vx, b.vy) || 1;
-          if (e.type !== 'fortless') {
-            e.kbx = (e.kbx || 0) + (b.vx / l) * b.kb * 45;
-            e.kby = (e.kby || 0) + (b.vy / l) * b.kb * 45;
-          }
+          if (e.type !== 'fortless') applyEnemyKnockback(e, (b.vx / l) * b.kb * 45, (b.vy / l) * b.kb * 45);
           burst(b.x, b.y, 6, C.bullet, 220, 0.22, 2.2);
           shake = Math.max(shake, 2);
           sfx.hit();
@@ -2096,10 +2175,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
 
-  function pathRR(x, y, w, h, r) {
-    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-  }
   function drawTrainLinks() {                           // 車両間の連結器
     trainMap.clear();
     for (const e of enemies) if (e.type === 'train') trainMap.set(e.cid + ':' + e.ci, e);
@@ -2113,28 +2188,29 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.restore();
   }
   function drawTrainSeg(e) {
-    const et = ET.train, head = e.ci === 0, tail = !trainMap.has(e.cid + ':' + (e.ci + 1));
-    const L = head ? 42 : 32, Wd = head ? 42 : tail ? 28 : 34;
-    ctx.translate(e.x, e.y); ctx.rotate(e.ang || 0);
+    const et = ET.train, head = e.ci === 0;
+    ctx.translate(e.x, e.y); ctx.rotate((e.ang || 0) + (e.rot || 0));
     ctx.shadowColor = et.color; ctx.shadowBlur = head ? 24 : 12;
-    pathRR(-L / 2, -Wd / 2, L, Wd, 8);
+    drawPoly(0, 0, e.r, Math.PI / 6, 6);
     ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill; ctx.fill();
     ctx.lineWidth = head ? 3.5 : 2.5; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : et.color; ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(195,208,224,.3)'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(-L / 2 + 7, 0); ctx.lineTo(L / 2 - 7, 0); ctx.stroke();
-    ctx.fillStyle = et.color;                           // 台車
-    ctx.fillRect(-L / 4 - 4, -Wd / 2 - 2, 8, 3); ctx.fillRect(-L / 4 - 4, Wd / 2 - 1, 8, 3);
-    ctx.fillRect(L / 4 - 4, -Wd / 2 - 2, 8, 3); ctx.fillRect(L / 4 - 4, Wd / 2 - 1, 8, 3);
-    if (head) { ctx.fillStyle = '#fff6c8'; ctx.shadowColor = '#fff6c8'; ctx.shadowBlur = 14; ctx.beginPath(); ctx.arc(L / 2 - 7, 0, 4.5, 0, TAU); ctx.fill(); }
-    if (tail) { ctx.fillStyle = '#ff5d6a'; ctx.shadowColor = '#ff5d6a'; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(-L / 2 + 6, 0, 3, 0, TAU); ctx.fill(); }
+    ctx.beginPath();
+    ctx.moveTo(-e.r * 0.4, 0); ctx.lineTo(e.r * 0.4, 0);
+    ctx.moveTo(0, -e.r * 0.4); ctx.lineTo(0, e.r * 0.4);
+    ctx.lineWidth = head ? 2 : 1.5; ctx.strokeStyle = et.color; ctx.stroke();
   }
   function drawTrainCharge() {
     for (const h of enemies) if (h.type === 'train' && h.chargePhase === 1) {
-      const a = h.chargeAngle, ex = h.x + Math.cos(a) * 1100, ey = h.y + Math.sin(a) * 1100;
-      ctx.save(); ctx.strokeStyle = '#ff7a86'; ctx.lineWidth = 5; ctx.globalAlpha = 0.25 + 0.35 * (Math.sin(time * 18) + 1) * 0.5;
-      ctx.setLineDash([18, 12]); ctx.lineDashOffset = -time * 100; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(ex, ey); ctx.stroke();
-      ctx.globalAlpha = 0.9; ctx.fillStyle = '#ff5d6a'; ctx.beginPath(); ctx.arc(h.x + Math.cos(a) * h.r, h.y + Math.sin(a) * h.r, 7, 0, TAU); ctx.fill(); ctx.restore();
+      const a = h.chargeAngle, dx = Math.cos(a), dy = Math.sin(a), start = h.r + 12, length = 1100;
+      const spacing = 38, scroll = (time * 100) % spacing;
+      ctx.save(); ctx.strokeStyle = '#b8c2cf'; ctx.lineWidth = 3.5; ctx.globalAlpha = 0.78;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.setLineDash([]);
+      for (let d = start + scroll; d < length; d += spacing) {
+        ctx.save(); ctx.translate(h.x + dx * d, h.y + dy * d); ctx.rotate(a);
+        ctx.beginPath(); ctx.moveTo(-13, -10); ctx.lineTo(0, 0); ctx.lineTo(-13, 10); ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
     }
   }
   function drawTrainWarn(sp) {                          // 進入レーンの警告
@@ -2207,21 +2283,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.save(); ctx.translate(spawner.x, spawner.y); ctx.rotate(spawner.a - Math.PI / 2);
       ctx.beginPath(); ctx.moveTo(-8 * sc, -3 * sc); ctx.lineTo(8 * sc, -3 * sc);
       ctx.lineTo(12 * sc, 9 * sc); ctx.lineTo(-12 * sc, 9 * sc); ctx.closePath();
-      ctx.fillStyle = '#ad82ff'; ctx.fill(); ctx.strokeStyle = '#e2d0ff'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = et.color; ctx.fill(); ctx.strokeStyle = '#b7e9ef'; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.restore();
-    }
-    ctx.restore();
-  }
-
-  function drawTrainZones() {
-    ctx.save();
-    for (const z of trainZones) {
-      const fade = z.life / z.max;
-      ctx.globalAlpha = 0.2 * fade;
-      ctx.fillStyle = '#ff5d6a'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.fill();
-      ctx.globalAlpha = 0.55 * fade; ctx.strokeStyle = '#ff7a86'; ctx.lineWidth = 2;
-      ctx.setLineDash([5, 6]); ctx.lineDashOffset = time * 18;
-      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, TAU); ctx.stroke();
     }
     ctx.restore();
   }
@@ -2812,10 +2875,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           const hit = fortlessDamage(e, d.damage, d.x, d.y, 6);
           if (hit) damagePop(hit.x, hit.y - 14, hit.damage, false);
         } else {
-          e.hp -= d.damage; e.flash = 0.09;
-          if (e.bx !== undefined) { const l = Math.hypot(d.vx, d.vy) || 1; e.bx += d.vx / l * d.kb; e.by += d.vy / l * d.kb; }
+          const actualDamage = applyEnemyDamage(e, d.damage);
+          if (e.type !== 'train' && e.bx !== undefined) { const l = Math.hypot(d.vx, d.vy) || 1; e.bx += d.vx / l * d.kb; e.by += d.vy / l * d.kb; }
           const hitPoint = nearPt(e, d.x, d.y);
-          damagePop(hitPoint.x, hitPoint.y - e.r - 4, d.damage, false);
+          if (actualDamage > 0) damagePop(hitPoint.x, hitPoint.y - e.r - 4, actualDamage, false);
         }
         break;
       }
@@ -2851,7 +2914,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const o = { i: e.id, ty: e.type, x: r1(e.x), y: r1(e.y), rt: r2(e.rot), r: e.r, hp: r1(e.hp), mh: Math.round(e.maxHp), b: r2(Math.min(e.born, 1)), f: e.flash > 0 ? 1 : 0, ft: r2(e.type === 'esq' ? ft : Math.min(ft, 1)) };
     if (e.type === 'esq') o.cp = e.chasePhase;
     if (e.mode && e.mode !== 'drift') o.m = e.mode;
-    if (e.type === 'train') { o.cid = e.cid; o.ci = e.ci; o.an = r2(e.ang); o.mt = e.maxTotal; }
+    if (e.type === 'train') {
+      o.cid = e.cid; o.ci = e.ci; o.an = r2(e.ang); o.mt = e.maxTotal;
+      o.tcp = e.chargePhase; o.tct = r2(e.chargeT); o.tca = r2(e.chargeAngle);
+    }
     if (e.plates) {
       o.p2 = e.p2 ? 1 : 0;
       o.fp = e.plates.map((p) => [r1(p.hp), p.maxHp, r2(p.repairT), r2(p.flash), p.laserPhase, r2(p.laserAngle)]);
@@ -2877,7 +2943,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       eb: ebullets.filter((b) => !b.remove).map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0, b.dmg || 10, r2(b.delay || 0)]; }),
       sp: spawns.map((s) => [r1(s.x), r1(s.y), r2(s.t), r2(s.delay), s.type, s.edge === undefined ? -1 : s.edge]),
       me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r]),
-      tz: trainZones.map((z) => [r1(z.x), r1(z.y), r2(z.life), z.r]),
+
       it: items.map((it) => { if (!it.id) it.id = ++uid; return [it.id, r1(it.x), r1(it.y), r1(it.life), r2(it.ph)]; }),
       bn: [r2(bannerT), bannerText, bannerCol], sk: r1(shake), ev
     };
@@ -2919,7 +2985,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const L = (k) => (p ? lerp(p[k], o[k], al) : o[k]);
     const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft, chaseT: p ? lerp(p.ft, o.ft, al) : o.ft, chasePhase: o.cp || 'warning' };
     e.bx = e.x; e.by = e.y;
-    if (o.ty === 'train') { e.cid = o.cid; e.ci = o.ci; e.ang = p ? angLerp(p.an, o.an, al) : o.an; e.maxTotal = o.mt; }
+    if (o.ty === 'train') {
+      e.cid = o.cid; e.ci = o.ci; e.ang = p ? angLerp(p.an, o.an, al) : o.an; e.maxTotal = o.mt;
+      e.chargePhase = o.tcp || 0; e.chargeT = o.tct || 0;
+      e.chargeAngle = p && Number.isFinite(p.tca) ? angLerp(p.tca, o.tca, al) : o.tca;
+    }
     if (o.fp) {
       const previousPlates = p && p.fp || [];
       e.p2 = !!o.p2;
@@ -3040,7 +3110,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const ds = (rt - b.t) / 1000;                              // 予告・隕石はタイマーだけ進める(位置は固定)
     spawns = b.sp.map((s) => ({ x: s[0], y: s[1], t: Math.max(0, s[2] + ds), delay: s[3], type: s[4], edge: s[5] }));
     meteors = b.me.map((m) => ({ x: m[0], y: m[1], t: m[2] + ds, warn: m[3], fall: m[4], r: m[5] }));
-    trainZones = (b.tz || []).map((z) => ({ x: z[0], y: z[1], life: z[2], max: 2, r: z[3], hitP: true, hitR: true }));
   }
   function updateGuestPlayer(dt) {                           // 自機は入力に即応(ホストの反映待ちをしない)
     const g = remotePlayer; if (!g) return;
@@ -3111,6 +3180,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   document.getElementById('playerName').addEventListener('change', readPlayerName);
   document.getElementById('soloStart').addEventListener('click', () => { readPlayerName(); initAudio(); startGame(); });
+  document.getElementById('testStart').addEventListener('click', () => {
+    const startWave = getTestWave();
+    if (startWave === null) return;
+    readPlayerName(); initAudio(); startGame(startWave);
+  });
   document.getElementById('dashModeSelect').addEventListener('change', (event) => { dashMode = event.target.value === 'move' ? 'move' : 'mouse'; });
   document.getElementById('bloomToggle').addEventListener('change', (event) => { bloomEnabled = event.target.checked; try { localStorage.setItem('td-bloom', bloomEnabled ? '1' : '0'); } catch (_) {} });
   document.getElementById('trailToggle').addEventListener('change', (event) => { trailEnabled = event.target.checked; try { localStorage.setItem('td-trails', trailEnabled ? '1' : '0'); } catch (_) {} });
@@ -3166,7 +3240,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     drawBackground();
     ctx.save();
     if (shake > 0.2) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
-    drawSpawns(); drawMeteors(); drawTrainZones(); drawEnemies(); drawTrainCharge(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer(); drawCursors(); drawFx();
+    drawSpawns(); drawMeteors(); drawEnemies(); drawTrainCharge(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer(); drawCursors(); drawFx();
     ctx.restore();
 
     if (hurtFlash > 0) {
