@@ -41,18 +41,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .net-controls button:hover { background: #1b4542; }
 #netStatus { color: var(--muted); font-size: 12px; min-height: 1.4em; }
 .stage { position: relative; }
-.screen-layer { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 18px; overflow: auto; background: rgba(5, 8, 15, .78); }
+.screen-layer { position: absolute; inset: 0; z-index: 2; display: grid; place-items: start center; padding: 14px 18px; overflow: auto; background: rgba(5, 8, 15, .78); }
 .screen-layer[hidden] { display: none; }
-.screen-panel { width: min(460px, 100%); max-height: 100%; overflow: auto; border: 1px solid #37405b; border-radius: 4px; padding: 22px; background: rgba(13, 18, 30, .96); box-shadow: 0 18px 60px rgba(0,0,0,.4); }
+.screen-panel { width: min(460px, 100%); max-height: calc(100% - 8px); margin-top: 4px; text-align: left; overflow: auto; border: 1px solid #37405b; border-radius: 4px; padding: 18px 22px; background: rgba(13, 18, 30, .96); box-shadow: 0 18px 60px rgba(0,0,0,.4); }
 .screen-kicker { color: var(--accent); font: 700 11px var(--font-display); letter-spacing: .14em; }
 .screen-panel h2 { margin: 8px 0 6px; font: 700 27px var(--font-display); }
-.screen-copy { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+.screen-copy { margin: 2px 0 12px; color: var(--muted); font-size: 13px; }
 .screen-actions { display: grid; gap: 9px; }
 .screen-actions button { min-height: 42px; border: 1px solid #3d7e78; border-radius: 3px; padding: 9px 14px; background: #12302f; color: var(--accent); font: 700 14px var(--font-body); cursor: pointer; }
 .screen-actions button:hover:not(:disabled) { background: #1b4542; }
 .screen-actions button:disabled { opacity: .4; cursor: not-allowed; }
 .screen-actions .secondary { border-color: #394157; background: #171d2b; color: var(--fg); }
-.screen-fields { display: grid; gap: 8px; margin-top: 12px; }
+.screen-fields { display: grid; gap: 7px; margin-top: 8px; }
 .screen-fields input { min-width: 0; width: 100%; border: 1px solid #30384f; border-radius: 3px; padding: 10px; background: #090d17; color: var(--fg); font: inherit; }
 .screen-join { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .screen-join button { min-height: 40px; border: 1px solid #394157; border-radius: 3px; padding: 8px 12px; background: #171d2b; color: var(--fg); font: 700 13px var(--font-body); cursor: pointer; }
@@ -128,6 +128,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     // boss: Train(部位破壊・分裂するワーム状ボス。各車両が個別HP)。seg = 複数パーツ型
     train: { sides: 4, r: 19, vr: 1, color: '#c3d0e0', fill: '#1b2230', boss: true, seg: true, name: 'TRAIN' },
     hex: { sides: 6, r: 26, vr: 1.05, color: '#4ddcff', fill: '#0b2a33', mass: 3 },
+    ehex: { sides: 6, r: 31, vr: 1.05, color: '#66ffe0', fill: '#0b332b', mass: 3, elite: true },
     // エリート三角形(大型。倒すと通常三角形3体に分裂)
     etri: { sides: 3, r: 30, vr: 1.15, color: '#ff3d8a', fill: '#33101f', mass: 2 },
     // エリート五角形(五角形より少し大きい。3way弾を撃つ)
@@ -139,9 +140,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const isTri = (t) => t === 'tri' || t === 'etri';
   const CROSS_R = 140, CROSS_INTERVAL = 2.6, CROSS_HEAL = 0.2;      // 回復範囲 / 間隔(秒) / 最大HPに対する回復割合
   const BOSS_COL = '#ffe36e', BOUNCE_COL = '#7ad7ff';
-  const BOSS_EVERY = 10;
+  const BOSS_EVERY = 5;
   const BOSS_ORDER = ['stardust', 'trinity', 'train'];   // ボスの出現順(循環)。ボスを追加したらここに並べる
-  const bossHp = () => 620 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 520;
+  const bossHp = () => 360 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 600;
 
   /* ---------- canvas sizing ---------- */
   let scale = 1, dpr = 1;
@@ -208,30 +209,26 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const BASE_DELAY = 0.28;
   const DASH_DUR = 0.2, DASH_SPEED = 900, DASH_CD = 1.0;   // ダッシュ(右クリック): 時間 / 速度 / ダッシュ後のクールダウン
   const PHASE_MIN = 20, PHASE_MAX = 30;        // 1フェーズは原則20〜30体。余りは均等配分
-  const DMG_BASE = 20, HP_SCALE = 20;          // 弾の基本ダメージ / 敵HPの倍率(旧: ダメージ1・HPそのまま)
+  const DMG_BASE = 20, HP_SCALE = 16;          // 弾の基本ダメージ / 敵HPの倍率
   const ITEM_DROP = 0.15, ITEM_HEAL = 10;      // 十字撃破時の回復アイテム: ドロップ率 / 回復量
   function upgradeValue(id, pl) {
     const s = pl.S;
     switch (id) {
       case 'rate': return [s.fireDelay.toFixed(2) + '秒', (BASE_DELAY / (s.rate + 0.15)).toFixed(2) + '秒'];
       case 'dmg': return [s.dmg + '', (s.dmg + 10) + ''];
-      case 'multi': return [formatChance(s.shots), formatChance(s.shots + 0.5)];
-      case 'speed': return [Math.round(s.bspeed) + '', Math.round(s.bspeed * 1.1) + ''];
+      case 'multi': return [Math.floor(s.shots) + '発', (Math.floor(s.shots) + 1) + '発'];
+      case 'speed': return [Math.round(s.bspeed) + '', Math.round(s.bspeed * 1.15) + ''];
       case 'pierce': return [formatChance(s.pierce), formatChance(s.pierce + 0.5)];
       case 'homing': return [s.guideLevel + '段階', (s.guideLevel + 1) + '段階'];
       case 'burst': return [s.burstLv ? 'Lv ' + s.burstLv : 'なし', 'Lv ' + (s.burstLv + 1)];
-      case 'ricochet': return [formatChance(s.ric), formatChance(s.ric + 0.5)];
+      case 'ricochet': return [formatChance(s.ric) + '跳弾', formatChance(s.ric + 0.5) + '跳弾'];
       case 'crit': return [formatPercent(s.critChance), formatPercent(s.critChance + 0.05)];
       case 'critdmg': return [formatPercent(s.critDmg - 1), formatPercent(s.critDmg + 0.25 - 1)];
       case 'size': return [(Math.round((s.bsize / 4.5 - 1) * 100)) + '%', (Math.round((s.bsize * 1.15 / 4.5 - 1) * 100)) + '%'];
-      case 'move': return [pl.speed + '', (pl.speed * 1.1).toFixed(0) + ''];
       case 'armor': return [pl.maxHp + ' / ' + Math.ceil(pl.hp) + ' HP', (pl.maxHp + 20) + ' / ' + Math.min(pl.maxHp + 20, Math.ceil(pl.hp) + 20) + ' HP'];
       case 'heal': return [Math.ceil(pl.hp) + ' / ' + pl.maxHp + ' HP', Math.min(pl.maxHp, Math.ceil(pl.hp) + 40) + ' / ' + pl.maxHp + ' HP'];
       case 'burstkb': return ['Lv ' + s.burstKb, 'Lv ' + (s.burstKb + 1)];
-      case 'critburst': return [s.critBurst ? 'ON' : 'OFF', 'ON'];
-      case 'dashstun': return [s.dashStun ? 'ON' : 'OFF', 'ON'];
-      case 'speeddmg': return [s.speedDmg ? 'Lv ' + s.speedDmg : 'OFF', 'Lv ' + (s.speedDmg + 1)];
-      case 'kbstun': return [s.knockbackStun ? 'ON' : 'OFF', 'ON'];
+      case 'speeddmg': return [s.speedDmg ? '速度比 Lv ' + s.speedDmg : 'OFF', '速度比 Lv ' + (s.speedDmg + 1)];
       case 'berserk': return [s.berserk ? 'Lv ' + s.berserk : 'OFF', 'Lv ' + (s.berserk + 1)];
       case 'armorburst': return [s.armor ? Math.round(s.armor * 100) + '%軽減' : 'OFF', Math.round((s.armor + 0.15) * 100) + '%軽減'];
       default: return ['-', '-'];
@@ -247,23 +244,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const UPG = [
     { id: 'rate', name: '攻撃速度増加', rarity: 'common', desc: '時間あたりの攻撃回数 +15%', apply: (s) => { s.rate += 0.15; s.fireDelay = BASE_DELAY / s.rate; } },
     { id: 'dmg', name: '攻撃力増加', rarity: 'common', desc: '攻撃力 +10', apply: (s) => { s.dmg += 10; } },
-    { id: 'speed', name: '弾速増加', rarity: 'common', desc: '弾の速度 +10%、弾によるノックバック増加', apply: (s) => { s.bspeed *= 1.1; s.kb += 0.4; } },
+    { id: 'speed', name: '弾速増加', rarity: 'common', desc: '弾の速度 +15%、弾によるノックバック増加', apply: (s) => { s.bspeed *= 1.15; s.kb += 0.4; } },
     { id: 'crit', name: 'クリティカル率増加', rarity: 'common', desc: 'クリティカル率 +5%', apply: (s) => { s.critChance += 0.05; } },
     { id: 'size', name: '弾大型化', rarity: 'common', desc: '弾のサイズ +15%、炸裂範囲 +30%', apply: (s) => { s.bsize *= 1.15; s.burstRange += 0.30; } },
-    { id: 'move', name: '移動速度増加', rarity: 'common', desc: '自機の移動速度 +10%', apply: (s, p) => { p.speed *= 1.1; } },
     { id: 'armor', name: '最大体力増加', rarity: 'common', desc: '最大体力 +20、回復 20', apply: (s, p) => { p.maxHp += 20; p.hp = Math.min(p.maxHp, p.hp + 20); } },
     { id: 'pierce', name: '貫通弾', rarity: 'rare', desc: '敵貫通確率 +50%。貫通するごとに次の確率が半減', apply: (s) => { s.pierce += 0.5; } },
-    { id: 'ricochet', name: '反射弾', rarity: 'rare', desc: '壁反射確率 +50%。反射するごとに次の確率が半減', apply: (s) => { s.ric += 0.5; } },
+    { id: 'ricochet', name: '反射弾', rarity: 'rare', desc: '敵貫通時に別の敵へ跳弾する確率 +50%。跳弾するごとに次の確率が半減', apply: (s) => { s.ric += 0.5; } },
     { id: 'burst', name: '炸裂弾', rarity: 'rare', desc: '攻撃力の20%で炸裂。レベルアップで炸裂ダメージ +5%', apply: (s) => { s.burstLv += 1; } },
     { id: 'homing', name: '誘導弾', rarity: 'rare', desc: '弾の誘導性能が微増', apply: (s) => { s.guideLevel += 1; s.missileHoming = true; } },
     { id: 'critdmg', name: 'クリティカルダメージ増加', rarity: 'rare', desc: 'クリティカルダメージ +50%', apply: (s) => { s.critDmg += 0.5; } },
     { id: 'heal', name: '応急修復', rarity: 'rare', desc: '体力を 40 回復', apply: (s, p) => { p.hp = Math.min(p.maxHp, p.hp + 40); } },
     { id: 'burstkb', name: '炸裂ノックバック', rarity: 'rare', desc: '炸裂によるノックバックが増加', apply: (s) => { s.burstKb += 1; } },
-    { id: 'critburst', name: 'クリティカル炸裂', rarity: 'rare', desc: 'クリティカル発生時に炸裂が追加発生', apply: (s) => { s.critBurst += 1; } },
-    { id: 'dashstun', name: 'ダッシュ突撃', rarity: 'rare', desc: 'ダッシュ中にぶつかった敵を短時間スタン', apply: (s) => { s.dashStun += 1; } },
     { id: 'speeddmg', name: '速度攻撃力ボーナス', rarity: 'rare', desc: '移動速度と弾速の一部を攻撃力に転換', apply: (s, p) => { s.speedDmg += 1; } },
-    { id: 'multi', name: 'マルチショット', rarity: 'epic', desc: '発射数増加チャンス +50%。1発ごとの攻撃力が減衰', apply: (s) => { s.shots += 0.5; } },
-    { id: 'kbstun', name: 'ノックバックスタン', rarity: 'epic', desc: 'ノックバックの強さに応じて敵をスタン', apply: (s) => { s.knockbackStun += 1; } },
+    { id: 'multi', name: 'マルチショット', rarity: 'epic', desc: '同時発射数が必ず1つ増加。弾ごとの攻撃力が減衰', apply: (s) => { s.shots = Math.floor(s.shots + 0.999); } },
     { id: 'berserk', name: '戦闘狂', rarity: 'epic', desc: '体力が少ないほど与えるダメージが増加', apply: (s) => { s.berserk += 1; } },
     { id: 'armorburst', name: '消弾装甲', rarity: 'epic', desc: '被弾時のダメージを減少し、周囲の敵弾を消す。クールダウンあり', apply: (s) => { s.armor += 0.15; s.armorCd = 2.5; } }
   ].map((u) => ({ ...u, color: RARITY[u.rarity].color, weight: RARITY[u.rarity].weight }));
@@ -305,6 +298,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let snapBuf = [], clockOff = null, lastCurT = -1;   // ゲスト: 受信バッファ / ホストとの時計差 / 最後に反映した離散状態
   let guestPicked = false;                            // ゲスト: アップグレード選択状況
   let upgradeId = 0, guestUpgradeId = -1;
+  let epicDropAvailable = false;
   const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
   function hosting() { return netRole === 'host' && peerConnected && !!netSocket && netSocket.connected; }
   function pushEv(a) { if (!muteEv && evq.length < (bullets.length > 120 ? 48 : 160) && hosting()) evq.push(a); }
@@ -354,8 +348,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     return {
       fireDelay: BASE_DELAY, rate: 1, dmg: DMG_BASE, kb: 3, ric: 0, shots: 1, bspeed: 620,
       pierce: 0, bsize: 4.5, spread: 0.15, missileHoming: false, guideLevel: 0,
-      burstLv: 0, burstRange: 0, critChance: 0, critDmg: 2, burstKb: 0, critBurst: 0,
-      dashStun: 0, knockbackStun: 0, berserk: 0, armor: 0, armorCd: 0, speedDmg: 0
+      burstLv: 0, burstRange: 0, critChance: 0.05, critDmg: 2, burstKb: 0,
+      berserk: 0, armor: 0, armorCd: 0, speedDmg: 0
     };
   }
   // プレイヤーごとに独立した強化状態(S)・取得レベル・アップグレード選択肢を持つ
@@ -419,20 +413,22 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       return;
     }
     const count = Math.min(8 + (n - 1) * 3, 120);
-    const nP = n >= 6 ? Math.min(1 + Math.floor((n - 6) / 2), 6) : 0;
-    const nS = n >= 3 ? Math.min(1 + Math.floor((n - 3) / 2), 8) : 0;
+    const nP = n >= 4 ? Math.min(1 + Math.floor((n - 4) / 2), 6) : 0;
+    const nS = n >= 2 ? Math.min(1 + Math.floor((n - 2) / 2), 8) : 0;
     const types = [];
     for (let i = 0; i < nP; i++) types.push('pent');
     for (let i = 0; i < nS; i++) types.push('sq');
-    const nH = n >= 8 ? Math.min(1 + Math.floor((n - 8) / 3), 4) : 0;
+    const nH = n >= 5 ? Math.min(1 + Math.floor((n - 5) / 3), 4) : 0;
     for (let i = 0; i < nH; i++) types.push('hex');
-    const nE = n >= 10 ? Math.min(1 + Math.floor((n - 10) / 3), 4) : 0;   // エリート三角形は序盤には出さない
+    const nE = n >= 3 ? Math.min(1 + Math.floor((n - 3) / 3), 4) : 0;
     for (let i = 0; i < nE; i++) types.push('etri');
-    const nEP = n >= 12 ? Math.min(1 + Math.floor((n - 12) / 4), 3) : 0;  // エリート五角形は序盤には出さない
+    const nEP = n >= 6 ? Math.min(1 + Math.floor((n - 6) / 4), 3) : 0;
     for (let i = 0; i < nEP; i++) types.push('epent');
-    const nX = n >= 5 ? Math.min(1 + Math.floor((n - 5) / 3), 3) : 0;   // 回復十字
+    const nX = n >= 7 ? Math.min(1 + Math.floor((n - 7) / 3), 3) : 0;
     for (let i = 0; i < nX; i++) types.push('cross');
-    const nL = n >= 7 ? Math.min(1 + Math.floor((n - 7) / 3), 3) : 0;   // レーザーを撃つ六芳星
+    const nEH = n >= 9 ? Math.min(1 + Math.floor((n - 9) / 4), 3) : 0;
+    for (let i = 0; i < nEH; i++) types.push('ehex');
+    const nL = n >= 8 ? Math.min(1 + Math.floor((n - 8) / 3), 3) : 0;
     for (let i = 0; i < nL; i++) types.push('hexstar');
     while (types.length < count) types.push('tri');
     for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const tmp = types[i]; types[i] = types[j]; types[j] = tmp; }
@@ -537,11 +533,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl.x = Math.max(pl.r + 6, Math.min(W - pl.r - 6, pl.x)); pl.y = Math.max(pl.r + 6, Math.min(H - pl.r - 6, pl.y));
       if (trailEnabled) parts.push({ x: pl.x, y: pl.y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: pl.r * 0.7, color: pl.color || '#ffffff' });
       pl.inv = Math.max(pl.inv, 0.1);
-      if (pl.S.dashStun > 0) {
-        for (const e of nearbyEnemies(pl.x, pl.y, 120)) {
-          if (bodyHit(e, pl.x, pl.y, e.r + pl.r)) { e.stun = Math.max(e.stun || 0, 0.45 + pl.S.dashStun * 0.15); }
-        }
-      }
       if (pl.dashT <= 0) { pl.dashT = 0; pl.dashCd = DASH_CD; }
     } else if (pl.dashCd > 0) pl.dashCd = Math.max(0, pl.dashCd - dt);
   }
@@ -550,17 +541,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const S = shooter.S;                              // 強化はプレイヤーごと
     let a = Math.atan2(aimY - shooter.y, aimX - shooter.x);
     const n = Math.floor(S.shots) + (Math.random() < S.shots % 1 ? 1 : 0);
+    const moveRatio = Math.max(0, shooter.speed / 250 - 1);
+    const bulletSpeed = S.bspeed * (1 + moveRatio * 0.12 * S.speedDmg);
     const shotDamage = S.dmg / Math.sqrt(n);
     for (let i = 0; i < n; i++) {
       const ang = a + (i - (n - 1) / 2) * S.spread;
       const c = Math.cos(ang), s = Math.sin(ang);
       bullets.push({
         x: shooter.x + c * (shooter.r + 6), y: shooter.y + s * (shooter.r + 6),
-        vx: c * S.bspeed, vy: s * S.bspeed,
-        r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, bounceChance: S.ric, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
+        vx: c * bulletSpeed, vy: s * bulletSpeed,
+        r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
         homing: !!S.missileHoming, owner: shooter.id || 1,
         crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, guide: S.guideLevel,
-        burstKb: S.burstKb, burstRange: S.burstRange, critBurst: S.critBurst, knockbackStun: S.knockbackStun,
+        burstKb: S.burstKb, burstRange: S.burstRange,
         berserk: S.berserk, speedDmg: S.speedDmg
       });
     }
@@ -581,7 +574,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     shake = Math.max(shake, sm ? 5 : 8);
     sfx.kill();
     if (e.type === 'cross' && !e.silent && Math.random() < ITEM_DROP) items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU });
-    if (e.type === 'hex' && !e.silent) hexShoot(e);          // 六角形: 倒したときだけ三段の12方向へ弾
+    if (e.type === 'hex' && !e.silent) hexShoot(e);
+    if (e.type === 'ehex' && !e.silent) eliteHexShoot(e);
     if (e.type === 'etri' && !e.silent) splitElite(e);       // エリート三角形: 通常三角形3体に分裂
     const lastSeg = !et.seg || !enemies.some((o) => o !== e && o.type === e.type && o.hp > 0);
     if (et.boss && !(et.seg && (!lastSeg || e.silent))) {
@@ -591,6 +585,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (e.parts) for (const q of e.parts) { burst(q.x, q.y, 45, et.color, 500, 0.9, 4); ring(q.x, q.y, 150, 0.6, et.color, 3); }
       burst(e.x, e.y, 90, et.color, 560, 1.0, 4.5);
       burst(e.x, e.y, 40, '#ffffff', 420, 0.7, 3.2);
+      epicDropAvailable = true;
       ring(e.x, e.y, 280, 0.8, et.color, 4);
       ring(e.x, e.y, 170, 0.6, '#ffffff', 3);
       const party = partyPlayers();
@@ -613,7 +608,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const stun = Math.min(1.2, Math.max(0.12, strength * 0.035));
     enemy.stun = Math.max(enemy.stun || 0, stun);
     const a = Math.atan2(enemy.y - fromY, enemy.x - fromX);
-    enemy.bx += Math.cos(a) * strength * 4; enemy.by += Math.sin(a) * strength * 4;
+    enemy.kbx = (enemy.kbx || 0) + Math.cos(a) * strength * 85;
+    enemy.kby = (enemy.kby || 0) + Math.sin(a) * strength * 85;
+    ring(enemy.x, enemy.y, enemy.r + 46, 0.25, '#60a5fa', 3);
+    ring(enemy.x, enemy.y, enemy.r + 20, 0.38, '#ffffff', 2);
+    floatText(enemy.x, enemy.y - enemy.r - 8, 'STUN', '#60a5fa');
+    burst(enemy.x, enemy.y, 8, '#60a5fa', 180, 0.32, 2.4);
   }
   function hurtPlayer(amount, fromX, fromY) {
     if (P.hp <= 0) return;
@@ -684,7 +684,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const target = getTargetPlayer(e.x, e.y);
     const a = Math.atan2(target.y - e.y, target.x - e.x), c = Math.cos(a), s = Math.sin(a);
     const elite = e.type === 'epent', col = ET[e.type].color;
-    for (let k = -2; k <= 2; k++) {
+    for (let k = elite ? -2 : -1; k <= (elite ? 2 : 1); k++) {
       const aa = a + k * (elite ? 0.22 : 0.3), cc = Math.cos(aa), ss = Math.sin(aa), speed = elite ? 225 : 210;
       ebullets.push({ x: e.x + cc * e.r, y: e.y + ss * e.r, vx: cc * speed, vy: ss * speed, r: elite ? 5.5 : 5, life: 5, color: elite ? col : undefined });
     }
@@ -705,6 +705,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     burst(e.x, e.y, 8, col, 160, 0.25, 2.4); ring(e.x, e.y, 44, 0.25, col, 2); sfx.eshoot();
   }
 
+  function eliteHexShoot(e) {
+    const col = ET.ehex.color;
+    for (let pass = 0; pass < 3; pass++) {
+      const base = e.rot + pass * TAU / 36;
+      for (let i = 0; i < 12; i++) {
+        const a = base + i * TAU / 12, c = Math.cos(a), s = Math.sin(a);
+        ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 210, vy: s * 210, r: 7, life: 7, bounce: 1, star: true, rot: a, delay: pass * 0.12, color: col, dmg: 12 });
+      }
+    }
+    burst(e.x, e.y, 18, col, 260, 0.45, 3.2); ring(e.x, e.y, 90, 0.4, col, 3); sfx.eshoot();
+  }
   function splitElite(e) {
     const a0 = Math.random() * TAU;
     for (let i = 0; i < 3; i++) {
@@ -961,10 +972,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           const tot = a.inv + b.inv;
           if (tot === 0) continue;
           let dx = b.bx - a.bx, dy = b.by - a.by, d = Math.hypot(dx, dy);
-          const min = (a.r + b.r) * 0.95;
+          const min = (a.r + b.r) * 1.05;
           if (d >= min) continue;
           if (d < 0.01) { const g = Math.random() * TAU; dx = Math.cos(g); dy = Math.sin(g); d = 1; }
-          const push = (min - d) * Math.min(1, dt * 13), ux = dx / d, uy = dy / d;
+          const push = (min - d) * Math.min(1, dt * 18), ux = dx / d, uy = dy / d;
           a.bx -= ux * push * a.inv / tot; a.by -= uy * push * a.inv / tot;
           b.bx += ux * push * b.inv / tot; b.by += uy * push * b.inv / tot;
         }
@@ -977,9 +988,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
   function spawnEnemy(type, x, y, quiet, summoned) {
-    const et = ET[type], bh = 2 + Math.floor((wave - 1) / 1.5);
+    const et = ET[type], bh = 2 + Math.floor((wave - 1) / 1.8);
     const hp = HP_SCALE * (et.boss ? bossHp() : type === 'sq' ? bh * 2 + 1 : type === 'pent' ? bh * 2 + 1
-      : type === 'trap' ? bh + 3 : type === 'hex' ? bh * 2 + 1 : (type === 'etri' || type === 'epent') ? bh * 3 + 4 : type === 'cross' ? bh * 2 + 4 : bh + 1);
+      : type === 'trap' ? bh + 3 : type === 'hex' || type === 'ehex' ? bh * 2 + 1 : (type === 'etri' || type === 'epent') ? bh * 3 + 4 : type === 'cross' ? bh * 2 + 4 : bh + 1);
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
     const enemy = {
       type, x, y, bx: x, by: y, r: et.r, hp, maxHp: hp, vx: Math.cos(va) * vs, vy: Math.sin(va) * vs,
@@ -988,10 +999,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       spin: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 1.5),
       mode: 'drift', dashT: 1.5 + Math.random() * 2, healT: 2 + Math.random() * 1.5,
       inv: et.boss ? 0 : 1 / (et.mass || 1), noScore: !!summoned,
+      kbx: 0, kby: 0, stun: 0,
       laserT: type === 'hexstar' ? 2.2 + Math.random() * 1.1 : 0, laserPhase: 0, laserAngle: 0, laserT0: 0
     };
     if (type === 'trinity') { enemy.sy0 = y; initTrinity(enemy); }
-    if (type === 'hex') { const hv = Math.min(150, 70 + wave * 3); enemy.vx = Math.cos(va) * hv; enemy.vy = Math.sin(va) * hv; }
+    if (type === 'hex' || type === 'ehex') { const hv = Math.min(150, 70 + wave * 3); enemy.vx = Math.cos(va) * hv; enemy.vy = Math.sin(va) * hv; }
     enemies.push(enemy);
     burst(x, y, 12, et.color, 240, 0.4, 3);
     ring(x, y, 50, 0.3, '#ffffff', 2);
@@ -1115,16 +1127,20 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   // 炸裂弾: 着弾・貫通のたびに、直撃した敵以外へ攻撃力25%の範囲ダメージ。Lvごとに範囲 +5%(加算)
-  function explodeBullet(b, hitEnemy) {
-    const radius = 40 * (b.r / 4.5) * (1 + (b.burstRange || 0)), dmg = b.dmg * (0.20 + 0.05 * (b.burst - 1));
-    ring(b.x, b.y, radius, 0.28, '#ff8a3d', 3);
+  function explodeBullet(b, hitEnemy, critScale) {
+    const radius = 40 * (b.r / 4.5) * (1 + (b.burstRange || 0)), dmg = b.dmg * (0.20 + 0.05 * (b.burst - 1)) * (critScale || 1);
+    rings.push({ x: b.x, y: b.y, r: 0, maxR: radius, life: 0.28, max: 0.28, color: '#ff8a3d', lw: 3 });
     burst(b.x, b.y, 8, '#ff8a3d', 200, 0.3, 2.6);
     for (const o of enemies) {
       if (o.hp <= 0) continue;
       if (bodyHit(o, b.x, b.y, radius + o.r * 0.8)) {
         o.hp -= dmg; o.flash = 0.09;
         damagePop(o.x, o.y - o.r - 4, dmg, false, '#ff8a3d');
-        if (b.burstKb > 0) applyKnockbackStun(o, b.kb + b.burstKb * 3, b.x, b.y);
+        if (b.burstKb > 0) {
+          const l = Math.hypot(o.x - b.x, o.y - b.y) || 1;
+          o.kbx = (o.kbx || 0) + (o.x - b.x) / l * b.burstKb * 50;
+          o.kby = (o.kby || 0) + (o.y - b.y) / l * b.burstKb * 50;
+        }
       }
     }
   }
@@ -1132,7 +1148,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   // 複数パーツを持つ敵(Trinity)用の当たり判定ヘルパー
   function bodyHit(e, x, y, rad) {
     if (!e.parts) return Math.hypot(e.x - x, e.y - y) < rad;
-    for (const q of e.parts) if (Math.hypot(q.x - x, q.y - y) < rad) return true;
+    const splitExtra = e.form === 'split' ? 8 : 0;
+    for (const q of e.parts) if (Math.hypot(q.x - x, q.y - y) < rad + splitExtra) return true;
     return false;
   }
   function nearPt(e, x, y) {
@@ -1281,11 +1298,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     updateTrainZones(dt);
     for (const e of enemies) {
       e.stun = Math.max(0, (e.stun || 0) - dt);
+      e.kbx = e.kbx || 0; e.kby = e.kby || 0;
+      if (Math.abs(e.kbx) > 0.1 || Math.abs(e.kby) > 0.1) {
+        e.bx += e.kbx * dt; e.by += e.kby * dt;
+        const decay = Math.exp(-5.5 * dt); e.kbx *= decay; e.kby *= decay;
+        e.bx = Math.max(e.r + 8, Math.min(W - e.r - 8, e.bx)); e.by = Math.max(e.r + 8, Math.min(H - e.r - 8, e.by));
+        e.x = e.bx; e.y = e.by;
+      }
       e.born += dt; e.flash = Math.max(0, e.flash - dt);
       e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'trap' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
       if (e.stun > 0) {
-        e.bx += e.vx * dt * 0.05; e.by += e.vy * dt * 0.05;
-        e.bx = Math.max(e.r + 8, Math.min(W - e.r - 8, e.bx)); e.by = Math.max(e.r + 8, Math.min(H - e.r - 8, e.by));
+        const decay = Math.exp(-8 * dt);
+        e.kbx = (e.kbx || 0) * decay; e.kby = (e.kby || 0) * decay;
         e.x = e.bx; e.y = e.by;
         continue;
       }
@@ -1321,7 +1345,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           if (e.by < m || e.by > H - m) e.vy *= -1;
           e.bx = Math.max(m, Math.min(W - m, e.bx)); e.by = Math.max(m, Math.min(H - m, e.by));
         }
-        if (e.type === 'hex' && state !== 'dying' && e.born > 0.4) {        // 六角形: ランダム方向へ直進し、壁で跳ね返る
+        if ((e.type === 'hex' || e.type === 'ehex') && state !== 'dying' && e.born > 0.4) {        // 六角形: ランダム方向へ直進し、壁で跳ね返る
           e.bx += e.vx * dt; e.by += e.vy * dt;
           const m = e.r + 8;
           if (e.bx < m) { e.bx = m; e.vx = Math.abs(e.vx); } else if (e.bx > W - m) { e.bx = W - m; e.vx = -Math.abs(e.vx); }
@@ -1350,7 +1374,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (e.fireT <= 0) {
           enemyShoot(e);
           if (e.type === 'epent' && e.burstLeft > 0) { e.burstLeft--; e.fireT = 0.18; }
-          else { if (e.type === 'epent') e.burstLeft = 3; e.fireT = e.type === 'epent' ? 2.6 + Math.random() * 0.8 : 2.4; }
+          else { if (e.type === 'epent') e.burstLeft = 2; e.fireT = e.type === 'epent' ? 2.6 + Math.random() * 0.8 : 2.4; }
         }
       }
       if (e.type === 'hexstar' && state !== 'dying' && e.born > 0.4) {
@@ -1389,6 +1413,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (b.delay > 0) { b.delay -= dt; continue; }
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       if (b.star) b.rot += dt * 6;
+      if (b.bounce > 0) {
+        const m = b.r + 6;
+        let hitWall = false;
+        if (b.x < m) { b.x = m; b.vx = Math.abs(b.vx); hitWall = true; }
+        else if (b.x > W - m) { b.x = W - m; b.vx = -Math.abs(b.vx); hitWall = true; }
+        if (b.y < m) { b.y = m; b.vy = Math.abs(b.vy); hitWall = true; }
+        else if (b.y > H - m) { b.y = H - m; b.vy = -Math.abs(b.vy); hitWall = true; }
+        if (hitWall) { b.bounce--; burst(b.x, b.y, 4, b.color, 100, 0.2, 2); }
+      }
       if (b.bounce > 0) {                           // 反射する弾
         const m = b.r + 6;
         let hit = false;
@@ -1431,16 +1464,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         }
       }
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-      if (b.bounceChance > 0) {                       // 反射弾: 成功するたび確率が半減
-        let rb = false;
-        if (b.x < 0) { b.x = -b.x; b.vx = Math.abs(b.vx); rb = true; } else if (b.x > W) { b.x = 2 * W - b.x; b.vx = -Math.abs(b.vx); rb = true; }
-        if (b.y < 0) { b.y = -b.y; b.vy = Math.abs(b.vy); rb = true; } else if (b.y > H) { b.y = 2 * H - b.y; b.vy = -Math.abs(b.vy); rb = true; }
-        if (rb) {
-          if (b.bounceChance >= 1 || Math.random() < b.bounceChance) {
-            b.bounceChance *= 0.5; b.life += 0.8; b.hit = new Set(); b.px = b.x; b.py = b.y; burst(b.x, b.y, 4, '#a0e7ff', 120, 0.2, 2);
-          } else b.life = 0;
-        }
-      }
       if (b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) {
         if (b.x < 0 || b.x > W || b.y < 0 || b.y > H) burst(Math.max(0, Math.min(W, b.x)), Math.max(0, Math.min(H, b.y)), 3, C.bullet, 100, 0.2, 1.8);
         bullets.splice(i, 1); continue;
@@ -1455,7 +1478,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           const cc = Math.max(0, b.crit || 0);
           const stacks = Math.floor(cc) + (Math.random() < cc % 1 ? 1 : 0);
           let dealt = b.dmg;
-          if (b.speedDmg > 0) dealt *= 1 + b.speedDmg * (0.08 * (b.vx * b.vx + b.vy * b.vy) / (620 * 620));
+          if (b.speedDmg > 0) {
+            const bulletSpeed = Math.hypot(b.vx, b.vy);
+            const bulletRatio = bulletSpeed / 620;
+            dealt *= 1 + b.speedDmg * Math.max(0, bulletRatio - 1);
+          }
           if (b.berserk > 0) {
             const shooter = partyPlayers().find((pl) => pl.id === (b.owner || 1));
             if (shooter) dealt *= 1 + b.berserk * (1 - shooter.hp / shooter.maxHp) * 0.5;
@@ -1467,13 +1494,29 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           e.hp -= dealt; e.flash = 0.09;
           damagePop(e.x, e.y - e.r - 4, dealt, stacks > 0);
           const l = Math.hypot(b.vx, b.vy) || 1;
-          e.bx += (b.vx / l) * b.kb; e.by += (b.vy / l) * b.kb;
-          if (b.knockbackStun > 0) applyKnockbackStun(e, b.kb, b.x, b.y);
+          e.kbx = (e.kbx || 0) + (b.vx / l) * b.kb * 45;
+          e.kby = (e.kby || 0) + (b.vy / l) * b.kb * 45;
           burst(b.x, b.y, 6, C.bullet, 220, 0.22, 2.2);
           shake = Math.max(shake, 2);
           sfx.hit();
           if (b.burst > 0) explodeBullet(b, e);
-          if (stacks > 0 && b.critBurst > 0) explodeBullet(b, e);
+          if (e.type !== 'train' && (b.ricochetChance >= 1 || Math.random() < b.ricochetChance)) {
+            let nextEnemy = null, nextDistance = Infinity;
+            for (const target of nearbyEnemies(b.x, b.y, 280)) {
+              if (target.hp <= 0 || target === e || b.hit.has(target)) continue;
+              const d = Math.hypot(target.x - b.x, target.y - b.y);
+              if (d < nextDistance) { nextDistance = d; nextEnemy = target; }
+            }
+            if (nextEnemy) {
+              const angle = Math.atan2(nextEnemy.y - b.y, nextEnemy.x - b.x);
+              const speed = Math.hypot(b.vx, b.vy);
+              b.vx = Math.cos(angle) * speed; b.vy = Math.sin(angle) * speed;
+              b.ricochetChance *= 0.5;
+              b.hit = new Set([e]);
+              ring(nextEnemy.x, nextEnemy.y, 46, 0.22, '#a0e7ff', 2);
+              burst(b.x, b.y, 5, '#a0e7ff', 180, 0.25, 2);
+            }
+          }
           if (e.type === 'train' || !(b.pierceChance >= 1 || Math.random() < b.pierceChance)) { dead = true; break; }
           b.pierceChance *= 0.5;
         }
@@ -1501,9 +1544,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   // アップグレードはプレイヤーごとに別々の3択を抽選し、別々に強化する
   function rollChoices(pl) {
-    const pool = UPG.slice();
     pl.choices = [];
-    for (let i = 0; i < 3; i++) {
+    if (epicDropAvailable) {
+      const epicPool = UPG.filter((u) => u.rarity === 'epic');
+      if (epicPool.length) pl.choices.push(epicPool[Math.floor(Math.random() * epicPool.length)]);
+    }
+    const pool = UPG.filter((u) => u.rarity !== 'epic');
+    while (pl.choices.length < 3 && pool.length) {
       const total = pool.reduce((sum, u) => sum + (u.weight || 1), 0);
       let roll = Math.random() * total, idx = 0;
       for (; idx < pool.length - 1; idx++) { roll -= pool[idx].weight || 1; if (roll <= 0) break; }
@@ -1519,6 +1566,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else { rollChoices(p); p.picked = null; }
     }
     checkUpgradeDone();
+    epicDropAvailable = false;
     if (hosting()) sendSnapshot();
   }
   function applyPick(pl, i) {
@@ -1965,15 +2013,28 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.beginPath(); ctx.arc(x, y, 3, 0, TAU); ctx.fill();
     ctx.beginPath(); ctx.moveTo(x - 12, y); ctx.lineTo(x - 5, y); ctx.moveTo(x + 5, y); ctx.lineTo(x + 12, y); ctx.moveTo(x, y - 12); ctx.lineTo(x, y - 5); ctx.moveTo(x, y + 5); ctx.lineTo(x, y + 12); ctx.stroke(); ctx.restore();
   }
+  function drawAimLine(player, x, y, color) {
+    if (!player || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    ctx.save(); ctx.globalAlpha = 0.28; ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.setLineDash([5, 7]); ctx.lineDashOffset = -time * 20;
+    const px = Number.isFinite(player.x) ? player.x : 0;
+    const py = Number.isFinite(player.y) ? player.y : 0;
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke(); ctx.restore();
+  }
   function drawCursors() {
     if (state !== 'play' && state !== 'clear') return;
+    drawAimLine(myPlayer(), mouse.x, mouse.y, playerColor(playerId));
     drawCursorDot(mouse.x, mouse.y, playerColor(playerId));
     if (netRole === 'host') {
       for (const pl of hostRemotePlayers()) {
         const input = remoteInputs.get(pl.id);
-        if (input && input.has) drawCursorDot(input.aimX, input.aimY, pl.color);
+        if (input && input.has) { drawAimLine(pl, input.aimX, input.aimY, pl.color); drawCursorDot(input.aimX, input.aimY, pl.color); }
       }
-    } else if (netRole === 'guest') for (const [id, cursor] of remoteCursors) if (id !== playerId) drawCursorDot(cursor[0], cursor[1], playerColor(id));
+    } else if (netRole === 'guest') for (const [id, cursor] of remoteCursors) if (id !== playerId) {
+      const pl = remotePlayers.get(id);
+      if (pl) drawAimLine(pl, cursor[0], cursor[1], playerColor(id));
+      drawCursorDot(cursor[0], cursor[1], playerColor(id));
+    }
   }
   function drawOnePlayer(player, color) {
     // ホスト画面のゲスト機は、届いた位置を平滑化した座標(sx, sy)で描く
