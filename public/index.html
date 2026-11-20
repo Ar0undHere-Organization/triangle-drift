@@ -120,6 +120,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const ET = {
     tri: { sides: 3, r: 18, vr: 1.15, color: C.enemy, fill: '#2a0f1a' },
     sq: { sides: 4, r: 20, vr: 1.1, color: '#ff9f43', fill: '#2b1a0a' },
+    esq: { sides: 4, r: 27, vr: 1.1, color: '#ffcf6a', fill: '#32250b', mass: 2, elite: true },
     pent: { sides: 5, r: 23, vr: 1.05, color: '#b784ff', fill: '#1d1230' },
     // boss: Stardust (4-pointed star). hk = hit-radius multiplier
     stardust: { sides: 8, star: true, r: 46, vr: 1.15, color: '#ffe36e', fill: '#2a2408', hk: 0.85, boss: true, name: 'STARDUST' },
@@ -135,7 +136,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     epent: { sides: 5, r: 27, vr: 1.05, color: '#d98cff', fill: '#25103a', mass: 2 },
     // 回復十字(回転。周囲の十字以外の敵を一定間隔で回復)
     cross: { cross: true, sides: 12, r: 20, vr: 1.15, color: '#6cff8f', fill: '#0e2a18' },
-    hexstar: { star: true, sides: 12, r: 25, vr: 1.05, color: '#72aaff', fill: '#101e3a', hk: 0.9 }
+    hexstar: { star: true, sides: 6, r: 25, vr: 1.05, color: '#ff66c4', fill: '#351026', hk: 0.9 }
   };
   const isTri = (t) => t === 'tri' || t === 'etri';
   const CROSS_R = 140, CROSS_INTERVAL = 2.6, CROSS_HEAL = 0.2;      // 回復範囲 / 間隔(秒) / 最大HPに対する回復割合
@@ -256,13 +257,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     { id: 'heal', name: '応急修復', rarity: 'rare', desc: '体力を 40 回復', apply: (s, p) => { p.hp = Math.min(p.maxHp, p.hp + 40); } },
     { id: 'burstkb', name: '炸裂ノックバック', rarity: 'rare', desc: '炸裂によるノックバックが増加', apply: (s) => { s.burstKb += 1; } },
     { id: 'speeddmg', name: '速度攻撃力ボーナス', rarity: 'rare', desc: '移動速度と弾速の一部を攻撃力に転換', apply: (s, p) => { s.speedDmg += 1; } },
-    { id: 'multi', name: 'マルチショット', rarity: 'epic', desc: '同時発射数が必ず1つ増加。弾ごとの攻撃力が減衰', apply: (s) => { s.shots = Math.floor(s.shots + 0.999); } },
+    { id: 'multi', name: 'マルチショット', rarity: 'epic', desc: '同時発射数が必ず1つ増加。弾ごとの攻撃力が減衰', apply: (s) => { s.shots = Math.floor(s.shots) + 1; } },
     { id: 'berserk', name: '戦闘狂', rarity: 'epic', desc: '体力が少ないほど与えるダメージが増加', apply: (s) => { s.berserk += 1; } },
     { id: 'armorburst', name: '消弾装甲', rarity: 'epic', desc: '被弾時のダメージを減少し、周囲の敵弾を消す。クールダウンあり', apply: (s) => { s.armor += 0.15; s.armorCd = 2.5; } }
   ].map((u) => ({ ...u, color: RARITY[u.rarity].color, weight: RARITY[u.rarity].weight }));
 
   /* ---------- state ---------- */
   let state = 'title';          // title | play | clear | upgrade | dying | over
+  let waveClearGuard = 0;
   let P, enemies, bullets, ebullets, parts, rings, spawns, texts, meteors, items, trainZones;
   const COLLISION_CELL = 96;
   let enemyGrid = new Map();
@@ -394,7 +396,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   resetRun();
 
   function beginWave(n) {
-    wave = n; state = 'play';
+    wave = n; state = 'play'; waveClearGuard = 1.2;
     bannerT = 1.8; bannerText = 'WAVE ' + n;
     bullets.length = 0; ebullets.length = 0; meteors.length = 0; items.length = 0; trainZones.length = 0;
     if (n % BOSS_EVERY === 0) {
@@ -415,7 +417,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const count = Math.min(8 + (n - 1) * 3, 120);
     const nP = n >= 4 ? Math.min(1 + Math.floor((n - 4) / 2), 6) : 0;
     const nS = n >= 2 ? Math.min(1 + Math.floor((n - 2) / 2), 8) : 0;
+    const nES = n >= 3 ? Math.min(1 + Math.floor((n - 3) / 3), 3) : 0;
     const types = [];
+    for (let i = 0; i < nES; i++) types.push('esq');
     for (let i = 0; i < nP; i++) types.push('pent');
     for (let i = 0; i < nS; i++) types.push('sq');
     const nH = n >= 5 ? Math.min(1 + Math.floor((n - 5) / 3), 4) : 0;
@@ -540,7 +544,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function fireFrom(shooter, aimX, aimY) {
     const S = shooter.S;                              // 強化はプレイヤーごと
     let a = Math.atan2(aimY - shooter.y, aimX - shooter.x);
-    const n = Math.floor(S.shots) + (Math.random() < S.shots % 1 ? 1 : 0);
+    const n = Math.max(1, Math.floor(S.shots));
     const moveRatio = Math.max(0, shooter.speed / 250 - 1);
     const bulletSpeed = S.bspeed * (1 + moveRatio * 0.12 * S.speedDmg);
     const shotDamage = S.dmg / Math.sqrt(n);
@@ -841,6 +845,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ring(e.cx, e.cy, 54, 0.25, ET.trinity.color, 2);
     sfx.eshoot();
   }
+  function trinityVolley(e, p, tk) {
+    const target = getTargetPlayer(p.x, p.y), a0 = Math.atan2(target.y - p.y, target.x - p.x);
+    for (let k = -1; k <= 1; k++) trinityBullet(p.x, p.y, a0 + k * 0.28, (e.p2 ? 255 : 225) * tk, 5.5);
+    burst(p.x, p.y, 6, ET.trinity.color, 150, 0.22, 2.4);
+    ring(p.x, p.y, 40, 0.25, ET.trinity.color, 2);
+  }
   function trinitySplitAttack(e, p, tk) {
     const target = getTargetPlayer(p.x, p.y), aim = Math.atan2(target.y - p.y, target.x - p.x), mode = Math.floor(Math.random() * 4);
     const fire = (a, speed) => trinityBullet(p.x + Math.cos(a) * e.r, p.y + Math.sin(a) * e.r, a, speed * tk, 5);
@@ -901,15 +911,24 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     } else if (e.form === 'merging') {
       if (e.ft >= TRI_MERGE_T) { e.form = 'merged'; e.ft = 0; e.vT = 0.3; e.dir *= -1; ring(e.cx, e.cy, 100, 0.4, ET.trinity.color, 3); sfx.impact(); }
     }
-    // --- 分離中は各個体が別々の攻撃をランダムに選ぶ
+    // --- 分離中は順番にパーツを選び、各パーツから3wayを3連射
     if (e.form === 'split') {
-      if (e.ft >= (e.p2 ? 5 : 6)) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; }); }
-      else {
-        for (const q of parts) {
-          q.atkT -= dt;
-          q.chg = Math.max(0, Math.min(1, 1 - q.atkT / 0.28));
-          if (q.atkT <= 0) { trinitySplitAttack(e, q, tk); q.atkT = 0.85 + Math.random() * 0.15; q.chg = 0; }
+      const chargeDur = e.p2 ? 0.38 : 0.5;
+      const burstGap = e.p2 ? 0.17 : 0.22;
+      const gap = e.p2 ? 0.18 : 0.3;
+      const p = parts[e.turn % 3];
+      e.sT -= dt;
+      if (e.sStage === 0) {
+        p.chg = Math.max(0, Math.min(1, 1 - e.sT / chargeDur));
+        if (e.sT <= 0) { e.sStage = 1; e.bursts = 3; e.sT = 0; p.chg = 0; }
+      } else if (e.sStage === 1) {
+        if (e.sT <= 0) {
+          trinityVolley(e, p, tk);
+          if (--e.bursts <= 0) { e.sStage = 2; e.sT = gap; } else e.sT = burstGap;
         }
+      } else if (e.sT <= 0) {
+        e.turn++; e.sStage = 0; e.sT = chargeDur;
+        if (e.turn >= TRI_TURNS) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; }); }
       }
     } else parts.forEach((q) => { q.chg = 0; });
     // --- 位置
@@ -969,13 +988,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           const pair = a.id && b.id ? (a.id < b.id ? a.id + ':' + b.id : b.id + ':' + a.id) : a + ':' + b;
           if (checked.has(pair)) continue;
           checked.add(pair);
-          const tot = a.inv + b.inv;
+          const tot = 2;
           if (tot === 0) continue;
           let dx = b.bx - a.bx, dy = b.by - a.by, d = Math.hypot(dx, dy);
           const min = (a.r + b.r) * 1.05;
           if (d >= min) continue;
           if (d < 0.01) { const g = Math.random() * TAU; dx = Math.cos(g); dy = Math.sin(g); d = 1; }
-          const push = (min - d) * Math.min(1, dt * 18), ux = dx / d, uy = dy / d;
+          const push = (min - d) * 1.35 * Math.min(1, dt * 20), ux = dx / d, uy = dy / d;
           a.bx -= ux * push * a.inv / tot; a.by -= uy * push * a.inv / tot;
           b.bx += ux * push * b.inv / tot; b.by += uy * push * b.inv / tot;
         }
@@ -990,7 +1009,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function spawnEnemy(type, x, y, quiet, summoned) {
     const et = ET[type], bh = 2 + Math.floor((wave - 1) / 1.8);
     const hp = HP_SCALE * (et.boss ? bossHp() : type === 'sq' ? bh * 2 + 1 : type === 'pent' ? bh * 2 + 1
-      : type === 'trap' ? bh + 3 : type === 'hex' || type === 'ehex' ? bh * 2 + 1 : (type === 'etri' || type === 'epent') ? bh * 3 + 4 : type === 'cross' ? bh * 2 + 4 : bh + 1);
+      : type === 'trap' ? bh + 3 : type === 'hex' || type === 'ehex' || type === 'esq' ? bh * 2 + 1 : (type === 'etri' || type === 'epent') ? bh * 3 + 4 : type === 'cross' ? bh * 2 + 4 : bh + 1);
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
     const enemy = {
       type, x, y, bx: x, by: y, r: et.r, hp, maxHp: hp, vx: Math.cos(va) * vs, vy: Math.sin(va) * vs,
@@ -1148,7 +1167,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   // 複数パーツを持つ敵(Trinity)用の当たり判定ヘルパー
   function bodyHit(e, x, y, rad) {
     if (!e.parts) return Math.hypot(e.x - x, e.y - y) < rad;
-    const splitExtra = e.form === 'split' ? 8 : 0;
+    const splitExtra = (e.form === 'split' || e.form === 'splitting') ? 16 : 0;
     for (const q of e.parts) if (Math.hypot(q.x - x, q.y - y) < rad + splitExtra) return true;
     return false;
   }
@@ -1306,7 +1325,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         e.x = e.bx; e.y = e.by;
       }
       e.born += dt; e.flash = Math.max(0, e.flash - dt);
-      e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'trap' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
+      e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'esq' ? 5.8 : e.type === 'trap' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
       if (e.stun > 0) {
         const decay = Math.exp(-8 * dt);
         e.kbx = (e.kbx || 0) * decay; e.kby = (e.kby || 0) * decay;
@@ -1322,6 +1341,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           const target = getTargetPlayer(e.bx, e.by);
           const a = Math.atan2(target.y - e.by, target.x - e.bx), sp = Math.min(62, 30 + wave * 2);
           e.bx += Math.cos(a) * sp * dt; e.by += Math.sin(a) * sp * dt;
+        }
+        if (e.type === 'esq' && state !== 'dying' && e.born > 0.4) {
+          e.chaseT = (e.chaseT === undefined ? 4.0 : e.chaseT) - dt;
+          const target = getTargetPlayer(e.bx, e.by);
+          const dx = target.x - e.bx, dy = target.y - e.by, d = Math.hypot(dx, dy) || 1;
+          const sp = e.chaseT > 0 ? 210 + (4 - Math.max(0, e.chaseT)) * 35 : 95;
+          e.vx += (dx / d * sp - e.vx) * Math.min(1, dt * 2.4);
+          e.vy += (dy / d * sp - e.vy) * Math.min(1, dt * 2.4);
+          e.bx += e.vx * dt; e.by += e.vy * dt;
+          const m = e.r + 8;
+          e.bx = Math.max(m, Math.min(W - m, e.bx)); e.by = Math.max(m, Math.min(H - m, e.by));
         }
         if (e.type === 'sq' && state !== 'dying' && e.born > 0.4) {
           // 四角形: プレイヤーを狙って溜めた後に直線突進
@@ -1404,6 +1434,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const hitDamage = ET[e.type].boss ? 15 : e.mode === 'dash' ? 14 : 10;
       const contact = player => bodyHit(e, player.x, player.y, e.r * 0.85 * (ET[e.type].hk || 1) + player.r);
       for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && contact(pl)) {
+        if (e.type === 'esq') pl.inv = 0.375;
         if (pl === P) hurtPlayer(hitDamage, e.x, e.y); else hurtRemotePlayer(pl, hitDamage, e.x, e.y);
       }
     }
@@ -1532,7 +1563,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ebullets.length = 0;
       bannerText = 'PHASE ' + (phaseIdx + 1) + ' / ' + phaseCount; bannerT = 1.8;
       ring(P.x, P.y, 300, 0.6, '#ffffff', 2); sfx.wave();
-    } else if (state === 'play' && spawns.length === 0 && enemies.length === 0) {
+    } else if (state === 'play' && waveClearGuard <= 0 && spawns.length === 0 && enemies.length === 0) {
       state = 'clear'; clearT = 1.2; bullets.length = 0; ebullets.length = 0; meteors.length = 0;
       bannerText = 'WAVE CLEAR'; bannerT = 1.4;
       ring(P.x, P.y, 420, 0.8, C.accent, 3);
@@ -1717,6 +1748,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     });
     ctx.closePath();
   }
+  function drawSixStar(x, y, r, rot) {              // 六芒星
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) {
+      const a = rot + i * Math.PI / 6, rr = i % 2 === 0 ? r : r * 0.42;
+      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
   function drawStar(x, y, r, rot, inner) {          // 四芒星
     ctx.beginPath();
     for (let i = 0; i < 8; i++) {
@@ -1753,7 +1793,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const ga = ctx.globalAlpha;
       ctx.globalAlpha = ga * (0.12 + 0.25 * p);
       ctx.fillStyle = et.color;
-      if (et.star) drawStar(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), time * 0.6, 0.36);
+      if (s.type === 'hexstar') drawSixStar(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), time * 0.6);
+      else if (et.star) drawStar(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), time * 0.6, 0.36);
       else if (et.cross) drawCross(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), time * 1.2);
       else drawPoly(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), s.type === 'sq' ? Math.PI / 4 : -Math.PI / 2, et.sides);
       ctx.fill();
@@ -1874,7 +1915,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         continue;
       }
       ctx.shadowColor = bloomEnabled ? et.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + ch * 22 : 0;
-      if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, 0.36);
+      if (e.type === 'hexstar') drawSixStar(e.x, e.y, e.r * sc * et.vr, e.rot);
+      else if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, 0.36);
       else if (et.cross) drawCross(e.x, e.y, e.r * sc * et.vr, e.rot);
       else drawPoly(e.x, e.y, e.r * sc * et.vr, e.rot, et.sides);
       ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill;
@@ -1893,8 +1935,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         const ex = e.x + Math.cos(e.laserAngle) * 1300, ey = e.y + Math.sin(e.laserAngle) * 1300;
         ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(ex, ey);
         ctx.lineCap = 'round';
-        if (e.laserPhase === 1) { ctx.strokeStyle = '#72aaff'; ctx.lineWidth = 2; ctx.setLineDash([12, 10]); ctx.lineDashOffset = -time * 80; ctx.globalAlpha = 0.45 + 0.35 * (Math.sin(time * 20) + 1) * 0.5; ctx.stroke(); }
-        else { ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = '#72aaff'; ctx.shadowBlur = 20; ctx.strokeStyle = '#72aaff'; ctx.lineWidth = 20; ctx.globalAlpha = 0.35; ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.globalAlpha = 0.9; ctx.stroke(); }
+        if (e.laserPhase === 1) { ctx.strokeStyle = '#ff66c4'; ctx.lineWidth = 2; ctx.setLineDash([12, 10]); ctx.lineDashOffset = -time * 80; ctx.globalAlpha = 0.45 + 0.35 * (Math.sin(time * 20) + 1) * 0.5; ctx.stroke(); }
+        else { ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = '#ff66c4'; ctx.shadowBlur = 20; ctx.strokeStyle = '#ff66c4'; ctx.lineWidth = 20; ctx.globalAlpha = 0.35; ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.globalAlpha = 0.9; ctx.stroke(); }
         ctx.restore(); continue;
       }
       if (e.type !== 'trinity' || !e.beam) continue;
@@ -2127,7 +2169,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.fillText(String(remain), W - 24, 38);
     const ix = W - 24 - ctx.measureText(String(remain)).width - 18, iy = 31;
     ctx.save(); ctx.fillStyle = kt.color; ctx.shadowColor = kt.color; ctx.shadowBlur = 8;
-    if (kt.star) drawStar(ix, iy, 11, -Math.PI / 2, 0.36);
+    if (kind === 'hexstar') drawSixStar(ix, iy, 11, -Math.PI / 2);
+    else if (kt.star) drawStar(ix, iy, 11, -Math.PI / 2, 0.36);
     else if (kt.cross) drawCross(ix, iy, 9, 0);
     else drawPoly(ix, iy, 10, kind === 'sq' ? Math.PI / 4 : -Math.PI / 2, kt.sides);
     ctx.fill(); ctx.restore();
@@ -2378,6 +2421,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (e.mode && e.mode !== 'drift') o.m = e.mode;
     if (e.type === 'train') { o.cid = e.cid; o.ci = e.ci; o.an = r2(e.ang); o.mt = e.maxTotal; }
     if (e.parts) {
+      o.fo = e.form || '';
       o.pa = e.parts.map((q) => [r1(q.x), r1(q.y), r2(q.rot), r2(q.chg)]);
       o.bm = e.beam; o.bp = r2(e.bp); o.la = r2(e.la); o.cx = r1(e.cx); o.cy = r1(e.cy);
     }
@@ -2441,6 +2485,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     e.bx = e.x; e.by = e.y;
     if (o.ty === 'train') { e.cid = o.cid; e.ci = o.ci; e.ang = p ? angLerp(p.an, o.an, al) : o.an; e.maxTotal = o.mt; }
     if (o.pa) {
+      e.form = o.fo || '';
       e.parts = o.pa.map((q, i) => {
         const pq = p && p.pa && p.pa[i];
         return pq ? { x: lerp(pq[0], q[0], al), y: lerp(pq[1], q[1], al), rot: angLerp(pq[2], q[2], al), chg: q[3] } : { x: q[0], y: q[1], rot: q[2], chg: q[3] };
@@ -2640,6 +2685,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     } else {
       time += state === 'title' || state === 'upgrade' || state === 'over' ? dt : 0;
       if (state === 'play' || state === 'clear') {
+        waveClearGuard = Math.max(0, waveClearGuard - dt);
         updateWorld(dt, true);
         if (state === 'clear') {
           clearT -= dt;
