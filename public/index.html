@@ -128,6 +128,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     trinity: { sides: 3, r: 32, vr: 1.15, color: '#ff5cf0', fill: '#2a0f29', hk: 0.85, boss: true, name: 'TRINITY', sy: 270 },
     // boss: Train(部位破壊・分裂するワーム状ボス。各車両が個別HP)。seg = 複数パーツ型
     train: { sides: 4, r: 19, vr: 1, color: '#c3d0e0', fill: '#1b2230', boss: true, seg: true, name: 'TRAIN' },
+    fortless: { sides: 8, r: 80, vr: 1, color: '#81d4df', fill: '#10232b', hk: 1, boss: true, name: 'FORTLESS', sy: 166 },
     hex: { sides: 6, r: 26, vr: 1.05, color: '#4ddcff', fill: '#0b2a33', mass: 3 },
     ehex: { sides: 6, r: 31, vr: 1.05, color: '#66ffe0', fill: '#0b332b', mass: 3, elite: true },
     // エリート三角形(大型。倒すと通常三角形3体に分裂)
@@ -138,12 +139,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     cross: { cross: true, sides: 12, r: 20, vr: 1.15, color: '#6cff8f', fill: '#0e2a18' },
     hexstar: { star: true, sides: 6, r: 25, vr: 1.05, color: '#ff66c4', fill: '#351026', hk: 0.9 }
   };
+  const ESQ_CHASE_WARN = 0.55, ESQ_CHASE_DURATION = 4, ESQ_CHASE_COOLDOWN = 2, ESQ_CHASE_SPEED = 320;
   const isTri = (t) => t === 'tri' || t === 'etri';
   const CROSS_R = 140, CROSS_INTERVAL = 2.6, CROSS_HEAL = 0.2;      // 回復範囲 / 間隔(秒) / 最大HPに対する回復割合
   const BOSS_COL = '#ffe36e', BOUNCE_COL = '#7ad7ff';
   const BOSS_EVERY = 5;
-  const BOSS_ORDER = ['stardust', 'trinity', 'train'];   // ボスの出現順(循環)。ボスを追加したらここに並べる
+  const BOSS_ORDER = ['stardust', 'trinity', 'train', 'fortless'];   // ボスの出現順(循環)。ボスを追加したらここに並べる
   const bossHp = () => 360 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 600;
+  const FORTLESS_SIDES = 8, FORTLESS_PANEL_DEPTH = 16, FORTLESS_PANEL_HALF = 34;
+  const FORTLESS_PANEL_REPAIR = 9, FORTLESS_GUN_GAP = 0.18, FORTLESS_GUN_INTERVAL = 5.8;
+  const FORTLESS_SPAWN_INTERVAL = 10.5, FORTLESS_LASER_INTERVAL = 8, FORTLESS_LASER_WARN = 0.9, FORTLESS_LASER_ACT = 0.55;
 
   /* ---------- canvas sizing ---------- */
   let scale = 1, dpr = 1;
@@ -250,7 +255,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     { id: 'size', name: '弾大型化', rarity: 'common', desc: '弾のサイズ +15%、炸裂範囲 +30%', apply: (s) => { s.bsize *= 1.15; s.burstRange += 0.30; } },
     { id: 'armor', name: '最大体力増加', rarity: 'common', desc: '最大体力 +20、回復 20', apply: (s, p) => { p.maxHp += 20; p.hp = Math.min(p.maxHp, p.hp + 20); } },
     { id: 'pierce', name: '貫通弾', rarity: 'rare', desc: '敵貫通確率 +50%。貫通するごとに次の確率が半減', apply: (s) => { s.pierce += 0.5; } },
-    { id: 'ricochet', name: '反射弾', rarity: 'rare', desc: '敵貫通時に別の敵へ跳弾する確率 +50%。跳弾するごとに次の確率が半減', apply: (s) => { s.ric += 0.5; } },
+    { id: 'ricochet', name: '跳弾', rarity: 'rare', desc: '貫通しなかった弾が別の敵へ跳ねる確率 +50%。跳ねるごとに次の確率が半減', apply: (s) => { s.ric += 0.5; } },
     { id: 'burst', name: '炸裂弾', rarity: 'rare', desc: '攻撃力の20%で炸裂。レベルアップで炸裂ダメージ +5%', apply: (s) => { s.burstLv += 1; } },
     { id: 'homing', name: '誘導弾', rarity: 'rare', desc: '弾の誘導性能が微増', apply: (s) => { s.guideLevel += 1; s.missileHoming = true; } },
     { id: 'critdmg', name: 'クリティカルダメージ増加', rarity: 'rare', desc: 'クリティカルダメージ +50%', apply: (s) => { s.critDmg += 0.5; } },
@@ -293,8 +298,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
      ホスト: 敵・弾・当たり判定など「位置関係の計算」だけを行い、約30Hzで軽量スナップショットを送る。
      ゲスト: スナップショットを INTERP_MS だけ過去の時刻で補間して描画する。パーティクル / リング / ダメージ表示 / 効果音は
              スナップショットに載せず、ホストから届く演出イベントを各自の画面で生成する。 */
-  const SNAP_MS = 32;                      // スナップショット送信間隔(約30Hz)
+  const SNAP_MS = 32;                      // 通常時のスナップショット送信間隔(約30Hz)
   const INTERP_MS = 100;                   // ゲスト側の補間バッファ(約3スナップショット分)
+  function snapshotInterval() {
+    const projectileCount = bullets.length + ebullets.length;
+    return projectileCount > 600 ? 66 : projectileCount > 300 ? 50 : SNAP_MS;
+  }
   let uid = 0;                             // 敵・弾などのネットワークID(送信時に遅延採番)
   let evq = [], muteEv = false;            // ホスト: ゲストへ送る演出イベントのキュー
   let snapBuf = [], clockOff = null, lastCurT = -1;   // ゲスト: 受信バッファ / ホストとの時計差 / 最後に反映した離散状態
@@ -587,6 +596,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       meteors.length = 0; ebullets.length = 0; spawns.length = 0;
       for (const o of enemies) if (o !== e && o.hp > 0) { o.hp = 0; o.silent = true; }   // 手下も道連れ
       if (e.parts) for (const q of e.parts) { burst(q.x, q.y, 45, et.color, 500, 0.9, 4); ring(q.x, q.y, 150, 0.6, et.color, 3); }
+      if (e.plates) for (let i = 0; i < e.plates.length; i++) { const p = fortlessPanelCenter(e, i); burst(p.x, p.y, 18, et.color, 320, 0.55, 3.2); }
       burst(e.x, e.y, 90, et.color, 560, 1.0, 4.5);
       burst(e.x, e.y, 40, '#ffffff', 420, 0.7, 3.2);
       epicDropAvailable = true;
@@ -625,9 +635,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (P.S.armor > 0 && P.armorCd <= 0) {
       amount *= 1 - P.S.armor;
       P.armorCd = P.S.armorCd || 2.5;
-      for (let i = ebullets.length - 1; i >= 0; i--) {
-        if (Math.hypot(ebullets[i].x - P.x, ebullets[i].y - P.y) < 170) ebullets.splice(i, 1);
-      }
+      clearEnemyBulletsNear(P.x, P.y, 170);
       ring(P.x, P.y, 170, 0.35, '#c084fc', 3); burst(P.x, P.y, 12, '#c084fc', 260, 0.35, 3);
     }
     P.hp -= amount; P.inv = 0.75;
@@ -656,11 +664,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (rp.S.armor > 0 && rp.armorCd <= 0) {
       amount *= 1 - rp.S.armor;
       rp.armorCd = rp.S.armorCd || 2.5;
-      for (let i = ebullets.length - 1; i >= 0; i--) {
-        if (Math.hypot(ebullets[i].x - rp.x, ebullets[i].y - rp.y) < 170) ebullets.splice(i, 1);
-      }
+      clearEnemyBulletsNear(rp.x, rp.y, 170);
       ring(rp.x, rp.y, 170, 0.35, '#c084fc', 3);
     }
+
     rp.hp -= amount; rp.inv = 0.75;
     const a = Math.atan2(rp.y - fromY, rp.x - fromX);
     pushEv(['k', rp.id, r1(Math.cos(a) * 380), r1(Math.sin(a) * 380), 1]);
@@ -675,6 +682,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       burst(rp.x, rp.y, 26, '#5ee6d0', 400, 1.0, 4);
       ring(rp.x, rp.y, 200, 0.8, '#ffffff', 4);
       if (!partyPlayers().some((pl) => pl.hp > 0)) { state = 'dying'; dyT = 1.2; sfx.over(); }
+    }
+  }
+
+  function clearEnemyBulletsNear(x, y, radius) {
+    const radiusSq = radius * radius;
+    for (const bullet of ebullets) {
+      const dx = bullet.x - x, dy = bullet.y - y;
+      if (dx * dx + dy * dy < radiusSq) bullet.remove = true;
     }
   }
 
@@ -811,8 +826,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   /* ---------- boss: Trinity ---------- */
-  // 3つの三角形。合体(中央で回転しながら3方向レーザー＋各三角形から3方向弾) ⇄ 分離(距離を取り、順番に3way弾×3連射)
-  const TRI_WARN = 1.2, TRI_ACT = 4.4, TRI_SPLIT_T = 0.9, TRI_MERGE_T = 1.0, TRI_OFS = ET.trinity.r * ET.trinity.vr;   // 重心までの距離=三角形の外接円半径 → 頂点が隣と一致(トライフォース配置)
+  // 3つの三角形。分離中は各パーツが順番に3way連射を行い、その後レーザーを撃つ
+  const TRI_WARN = 1.2, TRI_ACT = 4.4, TRI_SPLIT_T = 0.9, TRI_MERGE_T = 1.0, TRI_TURNS = 6, TRI_SPLIT_LASER_WARN = 0.75, TRI_SPLIT_LASER_ACT = 0.42, TRI_OFS = ET.trinity.r * ET.trinity.vr;   // 重心までの距離=三角形の外接円半径 → 頂点が隣と一致(トライフォース配置)
   const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
   function chase(p, tx, ty, gain, maxSp, dt) {
     let dx = (tx - p.x) * Math.min(1, dt * gain), dy = (ty - p.y) * Math.min(1, dt * gain);
@@ -823,16 +838,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function initTrinity(e) {
     e.form = 'merged'; e.ft = 0; e.beam = 0; e.bp = 0; e.dir = Math.random() < 0.5 ? -1 : 1;
     e.la = Math.random() * TAU; e.phi = 0; e.vT = 0.3;
-    e.turn = 0; e.sStage = 0; e.sT = 0; e.bursts = 0; e.rageT = 0;
+    e.turn = 0; e.sStage = 0; e.sT = 0; e.bursts = 0;
     e.cx = e.x; e.cy = e.y;
     e.parts = [0, 1, 2].map((i) => {
       const a = e.la + i * TAU / 3;
-      return { x: e.x + Math.cos(a) * TRI_OFS, y: e.y + Math.sin(a) * TRI_OFS, rot: a, chg: 0, atkT: 0 };
+      return { x: e.x + Math.cos(a) * TRI_OFS, y: e.y + Math.sin(a) * TRI_OFS, rot: a, chg: 0, atkT: 0, laserPhase: 0, laserAngle: a };
     });
   }
-  function trinityBullet(x, y, a, sp, r) {
+  function trinityBullet(x, y, a, sp, r, extra) {
     const c = Math.cos(a), s = Math.sin(a);
-    ebullets.push({ x, y, vx: c * sp, vy: s * sp, r: r || 5.5, life: 5.5, color: ET.trinity.color });
+    ebullets.push(Object.assign({ x, y, vx: c * sp, vy: s * sp, r: r || 5.5, life: 5.5, color: ET.trinity.color }, extra));
   }
   function trinitySpiral(e, tk) {                       // 合体: 各三角形から3方向(計9方向)
     for (let i = 0; i < 3; i++) {
@@ -845,11 +860,35 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ring(e.cx, e.cy, 54, 0.25, ET.trinity.color, 2);
     sfx.eshoot();
   }
-  function trinityVolley(e, p, tk) {
+  function trinityVolley(e, p, tk, bounce) {
     const target = getTargetPlayer(p.x, p.y), a0 = Math.atan2(target.y - p.y, target.x - p.x);
-    for (let k = -1; k <= 1; k++) trinityBullet(p.x, p.y, a0 + k * 0.28, (e.p2 ? 255 : 225) * tk, 5.5);
+    for (let k = -1; k <= 1; k++) trinityBullet(p.x, p.y, a0 + k * 0.28, (e.p2 ? 255 : 225) * tk, 5.5, bounce ? { life: 9, bounce, star: true, rot: 0, dmg: 12 } : undefined);
     burst(p.x, p.y, 6, ET.trinity.color, 150, 0.22, 2.4);
     ring(p.x, p.y, 40, 0.25, ET.trinity.color, 2);
+  }
+  function trinityPartBeamHit(p) {
+    const c = Math.cos(p.laserAngle), s = Math.sin(p.laserAngle);
+    const cands = partyPlayers().filter((pl) => pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying'));
+    for (const pl of cands) {
+      const rx = pl.x - p.x, ry = pl.y - p.y;
+      if (rx * c + ry * s <= 0 || Math.abs(rx * s - ry * c) >= 6 + pl.r * 0.55) continue;
+      if (pl === P) hurtPlayer(12, p.x, p.y); else hurtRemotePlayer(pl, 12, p.x, p.y);
+    }
+  }
+  function trinityStartSplitTurn(e) {
+    const p = e.parts[e.turn % 3], laserTurn = e.turn >= 3;
+    p.chg = 0;
+    e.sStage = 0; e.bursts = 0;
+    e.sT = laserTurn ? TRI_SPLIT_LASER_WARN : (e.p2 ? 0.38 : 0.5);
+    p.laserPhase = laserTurn ? 1 : 0;
+    if (laserTurn) {
+      const target = getTargetPlayer(p.x, p.y);
+      p.laserAngle = Math.atan2(target.y - p.y, target.x - p.x);
+    }
+  }
+  function trinitySplitSupport(e, source, tk) {
+    if (!e.p2) return;
+    for (const p of e.parts) if (p !== source) trinityVolley(e, p, tk, 3);
   }
   function trinitySplitAttack(e, p, tk) {
     const target = getTargetPlayer(p.x, p.y), aim = Math.atan2(target.y - p.y, target.x - p.x), mode = Math.floor(Math.random() * 4);
@@ -878,11 +917,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function updateTrinity(e, dt) {
     const parts = e.parts;
     const centroid = () => { e.x = (parts[0].x + parts[1].x + parts[2].x) / 3; e.y = (parts[0].y + parts[1].y + parts[2].y) / 3; };
-    if (state === 'dying') { e.beam = 0; centroid(); return; }
+    if (state === 'dying') { e.beam = 0; parts.forEach((q) => { q.laserPhase = 0; }); centroid(); return; }
     const tier = Math.min(Math.max(1, Math.floor(wave / BOSS_EVERY)) - 1, 4), tk = 1 + tier * 0.06;
     if (e.born < 0.8) { centroid(); return; }
     if (!e.p2 && e.hp <= e.maxHp * 0.5) {
-      e.p2 = true; e.rageT = 0;
+      e.p2 = true;
       ring(e.x, e.y, 170, 0.6, ET.trinity.color, 4);
       floatText(e.x, e.y - 74, 'ENRAGED', ET.trinity.color);
       shake = Math.max(shake, 10); sfx.boss();
@@ -896,39 +935,55 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else if (e.ft < TRI_WARN + act) {
         if (e.beam !== 2) sfx.bossCall();
         e.beam = 2; e.bp = e.ft - TRI_WARN;
-        if (e.p2) e.rageT = Math.min(1.4, e.rageT + dt);
-        const spin = e.p2 ? lerp(e.dir * 0.72, -e.dir * 0.38, e.rageT / 1.4) : e.dir * 0.72;
+        const spin = e.dir * (e.p2 ? 1.4 : 0.72);
         e.la += spin * tk * Math.min(1, e.bp / 0.7) * dt;
         if (e.bp > 0.12) trinityBeamHit(e);
         e.vT -= dt;
         if (e.vT <= 0) { trinitySpiral(e, tk); e.vT = e.p2 ? 0.5 : 0.64; }
       } else {                                           // 分離開始: 各三角形が自分の向きへ飛び出す
         e.form = 'splitting'; e.ft = 0; e.beam = 0; e.phi = e.la; e.turn = 0; e.sStage = 0; e.sT = 0;
+        parts.forEach((q) => { q.laserPhase = 0; });
         ring(e.cx, e.cy, 120, 0.4, ET.trinity.color, 3); shake = Math.max(shake, 6); sfx.impact();
       }
     } else if (e.form === 'splitting') {
-      if (e.ft >= TRI_SPLIT_T) { e.form = 'split'; e.ft = 0; parts.forEach((q, i) => { q.atkT = 0.08 + i * 0.06; }); }
+      if (e.ft >= TRI_SPLIT_T) { e.form = 'split'; e.ft = 0; trinityStartSplitTurn(e); }
     } else if (e.form === 'merging') {
-      if (e.ft >= TRI_MERGE_T) { e.form = 'merged'; e.ft = 0; e.vT = 0.3; e.dir *= -1; ring(e.cx, e.cy, 100, 0.4, ET.trinity.color, 3); sfx.impact(); }
+      if (e.ft >= TRI_MERGE_T) { e.form = 'merged'; e.ft = 0; e.vT = 0.3; e.dir *= -1; parts.forEach((q) => { q.laserPhase = 0; }); ring(e.cx, e.cy, 100, 0.4, ET.trinity.color, 3); sfx.impact(); }
     }
-    // --- 分離中は順番にパーツを選び、各パーツから3wayを3連射
+    // --- 各パーツの3way連射後、順番に1本ずつレーザーを撃つ
     if (e.form === 'split') {
-      const chargeDur = e.p2 ? 0.38 : 0.5;
       const burstGap = e.p2 ? 0.17 : 0.22;
       const gap = e.p2 ? 0.18 : 0.3;
       const p = parts[e.turn % 3];
       e.sT -= dt;
-      if (e.sStage === 0) {
-        p.chg = Math.max(0, Math.min(1, 1 - e.sT / chargeDur));
-        if (e.sT <= 0) { e.sStage = 1; e.bursts = 3; e.sT = 0; p.chg = 0; }
-      } else if (e.sStage === 1) {
-        if (e.sT <= 0) {
-          trinityVolley(e, p, tk);
-          if (--e.bursts <= 0) { e.sStage = 2; e.sT = gap; } else e.sT = burstGap;
+      if (e.turn < 3) {
+        if (e.sStage === 0) {
+          const chargeDur = e.p2 ? 0.38 : 0.5;
+          p.chg = Math.max(0, Math.min(1, 1 - e.sT / chargeDur));
+          if (e.sT <= 0) { e.sStage = 1; e.bursts = 0; e.sT = 0; p.chg = 0; }
+        } else if (e.sStage === 1 && e.sT <= 0) {
+          e.bursts++;
+          trinityVolley(e, p, tk, e.p2 && e.bursts === 3 ? 3 : 0);
+          if (e.bursts >= 3) { e.sStage = 2; e.sT = gap; } else e.sT = burstGap;
+        } else if (e.sStage === 2 && e.sT <= 0) {
+          e.turn++;
+          if (e.turn >= TRI_TURNS) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; q.laserPhase = 0; }); }
+          else trinityStartSplitTurn(e);
         }
+      } else if (e.sStage === 0) {
+        p.chg = Math.max(0, Math.min(1, 1 - e.sT / TRI_SPLIT_LASER_WARN));
+        if (e.sT <= 0) {
+          p.chg = 0; p.laserPhase = 2; e.sStage = 1; e.sT = TRI_SPLIT_LASER_ACT;
+          trinitySplitSupport(e, p, tk);
+        }
+      } else if (e.sStage === 1) {
+        if (e.sT > 0) trinityPartBeamHit(p);
+        if (e.sT <= 0) { p.laserPhase = 0; e.sStage = 2; e.sT = gap; }
       } else if (e.sT <= 0) {
-        e.turn++; e.sStage = 0; e.sT = chargeDur;
-        if (e.turn >= TRI_TURNS) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; }); }
+        p.laserPhase = 0;
+        e.turn++;
+        if (e.turn >= TRI_TURNS) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; q.laserPhase = 0; }); }
+        else trinityStartSplitTurn(e);
       }
     } else parts.forEach((q) => { q.chg = 0; });
     // --- 位置
@@ -950,7 +1005,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       for (const q of parts) { q.x = Math.max(m, Math.min(W - m, q.x)); q.y = Math.max(m, Math.min(H - m, q.y)); }
       parts.forEach((q, i) => {                                                    // 発射準備中〜発射中はプレイヤーへ先端を向ける
         const active = e.form === 'split' && q.chg > 0;
-        if (active) { const tp = getTargetPlayer(q.x, q.y); q.rot += angDiff(Math.atan2(tp.y - q.y, tp.x - q.x), q.rot) * Math.min(1, dt * 12); }
+        if (active) {
+          let aim = q.laserAngle;
+          if (!q.laserPhase) { const tp = getTargetPlayer(q.x, q.y); aim = Math.atan2(tp.y - q.y, tp.x - q.x); }
+          q.rot += angDiff(aim, q.rot) * Math.min(1, dt * 12);
+        }
         else q.rot += dt * (i % 2 ? -1.3 : 1.3);
       });
     } else {
@@ -967,6 +1026,184 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     centroid();
   }
+
+  function fortlessFaceAngle(e, i) { return e.rot + Math.PI / FORTLESS_SIDES + i * TAU / FORTLESS_SIDES; }
+  function fortlessFacePoint(e, i) {
+    const a = fortlessFaceAngle(e, i), d = e.r * Math.cos(Math.PI / FORTLESS_SIDES);
+    return { x: e.x + Math.cos(a) * d, y: e.y + Math.sin(a) * d, a };
+  }
+  function fortlessPanelCenter(e, i) {
+    const a = fortlessFaceAngle(e, i), d = e.r * Math.cos(Math.PI / FORTLESS_SIDES) + FORTLESS_PANEL_DEPTH / 2;
+    return { x: e.x + Math.cos(a) * d, y: e.y + Math.sin(a) * d, a };
+  }
+  function fortlessMount(e, i, offset, outward) {
+    const panel = fortlessPanelCenter(e, i), tx = -Math.sin(panel.a), ty = Math.cos(panel.a);
+    const d = FORTLESS_PANEL_DEPTH / 2 + outward;
+    return { x: panel.x + tx * offset + Math.cos(panel.a) * d, y: panel.y + ty * offset + Math.sin(panel.a) * d, a: panel.a };
+  }
+  function fortlessFaceIndex(e, x, y) {
+    const a = Math.atan2(y - e.y, x - e.x) - e.rot - Math.PI / FORTLESS_SIDES;
+    return ((Math.round(a / (TAU / FORTLESS_SIDES)) % FORTLESS_SIDES) + FORTLESS_SIDES) % FORTLESS_SIDES;
+  }
+  function fortlessPanelAt(e, x, y, rad) {
+    let best = null, bestD = Infinity;
+    for (let i = 0; i < e.plates.length; i++) {
+      const plate = e.plates[i];
+      if (plate.hp <= 0) continue;
+      const panel = fortlessPanelCenter(e, i), dx = x - panel.x, dy = y - panel.y;
+      const tangent = Math.abs(dx * -Math.sin(panel.a) + dy * Math.cos(panel.a));
+      const normal = Math.abs(dx * Math.cos(panel.a) + dy * Math.sin(panel.a));
+      if (tangent > FORTLESS_PANEL_HALF + rad || normal > FORTLESS_PANEL_DEPTH / 2 + rad) continue;
+      const d = tangent * tangent + normal * normal;
+      if (d < bestD) { bestD = d; best = { plate, index: i, x: panel.x, y: panel.y }; }
+    }
+    return best;
+  }
+  function fortlessBodyHit(e, x, y, rad) {
+    return !!fortlessPanelAt(e, x, y, rad) || Math.hypot(e.x - x, e.y - y) < e.r + rad;
+  }
+  function fortlessDamage(e, amount, x, y, rad) {
+    let hit = fortlessPanelAt(e, x, y, rad);
+    if (!hit && Math.hypot(e.x - x, e.y - y) < e.r + rad) {
+      const index = fortlessFaceIndex(e, x, y), plate = e.plates[index];
+      if (plate.hp > 0) hit = { plate, index, x: fortlessPanelCenter(e, index).x, y: fortlessPanelCenter(e, index).y };
+      else {
+        e.hp -= amount; e.flash = 0.09;
+        const face = fortlessFacePoint(e, index);
+        return { damage: amount, x: face.x, y: face.y, core: true };
+      }
+    }
+    if (!hit) return null;
+    const dealt = Math.min(amount, hit.plate.hp);
+    hit.plate.hp = Math.max(0, hit.plate.hp - amount);
+    hit.plate.flash = 0.1;
+    if (hit.plate.hp <= 0) {
+      hit.plate.repairT = FORTLESS_PANEL_REPAIR;
+      hit.plate.laserPhase = 0;
+      ring(hit.x, hit.y, 52, 0.35, ET.fortless.color, 3);
+      burst(hit.x, hit.y, 14, ET.fortless.color, 260, 0.35, 3);
+      sfx.impact();
+    }
+    return { damage: dealt, x: hit.x, y: hit.y, core: false };
+  }
+  function initFortless(e) {
+    e.p2 = false;
+    e.laserPhase = 0; e.laserT = 4;
+    const panelHp = Math.max(80, Math.round(e.maxHp * 0.025));
+    e.plates = Array.from({ length: FORTLESS_SIDES }, (_, i) => ({
+      hp: panelHp, maxHp: panelHp, repairT: 0, flash: 0, laserPhase: 0, laserAngle: fortlessFaceAngle(e, i),
+      guns: [0, 1].map((g) => ({ fireT: 1.2 + (i * 2 + g) * 0.12, burst: 0 })),
+      spawnT: 2.8 + i * 0.4
+    }));
+  }
+  function fortlessGunFire(e, i, gun, tk) {
+    const mount = fortlessMount(e, i, gun === 0 ? -23 : 23, 5);
+    const target = getTargetPlayer(mount.x, mount.y), base = Math.atan2(target.y - mount.y, target.x - mount.x);
+    const reflected = e.p2 && gun.burst === 2, speed = e.p2 ? 205 : 185;
+    for (let k = -1; k <= 1; k++) {
+      const a = base + k * 0.25, c = Math.cos(a), s = Math.sin(a);
+      const extra = reflected ? { bounce: 3, star: true, rot: 0, life: 8, dmg: 12 } : undefined;
+      ebullets.push(Object.assign({ x: mount.x, y: mount.y, vx: c * speed * tk, vy: s * speed * tk, r: 5.5, life: 5.5, color: ET.fortless.color }, extra));
+    }
+    burst(mount.x, mount.y, 4, ET.fortless.color, 130, 0.18, 2.2);
+    ring(mount.x, mount.y, 24, 0.18, ET.fortless.color, 2);
+    sfx.eshoot();
+  }
+  function fortlessSpawn(e, i) {
+    const count = e.p2 ? 3 : 2, mount = fortlessMount(e, i, 0, 20), tx = -Math.sin(mount.a), ty = Math.cos(mount.a);
+    for (let j = 0; j < count; j++) {
+      const offset = (j - (count - 1) / 2) * 24;
+      const type = e.p2 && j === 0 ? 'esq' : 'sq';
+      spawns.push({
+        x: Math.max(40, Math.min(W - 40, mount.x + tx * offset)),
+        y: Math.max(40, Math.min(H - 40, mount.y + ty * offset)),
+        t: 0, delay: 0.65, type, summoned: true
+      });
+    }
+    burst(mount.x, mount.y, 7, ET.fortless.color, 150, 0.25, 2.4);
+    ring(mount.x, mount.y, 38, 0.25, ET.fortless.color, 2);
+  }
+  function fortlessLaserHit(e, p, i) {
+    const face = fortlessFacePoint(e, i), c = Math.cos(p.laserAngle), s = Math.sin(p.laserAngle);
+    for (const pl of partyPlayers()) {
+      if (pl.hp <= 0 || pl.inv > 0 || (pl === P && state === 'dying')) continue;
+      const rx = pl.x - face.x, ry = pl.y - face.y;
+      if (rx * c + ry * s > 0 && Math.abs(rx * s - ry * c) < 7 + pl.r * 0.5) {
+        if (pl === P) hurtPlayer(12, face.x, face.y); else hurtRemotePlayer(pl, 12, face.x, face.y);
+      }
+    }
+  }
+  function updateFortlessLasers(e, dt) {
+    if (e.laserPhase === 0) {
+      e.laserT -= dt;
+      if (e.laserT <= 0) {
+        let exposed = 0;
+        for (let i = 0; i < FORTLESS_SIDES; i++) if (e.plates[i].hp <= 0) {
+          e.plates[i].laserPhase = 1; e.plates[i].laserAngle = fortlessFaceAngle(e, i); exposed++;
+        }
+        if (exposed) { e.laserPhase = 1; e.laserT = FORTLESS_LASER_WARN; }
+        else e.laserT = FORTLESS_LASER_INTERVAL;
+      }
+    } else if (e.laserPhase === 1) {
+      e.laserT -= dt;
+      for (let i = 0; i < FORTLESS_SIDES; i++) if (e.plates[i].laserPhase === 1) e.plates[i].laserAngle = fortlessFaceAngle(e, i);
+      if (e.laserT <= 0) {
+        e.laserPhase = 2; e.laserT = FORTLESS_LASER_ACT;
+        for (const plate of e.plates) if (plate.laserPhase === 1) plate.laserPhase = 2;
+      }
+    } else {
+      e.laserT -= dt;
+      for (let i = 0; i < FORTLESS_SIDES; i++) {
+        const plate = e.plates[i];
+        if (plate.laserPhase !== 2) continue;
+        plate.laserAngle = fortlessFaceAngle(e, i);
+        if (e.laserT > 0) fortlessLaserHit(e, plate, i);
+      }
+      if (e.laserT <= 0) {
+        e.laserPhase = 0; e.laserT = FORTLESS_LASER_INTERVAL;
+        for (const plate of e.plates) plate.laserPhase = 0;
+      }
+    }
+  }
+  function updateFortless(e, dt) {
+    if (state === 'dying') return;
+    const tier = Math.min(Math.max(1, Math.floor(wave / BOSS_EVERY)) - 1, 4), tk = 1 + tier * 0.06;
+    e.rot += dt * 0.16;
+    if (!e.p2 && e.hp <= e.maxHp * 0.5) {
+      e.p2 = true;
+      ring(e.x, e.y, 170, 0.6, ET.fortless.color, 4);
+      floatText(e.x, e.y - 100, 'ENRAGED', ET.fortless.color);
+      shake = Math.max(shake, 10); sfx.boss();
+    }
+    for (let i = 0; i < e.plates.length; i++) {
+      const plate = e.plates[i];
+      plate.flash = Math.max(0, plate.flash - dt);
+      if (plate.hp <= 0) {
+        plate.repairT -= dt;
+        if (plate.repairT <= 0) {
+          plate.hp = plate.maxHp; plate.repairT = 0; plate.flash = 0.4; plate.laserPhase = 0;
+          plate.guns.forEach((gun) => { gun.burst = 0; gun.fireT = 1.4; });
+          plate.spawnT = 2.5;
+          ring(fortlessPanelCenter(e, i).x, fortlessPanelCenter(e, i).y, 48, 0.35, ET.fortless.color, 3);
+          burst(fortlessPanelCenter(e, i).x, fortlessPanelCenter(e, i).y, 10, ET.fortless.color, 220, 0.3, 2.6);
+        }
+        continue;
+      }
+      for (const gun of plate.guns) {
+        gun.fireT -= dt;
+        if (gun.fireT > 0) continue;
+        fortlessGunFire(e, i, gun, tk);
+        if (++gun.burst < 3) gun.fireT = FORTLESS_GUN_GAP;
+        else { gun.burst = 0; gun.fireT = FORTLESS_GUN_INTERVAL + (i * 2 + plate.guns.indexOf(gun)) * 0.12; }
+      }
+      plate.spawnT -= dt;
+      if (plate.spawnT <= 0) {
+        fortlessSpawn(e, i);
+        plate.spawnT = FORTLESS_SPAWN_INTERVAL + i * 0.35;
+      }
+    }
+    updateFortlessLasers(e, dt);
+  }
   /* ---------- 敵同士の反発 ---------- */
   function separate(dt) {
     const grid = new Map();
@@ -977,21 +1214,25 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (!grid.has(key)) grid.set(key, []);
       grid.get(key).push(e);
     }
-    const checked = new Set();
+    const checked = new Map();
     for (const [key, bucket] of grid) {
       const [cx, cy] = key.split(',').map(Number);
-      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
         const neighbors = grid.get((cx + ox) + ',' + (cy + oy));
         if (!neighbors) continue;
         for (const a of bucket) for (const b of neighbors) {
           if (a === b) continue;
-          const pair = a.id && b.id ? (a.id < b.id ? a.id + ':' + b.id : b.id + ':' + a.id) : a + ':' + b;
-          if (checked.has(pair)) continue;
-          checked.add(pair);
+          let aChecked = checked.get(a);
+          if (aChecked && aChecked.has(b)) continue;
+          if (!aChecked) checked.set(a, aChecked = new Set());
+          aChecked.add(b);
+          let bChecked = checked.get(b);
+          if (!bChecked) checked.set(b, bChecked = new Set());
+          bChecked.add(a);
           const tot = 2;
           if (tot === 0) continue;
           let dx = b.bx - a.bx, dy = b.by - a.by, d = Math.hypot(dx, dy);
-          const min = (a.r + b.r) * 1.05;
+          const min = (a.r + b.r) * 1.35;
           if (d >= min) continue;
           if (d < 0.01) { const g = Math.random() * TAU; dx = Math.cos(g); dy = Math.sin(g); d = 1; }
           const push = (min - d) * 1.35 * Math.min(1, dt * 20), ux = dx / d, uy = dy / d;
@@ -1017,11 +1258,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       fireT: 1.8 + Math.random() * 0.8, cd: 1.6, atk: 0, volley: 0, p2: false,
       spin: (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 1.5),
       mode: 'drift', dashT: 1.5 + Math.random() * 2, healT: 2 + Math.random() * 1.5,
+      chasePhase: type === 'esq' ? 'warning' : undefined,
+      chaseT: type === 'esq' ? ESQ_CHASE_WARN : undefined,
       inv: et.boss ? 0 : 1 / (et.mass || 1), noScore: !!summoned,
       kbx: 0, kby: 0, stun: 0,
       laserT: type === 'hexstar' ? 2.2 + Math.random() * 1.1 : 0, laserPhase: 0, laserAngle: 0, laserT0: 0
     };
     if (type === 'trinity') { enemy.sy0 = y; initTrinity(enemy); }
+    if (type === 'fortless') initFortless(enemy);
     if (type === 'hex' || type === 'ehex') { const hv = Math.min(150, 70 + wave * 3); enemy.vx = Math.cos(va) * hv; enemy.vy = Math.sin(va) * hv; }
     enemies.push(enemy);
     burst(x, y, 12, et.color, 240, 0.4, 3);
@@ -1153,8 +1397,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (const o of enemies) {
       if (o.hp <= 0) continue;
       if (bodyHit(o, b.x, b.y, radius + o.r * 0.8)) {
+      if (o.type === 'fortless') {
+        const hit = fortlessDamage(o, dmg, b.x, b.y, radius + o.r * 0.8);
+        if (!hit) continue;
+        damagePop(hit.x, hit.y - 14, hit.damage, false, '#ff8a3d');
+      } else {
         o.hp -= dmg; o.flash = 0.09;
-        damagePop(o.x, o.y - o.r - 4, dmg, false, '#ff8a3d');
+        const hitPoint = nearPt(o, b.x, b.y);
+        damagePop(hitPoint.x, hitPoint.y - o.r - 4, dmg, false, '#ff8a3d');
+      }
         if (b.burstKb > 0) {
           const l = Math.hypot(o.x - b.x, o.y - b.y) || 1;
           o.kbx = (o.kbx || 0) + (o.x - b.x) / l * b.burstKb * 50;
@@ -1166,6 +1417,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   // 複数パーツを持つ敵(Trinity)用の当たり判定ヘルパー
   function bodyHit(e, x, y, rad) {
+    if (e.type === 'fortless') return fortlessBodyHit(e, x, y, rad);
     if (!e.parts) return Math.hypot(e.x - x, e.y - y) < rad;
     const splitExtra = (e.form === 'split' || e.form === 'splitting') ? 16 : 0;
     for (const q of e.parts) if (Math.hypot(q.x - x, q.y - y) < rad + splitExtra) return true;
@@ -1237,20 +1489,25 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function rebuildEnemyGrid() {
     enemyGrid.clear();
-    for (const e of enemies) {
-      if (e.hp <= 0) continue;
-      const cx = Math.floor(e.x / COLLISION_CELL), cy = Math.floor(e.y / COLLISION_CELL);
+    const addEnemy = (e, x, y) => {
+      const cx = Math.floor(x / COLLISION_CELL), cy = Math.floor(y / COLLISION_CELL);
       const key = cx + ',' + cy;
       let bucket = enemyGrid.get(key);
       if (!bucket) enemyGrid.set(key, bucket = []);
       bucket.push(e);
+    };
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      if (e.parts) for (const part of e.parts) addEnemy(e, part.x, part.y);
+      else if (e.plates) { addEnemy(e, e.x, e.y); for (let i = 0; i < e.plates.length; i++) { const p = fortlessPanelCenter(e, i); addEnemy(e, p.x, p.y); } }
+      else addEnemy(e, e.x, e.y);
     }
   }
   function nearbyEnemies(x, y, radius) {
-    const cx = Math.floor(x / COLLISION_CELL), cy = Math.floor(y / COLLISION_CELL), found = [];
+    const cx = Math.floor(x / COLLISION_CELL), cy = Math.floor(y / COLLISION_CELL), found = [], seen = new Set();
     for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
       const bucket = enemyGrid.get((cx + ox) + ',' + (cy + oy));
-      if (bucket) found.push(...bucket);
+      if (bucket) for (const e of bucket) if (!seen.has(e)) { seen.add(e); found.push(e); }
     }
     return found;
   }
@@ -1325,7 +1582,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         e.x = e.bx; e.y = e.by;
       }
       e.born += dt; e.flash = Math.max(0, e.flash - dt);
-      e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'esq' ? 5.8 : e.type === 'trap' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
+      e.rot += dt * (isTri(e.type) ? e.spin : e.type === 'esq' ? 5.8 : e.type === 'trap' || e.type === 'fortless' ? 0 : e.type === 'stardust' ? 0.45 : e.type === 'cross' ? 1.4 : 0.7);
       if (e.stun > 0) {
         const decay = Math.exp(-8 * dt);
         e.kbx = (e.kbx || 0) * decay; e.kby = (e.kby || 0) * decay;
@@ -1335,6 +1592,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (ET[e.type].boss) {
         if (e.type === 'stardust') updateBoss(e, dt);
         else if (e.type === 'trinity') updateTrinity(e, dt);
+        else if (e.type === 'fortless') updateFortless(e, dt);
         e.bx = e.x; e.by = e.y;
       } else {
         if (isTri(e.type) && state !== 'dying' && e.born > 0.4) {      // 三角形: 回転しつつゆっくり追尾
@@ -1343,10 +1601,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           e.bx += Math.cos(a) * sp * dt; e.by += Math.sin(a) * sp * dt;
         }
         if (e.type === 'esq' && state !== 'dying' && e.born > 0.4) {
-          e.chaseT = (e.chaseT === undefined ? 4.0 : e.chaseT) - dt;
+          e.chaseT = Math.max(0, e.chaseT - dt);
+          if (e.chaseT <= 0) {
+            if (e.chasePhase === 'warning') { e.chasePhase = 'chase'; e.chaseT = ESQ_CHASE_DURATION; }
+            else if (e.chasePhase === 'chase') { e.chasePhase = 'cooldown'; e.chaseT = ESQ_CHASE_COOLDOWN; }
+            else { e.chasePhase = 'warning'; e.chaseT = ESQ_CHASE_WARN; }
+          }
           const target = getTargetPlayer(e.bx, e.by);
           const dx = target.x - e.bx, dy = target.y - e.by, d = Math.hypot(dx, dy) || 1;
-          const sp = e.chaseT > 0 ? 210 + (4 - Math.max(0, e.chaseT)) * 35 : 95;
+          const sp = e.chasePhase === 'chase' ? ESQ_CHASE_SPEED * (e.chaseT / ESQ_CHASE_DURATION) : 0;
           e.vx += (dx / d * sp - e.vx) * Math.min(1, dt * 2.4);
           e.vy += (dy / d * sp - e.vy) * Math.min(1, dt * 2.4);
           e.bx += e.vx * dt; e.by += e.vy * dt;
@@ -1432,7 +1695,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (e.healT <= 0) { crossHeal(e); e.healT = CROSS_INTERVAL; }
       }
       const hitDamage = ET[e.type].boss ? 15 : e.mode === 'dash' ? 14 : 10;
-      const contact = player => bodyHit(e, player.x, player.y, e.r * 0.85 * (ET[e.type].hk || 1) + player.r);
+      const contact = player => bodyHit(e, player.x, player.y, e.type === 'fortless' ? player.r : e.r * 0.85 * (ET[e.type].hk || 1) + player.r);
       for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && contact(pl)) {
         if (e.type === 'esq') pl.inv = 0.375;
         if (pl === P) hurtPlayer(hitDamage, e.x, e.y); else hurtRemotePlayer(pl, hitDamage, e.x, e.y);
@@ -1441,7 +1704,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     // enemy bullets
     for (let i = ebullets.length - 1; i >= 0; i--) {
       const b = ebullets[i];
+      if (b.remove) continue;
       if (b.delay > 0) { b.delay -= dt; continue; }
+      if (b.bounce > 0) { b.star = true; b.rot = b.rot || 0; }
       b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
       if (b.star) b.rot += dt * 6;
       if (b.bounce > 0) {
@@ -1462,16 +1727,21 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         else if (b.y > H - m) { b.y = H - m; b.vy = -Math.abs(b.vy); hit = true; }
         if (hit) { b.bounce--; burst(b.x, b.y, 4, b.color, 100, 0.2, 2); }
       }
-      if (b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) { ebullets.splice(i, 1); continue; }
+      if (b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) { b.remove = true; continue; }
       const hitPlayer = partyPlayers().find((pl) => pl.hp > 0 && (pl !== P || state !== 'dying') && Math.hypot(b.x - pl.x, b.y - pl.y) < b.r + pl.r);
       if (hitPlayer) {
         burst(b.x, b.y, 6, b.color || ET.pent.color, 180, 0.25, 2.4);
-        const bx = b.x - b.vx * 0.1, by = b.y - b.vy * 0.1; ebullets.splice(i, 1);
+        const bx = b.x - b.vx * 0.1, by = b.y - b.vy * 0.1; b.remove = true;
         if (hitPlayer.inv <= 0) {
           if (hitPlayer === P) hurtPlayer(b.dmg || 10, bx, by); else hurtRemotePlayer(hitPlayer, b.dmg || 10, bx, by);
         }
       }
     }
+    let ebulletWrite = 0;
+    for (let i = 0; i < ebullets.length; i++) {
+      if (!ebullets[i].remove) ebullets[ebulletWrite++] = ebullets[i];
+    }
+    ebullets.length = ebulletWrite;
     updateMeteors(dt);
     updateItems(dt);
     // bullets
@@ -1503,7 +1773,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       for (const e of nearbyEnemies(b.x, b.y, 160)) {
         if (e.hp <= 0) continue;
         if (b.hit.has(e)) continue;
-        if (bodyHit(e, b.x, b.y, e.r * 0.9 * (ET[e.type].hk || 1) + b.r)) {
+        const hitRadius = e.type === 'fortless' ? b.r : e.r * 0.9 * (ET[e.type].hk || 1) + b.r;
+        if (bodyHit(e, b.x, b.y, hitRadius)) {
           b.hit.add(e);
           // クリティカル: 率100%ごとに1重確定。倍率は 1 + 重数 × (クリティカルダメージ − 1) の加算
           const cc = Math.max(0, b.crit || 0);
@@ -1522,34 +1793,48 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             dealt = b.dmg * (1 + stacks * ((b.cdmg || 2) - 1));
             burst(b.x, b.y, 8, '#ffb347', 260, 0.25, 2.6);
           }
-          e.hp -= dealt; e.flash = 0.09;
-          damagePop(e.x, e.y - e.r - 4, dealt, stacks > 0);
+          if (e.type === 'fortless') {
+            const hit = fortlessDamage(e, dealt, b.x, b.y, b.r);
+            if (hit) damagePop(hit.x, hit.y - 14, hit.damage, stacks > 0);
+          } else {
+            e.hp -= dealt; e.flash = 0.09;
+            const hitPoint = nearPt(e, b.x, b.y);
+            damagePop(hitPoint.x, hitPoint.y - e.r - 4, dealt, stacks > 0);
+          }
           const l = Math.hypot(b.vx, b.vy) || 1;
-          e.kbx = (e.kbx || 0) + (b.vx / l) * b.kb * 45;
-          e.kby = (e.kby || 0) + (b.vy / l) * b.kb * 45;
+          if (e.type !== 'fortless') {
+            e.kbx = (e.kbx || 0) + (b.vx / l) * b.kb * 45;
+            e.kby = (e.kby || 0) + (b.vy / l) * b.kb * 45;
+          }
           burst(b.x, b.y, 6, C.bullet, 220, 0.22, 2.2);
           shake = Math.max(shake, 2);
           sfx.hit();
           if (b.burst > 0) explodeBullet(b, e);
+          const pierces = e.type !== 'train' && (b.pierceChance >= 1 || Math.random() < b.pierceChance);
+          if (pierces) {
+            b.pierceChance *= 0.5;
+            continue;
+          }
+          dead = true;
           if (e.type !== 'train' && (b.ricochetChance >= 1 || Math.random() < b.ricochetChance)) {
-            let nextEnemy = null, nextDistance = Infinity;
+            let nextEnemy = null, nextPoint = null, nextDistance = Infinity;
             for (const target of nearbyEnemies(b.x, b.y, 280)) {
               if (target.hp <= 0 || target === e || b.hit.has(target)) continue;
-              const d = Math.hypot(target.x - b.x, target.y - b.y);
-              if (d < nextDistance) { nextDistance = d; nextEnemy = target; }
+              const point = nearPt(target, b.x, b.y);
+              const d = Math.hypot(point.x - b.x, point.y - b.y);
+              if (d < nextDistance) { nextDistance = d; nextEnemy = target; nextPoint = point; }
             }
             if (nextEnemy) {
-              const angle = Math.atan2(nextEnemy.y - b.y, nextEnemy.x - b.x);
+              const angle = Math.atan2(nextPoint.y - b.y, nextPoint.x - b.x);
               const speed = Math.hypot(b.vx, b.vy);
               b.vx = Math.cos(angle) * speed; b.vy = Math.sin(angle) * speed;
               b.ricochetChance *= 0.5;
-              b.hit = new Set([e]);
-              ring(nextEnemy.x, nextEnemy.y, 46, 0.22, '#a0e7ff', 2);
+              dead = false;
+              ring(nextPoint.x, nextPoint.y, 46, 0.22, '#a0e7ff', 2);
               burst(b.x, b.y, 5, '#a0e7ff', 180, 0.25, 2);
             }
           }
-          if (e.type === 'train' || !(b.pierceChance >= 1 || Math.random() < b.pierceChance)) { dead = true; break; }
-          b.pierceChance *= 0.5;
+          break;
         }
       }
       if (dead) bullets.splice(i, 1);
@@ -1870,6 +2155,57 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.restore();
   }
 
+  function drawFortless(e, sc) {
+    const et = ET.fortless;
+    ctx.save();
+    ctx.shadowColor = bloomEnabled ? et.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 24 : 0;
+    drawPoly(e.x, e.y, e.r * sc, e.rot, FORTLESS_SIDES);
+    ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : et.color; ctx.stroke();
+    ctx.shadowBlur = 0;
+    drawPoly(e.x, e.y, e.r * 0.68 * sc, e.rot, FORTLESS_SIDES);
+    ctx.fillStyle = '#0a151d'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(129,212,223,.5)'; ctx.stroke();
+    for (let i = 0; i < e.plates.length; i++) {
+      const plate = e.plates[i], panel = fortlessPanelCenter(e, i);
+      ctx.save(); ctx.translate(panel.x, panel.y); ctx.rotate(panel.a - Math.PI / 2);
+      if (plate.hp > 0) {
+        ctx.fillStyle = plate.flash > 0 ? '#ffffff' : '#263c48';
+        ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -FORTLESS_PANEL_DEPTH * sc / 2, FORTLESS_PANEL_HALF * 2 * sc, FORTLESS_PANEL_DEPTH * sc);
+        ctx.lineWidth = 2; ctx.strokeStyle = plate.flash > 0 ? '#ffffff' : et.color;
+        ctx.strokeRect(-FORTLESS_PANEL_HALF * sc, -FORTLESS_PANEL_DEPTH * sc / 2, FORTLESS_PANEL_HALF * 2 * sc, FORTLESS_PANEL_DEPTH * sc);
+        ctx.fillStyle = '#081119';
+        ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -1.5 * sc, FORTLESS_PANEL_HALF * 2 * sc, 3 * sc);
+        ctx.fillStyle = et.color;
+        ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -1.5 * sc, FORTLESS_PANEL_HALF * 2 * sc * (plate.hp / plate.maxHp), 3 * sc);
+      } else {
+        ctx.fillStyle = 'rgba(4,8,14,.9)';
+        ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -FORTLESS_PANEL_DEPTH * sc / 2, FORTLESS_PANEL_HALF * 2 * sc, FORTLESS_PANEL_DEPTH * sc);
+        ctx.strokeStyle = '#f6c75c'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+        ctx.strokeRect(-FORTLESS_PANEL_HALF * sc, -FORTLESS_PANEL_DEPTH * sc / 2, FORTLESS_PANEL_HALF * 2 * sc, FORTLESS_PANEL_DEPTH * sc);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f6c75c'; ctx.fillRect(-5 * sc, -2 * sc, 10 * sc, 4 * sc);
+      }
+      ctx.restore();
+      if (plate.hp <= 0) continue;
+      for (let g = 0; g < 2; g++) {
+        const mount = fortlessMount(e, i, g === 0 ? -23 : 23, 5);
+        ctx.save(); ctx.translate(mount.x, mount.y); ctx.rotate(mount.a - Math.PI / 2);
+        ctx.fillStyle = '#527484'; ctx.fillRect(-7 * sc, -4 * sc, 14 * sc, 9 * sc);
+        ctx.beginPath(); ctx.arc(0, 4 * sc, 7 * sc, 0, Math.PI); ctx.fill();
+        ctx.fillStyle = '#b7e9ef'; ctx.fillRect(-2 * sc, 5 * sc, 4 * sc, 10 * sc);
+        ctx.restore();
+      }
+      const spawner = fortlessMount(e, i, 0, 5);
+      ctx.save(); ctx.translate(spawner.x, spawner.y); ctx.rotate(spawner.a - Math.PI / 2);
+      ctx.beginPath(); ctx.moveTo(-8 * sc, -3 * sc); ctx.lineTo(8 * sc, -3 * sc);
+      ctx.lineTo(12 * sc, 9 * sc); ctx.lineTo(-12 * sc, 9 * sc); ctx.closePath();
+      ctx.fillStyle = '#ad82ff'; ctx.fill(); ctx.strokeStyle = '#e2d0ff'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   function drawTrainZones() {
     ctx.save();
     for (const z of trainZones) {
@@ -1891,13 +2227,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.save();
       const et = ET[e.type];
       const ft = (e.type === 'pent' || e.type === 'epent') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : e.type === 'sq' && e.mode === 'wind' ? e.dashT : 9;
-      const ch = ft < 0.45 ? 1 - ft / 0.45 : 0;
+      const esqWarning = e.type === 'esq' && e.born > 0.4 && e.chasePhase === 'warning';
+      const esqChasing = e.type === 'esq' && e.chasePhase === 'chase';
+      const ch = esqWarning ? 1 - e.chaseT / ESQ_CHASE_WARN : esqChasing ? e.chaseT / ESQ_CHASE_DURATION : ft < 0.45 ? 1 - ft / 0.45 : 0;
       if (e.type === 'cross') {                         // 回復範囲の目安
         ctx.save(); ctx.globalAlpha = 0.22; ctx.strokeStyle = et.color; ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 7]); ctx.lineDashOffset = -time * 20;
         ctx.beginPath(); ctx.arc(e.x, e.y, CROSS_R * sc, 0, TAU); ctx.stroke(); ctx.restore();
       }
       if (e.type === 'train') { drawTrainSeg(e); ctx.restore(); continue; }
+      if (e.type === 'fortless') { drawFortless(e, sc); ctx.restore(); continue; }
       if (e.parts) {                                          // Trinity: 3つの三角形
         for (const q of e.parts) {
           ctx.shadowColor = bloomEnabled ? et.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + q.chg * 26 : 0;
@@ -1923,7 +2262,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.fill();
       ctx.lineWidth = (e.type === 'etri' || e.type === 'epent') ? 3.5 : e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : et.color;
       ctx.stroke();
-      if (ch > 0) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(e.x, e.y, 2 + ch * 6, 0, TAU); ctx.fill(); }
+      if (ch > 0) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(e.x, e.y, esqChasing ? 5 : 2 + ch * 6, 0, TAU); ctx.fill(); }
       ctx.restore();
     }
   }
@@ -1939,9 +2278,48 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         else { ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = '#ff66c4'; ctx.shadowBlur = 20; ctx.strokeStyle = '#ff66c4'; ctx.lineWidth = 20; ctx.globalAlpha = 0.35; ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.globalAlpha = 0.9; ctx.stroke(); }
         ctx.restore(); continue;
       }
-      if (e.type !== 'trinity' || !e.beam) continue;
+      if (e.type === 'fortless') {
+        ctx.save(); ctx.lineCap = 'round';
+        for (let i = 0; i < e.plates.length; i++) {
+          const plate = e.plates[i];
+          if (!plate.laserPhase) continue;
+          const face = fortlessFacePoint(e, i), ex = face.x + Math.cos(plate.laserAngle) * 1300, ey = face.y + Math.sin(plate.laserAngle) * 1300;
+          ctx.beginPath(); ctx.moveTo(face.x, face.y); ctx.lineTo(ex, ey);
+          if (plate.laserPhase === 1) {
+            ctx.globalAlpha = 0.35 + 0.4 * (Math.sin(time * 20) + 1) * 0.5;
+            ctx.strokeStyle = ET.fortless.color; ctx.lineWidth = 2.5;
+            ctx.setLineDash([12, 9]); ctx.lineDashOffset = -time * 70; ctx.stroke();
+          } else {
+            ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = ET.fortless.color; ctx.shadowBlur = 24;
+            ctx.setLineDash([]); ctx.strokeStyle = ET.fortless.color; ctx.globalAlpha = 0.38; ctx.lineWidth = 24; ctx.stroke();
+            ctx.globalAlpha = 0.88; ctx.lineWidth = 9; ctx.stroke();
+            ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.95; ctx.lineWidth = 3.5; ctx.stroke();
+          }
+        }
+        ctx.restore(); continue;
+      }
+      if (e.type !== 'trinity') continue;
       const col = ET.trinity.color;
       ctx.save();
+      for (const p of e.parts || []) {
+        if (!p.laserPhase) continue;
+        const ex = p.x + Math.cos(p.laserAngle) * 1300, ey = p.y + Math.sin(p.laserAngle) * 1300;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey);
+        ctx.lineCap = 'round';
+        if (p.laserPhase === 1) {
+          ctx.globalAlpha = (0.25 + 0.45 * p.chg) * (p.chg > 0.65 ? (Math.floor(p.chg * 40) % 2 ? 1 : 0.45) : 1);
+          ctx.strokeStyle = col; ctx.lineWidth = 1.5 + 3 * p.chg;
+          ctx.setLineDash([10, 10]); ctx.lineDashOffset = -time * 60; ctx.stroke();
+        } else {
+          const pulse = 0.85 + 0.15 * Math.sin(time * 40);
+          ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = col; ctx.shadowBlur = 24;
+          ctx.setLineDash([]);
+          ctx.strokeStyle = col; ctx.globalAlpha = 0.35 * pulse; ctx.lineWidth = 26; ctx.stroke();
+          ctx.globalAlpha = 0.85 * pulse; ctx.lineWidth = 11; ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.95 * pulse; ctx.lineWidth = 4; ctx.stroke();
+        }
+      }
+      if (!e.beam) { ctx.restore(); continue; }
       for (let i = 0; i < 3; i++) {
         const a = e.la + i * TAU / 3, ex = e.cx + Math.cos(a) * 1300, ey = e.cy + Math.sin(a) * 1300;
         ctx.beginPath(); ctx.moveTo(e.cx, e.cy); ctx.lineTo(ex, ey);
@@ -2015,30 +2393,51 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.38;
+    const trails = new Map();
     for (const b of bullets) {
-      ctx.strokeStyle = 'rgba(255,215,106,.45)'; ctx.lineWidth = b.r * 1.6; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(b.px - b.vx * 0.012, b.py - b.vy * 0.012); ctx.lineTo(b.x, b.y); ctx.stroke();
-      ctx.fillStyle = C.bullet; ctx.shadowColor = C.bullet; ctx.shadowBlur = 10;
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+      const width = b.r * 1.6;
+      let trail = trails.get(width);
+      if (!trail) trails.set(width, trail = new Path2D());
+      trail.moveTo(b.px - b.vx * 0.012, b.py - b.vy * 0.012);
+      trail.lineTo(b.x, b.y);
     }
+    ctx.strokeStyle = 'rgba(255,215,106,.45)'; ctx.lineCap = 'round';
+    for (const [width, trail] of trails) { ctx.lineWidth = width; ctx.stroke(trail); }
+    ctx.fillStyle = C.bullet; ctx.shadowColor = C.bullet; ctx.shadowBlur = 10;
+    ctx.beginPath();
+    for (const b of bullets) {
+      ctx.moveTo(b.x + b.r, b.y);
+      ctx.arc(b.x, b.y, b.r, 0, TAU);
+    }
+    ctx.fill();
     ctx.restore();
   }
 
   function drawEBullets() {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    const groups = new Map(), stars = [];
     for (const b of ebullets) {
+      if (b.remove) continue;
       const col = b.color || ET.pent.color;
+      if (b.star) { stars.push([b, col]); continue; }
+      let group = groups.get(col);
+      if (!group) groups.set(col, group = []);
+      group.push(b);
+    }
+    for (const [col, group] of groups) {
       ctx.shadowColor = bloomEnabled ? col : 'transparent'; ctx.shadowBlur = bloomEnabled ? 12 : 0;
-      ctx.fillStyle = col;
-      if (b.star) {
-        drawStar(b.x, b.y, b.r * 1.5, b.rot, 0.38); ctx.fill();
-        ctx.fillStyle = '#ffffff'; drawStar(b.x, b.y, b.r * 0.7, b.rot, 0.38); ctx.fill();
-        continue;
-      }
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 0.45, 0, TAU); ctx.fill();
+      ctx.fillStyle = col; ctx.beginPath();
+      for (const b of group) { ctx.moveTo(b.x + b.r, b.y); ctx.arc(b.x, b.y, b.r, 0, TAU); }
+      ctx.fill();
+      ctx.shadowBlur = 0; ctx.fillStyle = '#ffffff'; ctx.beginPath();
+      for (const b of group) { const r = b.r * 0.45; ctx.moveTo(b.x + r, b.y); ctx.arc(b.x, b.y, r, 0, TAU); }
+      ctx.fill();
+    }
+    for (const [b, col] of stars) {
+      ctx.shadowColor = bloomEnabled ? col : 'transparent'; ctx.shadowBlur = bloomEnabled ? 12 : 0;
+      ctx.fillStyle = col; drawStar(b.x, b.y, b.r * 1.5, b.rot, 0.38); ctx.fill();
+      ctx.fillStyle = '#ffffff'; drawStar(b.x, b.y, b.r * 0.7, b.rot, 0.38); ctx.fill();
     }
     ctx.restore();
   }
@@ -2187,6 +2586,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(bx, by, bw, 8);
       ctx.fillStyle = ET[boss.type].color; ctx.fillRect(bx, by, bw * ratio, 8);
       ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(bx + bw / 2 - 1, by - 2, 2, 12);
+      if (boss.type === 'fortless' && boss.plates) {
+        const gap = 2, sw = (bw - gap * (FORTLESS_SIDES - 1)) / FORTLESS_SIDES, sy = by + 12;
+        for (let i = 0; i < FORTLESS_SIDES; i++) {
+          const plate = boss.plates[i], sx = bx + i * (sw + gap);
+          ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(sx, sy, sw, 3);
+          if (plate.hp > 0) { ctx.fillStyle = ET.fortless.color; ctx.fillRect(sx, sy, sw * (plate.hp / plate.maxHp), 3); }
+          else { ctx.fillStyle = 'rgba(246,199,92,.7)'; ctx.fillRect(sx, sy, sw * (1 - plate.repairT / FORTLESS_PANEL_REPAIR), 3); }
+        }
+      }
     }
   }
 
@@ -2384,9 +2792,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (netRole !== 'host' || !d) return;
       const pl = remotePlayers.get(d.playerId);
       for (const e of enemies) if (e.id === d.enemyId) {
-        e.hp -= d.damage; e.flash = 0.09;
-        if (e.bx !== undefined) { const l = Math.hypot(d.vx, d.vy) || 1; e.bx += d.vx / l * d.kb; e.by += d.vy / l * d.kb; }
-        damagePop(e.x, e.y - e.r - 4, d.damage, false); break;
+        if (e.type === 'fortless') {
+          const hit = fortlessDamage(e, d.damage, d.x, d.y, 6);
+          if (hit) damagePop(hit.x, hit.y - 14, hit.damage, false);
+        } else {
+          e.hp -= d.damage; e.flash = 0.09;
+          if (e.bx !== undefined) { const l = Math.hypot(d.vx, d.vy) || 1; e.bx += d.vx / l * d.kb; e.by += d.vy / l * d.kb; }
+          const hitPoint = nearPt(e, d.x, d.y);
+          damagePop(hitPoint.x, hitPoint.y - e.r - 4, d.damage, false);
+        }
+        break;
       }
       if (pl) sfx.hit();
     });
@@ -2416,13 +2831,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const pSer = (p) => [r1(p.x), r1(p.y), r1(p.hp), p.maxHp, r2(p.inv), r2(p.dashT), r2(p.dashCd), p.speed];
   function serEnemy(e) {
     if (!e.id) e.id = ++uid;
-    const ft = (e.type === 'pent' || e.type === 'epent') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : 9;
-    const o = { i: e.id, ty: e.type, x: r1(e.x), y: r1(e.y), rt: r2(e.rot), r: e.r, hp: r1(e.hp), mh: Math.round(e.maxHp), b: r2(Math.min(e.born, 1)), f: e.flash > 0 ? 1 : 0, ft: r2(Math.min(ft, 1)) };
+    const ft = (e.type === 'pent' || e.type === 'epent') ? e.fireT : e.type === 'stardust' ? e.cd : e.type === 'cross' ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : e.type === 'esq' ? e.chaseT : 9;
+    const o = { i: e.id, ty: e.type, x: r1(e.x), y: r1(e.y), rt: r2(e.rot), r: e.r, hp: r1(e.hp), mh: Math.round(e.maxHp), b: r2(Math.min(e.born, 1)), f: e.flash > 0 ? 1 : 0, ft: r2(e.type === 'esq' ? ft : Math.min(ft, 1)) };
+    if (e.type === 'esq') o.cp = e.chasePhase;
     if (e.mode && e.mode !== 'drift') o.m = e.mode;
     if (e.type === 'train') { o.cid = e.cid; o.ci = e.ci; o.an = r2(e.ang); o.mt = e.maxTotal; }
+    if (e.plates) {
+      o.p2 = e.p2 ? 1 : 0;
+      o.fp = e.plates.map((p) => [r1(p.hp), p.maxHp, r2(p.repairT), r2(p.flash), p.laserPhase, r2(p.laserAngle)]);
+    }
     if (e.parts) {
       o.fo = e.form || '';
-      o.pa = e.parts.map((q) => [r1(q.x), r1(q.y), r2(q.rot), r2(q.chg)]);
+      o.pa = e.parts.map((q) => [r1(q.x), r1(q.y), r2(q.rot), r2(q.chg), q.laserPhase, r2(q.laserAngle)]);
       o.bm = e.beam; o.bp = r2(e.bp); o.la = r2(e.la); o.cx = r1(e.cx); o.cy = r1(e.cy);
     }
     return o;
@@ -2438,7 +2858,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }),
       en: enemies.map(serEnemy),
       bu: bullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), r1(b.r), b.owner || 1]; }),
-      eb: ebullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0, b.dmg || 10, r2(b.delay || 0)]; }),
+      eb: ebullets.filter((b) => !b.remove).map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0, b.dmg || 10, r2(b.delay || 0)]; }),
       sp: spawns.map((s) => [r1(s.x), r1(s.y), r2(s.t), r2(s.delay), s.type, s.edge === undefined ? -1 : s.edge]),
       me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r]),
       tz: trainZones.map((z) => [r1(z.x), r1(z.y), r2(z.life), z.r]),
@@ -2451,7 +2871,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function sendSnapshot() {
     if (!hosting()) { evq = []; return; }
     lastNetSend = performance.now();
-    netSocket.emit('snapshot', snapshotData());
+    netSocket.volatile.emit('snapshot', snapshotData());
   }
 
   /* ----- guest: receive / interpolate / render ----- */
@@ -2481,14 +2901,32 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const angLerp = (a, b, t) => a + angDiff(b, a) * t;
   function gEnemy(o, p, al) {
     const L = (k) => (p ? lerp(p[k], o[k], al) : o[k]);
-    const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft };
+    const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft, chaseT: p ? lerp(p.ft, o.ft, al) : o.ft, chasePhase: o.cp || 'warning' };
     e.bx = e.x; e.by = e.y;
     if (o.ty === 'train') { e.cid = o.cid; e.ci = o.ci; e.ang = p ? angLerp(p.an, o.an, al) : o.an; e.maxTotal = o.mt; }
+    if (o.fp) {
+      const previousPlates = p && p.fp || [];
+      e.p2 = !!o.p2;
+      e.plates = o.fp.map((q, i) => {
+        const pq = previousPlates[i];
+        const laserAngle = q[5] === undefined ? e.rot + Math.PI / FORTLESS_SIDES + i * TAU / FORTLESS_SIDES : q[5];
+        const previousAngle = pq && pq[5] !== undefined ? pq[5] : laserAngle;
+        return {
+          hp: q[0], maxHp: q[1], repairT: q[2], flash: q[3], laserPhase: q[4] || 0,
+          laserAngle: pq ? angLerp(previousAngle, laserAngle, al) : laserAngle
+        };
+      });
+    }
     if (o.pa) {
       e.form = o.fo || '';
       e.parts = o.pa.map((q, i) => {
         const pq = p && p.pa && p.pa[i];
-        return pq ? { x: lerp(pq[0], q[0], al), y: lerp(pq[1], q[1], al), rot: angLerp(pq[2], q[2], al), chg: q[3] } : { x: q[0], y: q[1], rot: q[2], chg: q[3] };
+        const laserAngle = q[5] === undefined ? q[2] : q[5], previousLaserAngle = pq && pq[5] !== undefined ? pq[5] : pq && pq[2];
+        return {
+          x: pq ? lerp(pq[0], q[0], al) : q[0], y: pq ? lerp(pq[1], q[1], al) : q[1],
+          rot: pq ? angLerp(pq[2], q[2], al) : q[2], chg: q[3],
+          laserPhase: q[4] || 0, laserAngle: pq ? angLerp(previousLaserAngle, laserAngle, al) : laserAngle
+        };
       });
       e.beam = o.bm; e.cx = L('cx'); e.cy = L('cy');
       e.la = p ? angLerp(p.la, o.la, al) : o.la;
@@ -2702,7 +3140,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         overT += dt;
       }
       updateFx(state === 'dying' ? dt * 0.5 : dt);
-      if (netRole === 'host' && (state === 'play' || state === 'upgrade' || state === 'clear') && performance.now() - lastNetSend >= SNAP_MS) sendSnapshot();
+      if (netRole === 'host' && (state === 'play' || state === 'upgrade' || state === 'clear') && performance.now() - lastNetSend >= snapshotInterval()) sendSnapshot();
     }
     bannerT = Math.max(0, bannerT - dt);
 
