@@ -222,6 +222,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const MATRIX_TURRET_HP = 90, MATRIX_TURRET_INTERVAL = 2.2, MATRIX_GATE_LIFETIME = 8;
   const MATRIX_LASER_STEP = 0.16, MATRIX_BOMB_INTERVAL = 0.82, MATRIX_BOMB_FALL = 0.72;
   const MATRIX_CHARGE_WARN = 0.52, MATRIX_CHARGE_DURATION = 0.58, MATRIX_CHARGE_SPEED = 620;
+  const MATRIX_REFRESH = 0.25, MATRIX_GRID_LINGER = 1, MATRIX_THREAD_LINGER = 0.25;
+  const MATRIX_MAIN_RADIUS = 3.5 * MATRIX_CELL, MATRIX_SUB_RADIUS = 2 * MATRIX_CELL;
+  const MATRIX_THROW_WARN = 1.05, MATRIX_THROW_SPEED = 1240, MATRIX_THROW_TIME = 0.55;
   const FIELD_SCALE_PER_PLAYER = 1 / 8, ENEMY_COUNT_PER_PLAYER = 0.3, PHASE_CAPACITY_PER_PLAYER = 5, BOSS_HP_PER_PLAYER = 0.7;
   const bossHp = () => Math.round((360 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 600) * (1 + BOSS_HP_PER_PLAYER * (runPlayerCount - 1)));
   const FORTLESS_SIDES = 8, FORTLESS_PANEL_DEPTH = 16, FORTLESS_PANEL_HALF = 34;
@@ -321,7 +324,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     return level > 0 ? 0.16 + 0.04 * level : 0;
   }
   function berserkerDamageBonus(pl, level = pl.S.berserk) {
-    return level > 0 && pl.hp > 0 ? pl.maxHp / pl.hp * (0.5 + level * 0.1) : 0;
+    return level > 0 && pl.hp > 0 ? (pl.maxHp - pl.hp) * (0.004 + level * 0.001) : 0;
+  }
+  function berserkerDamageRatio(level) {
+    return level > 0 ? 0.004 + level * 0.001 : 0;
   }
   function dashDamageRatio(level) {
     return level > 0 ? 2.5 + level * 0.5 : 0;
@@ -356,7 +362,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         valueLine('通常攻撃の追加ダメージ', formatPercent(speedDamageBonus(s.bspeed, BASE_BULLET_SPEED, s.speedDmg, false)), formatPercent(speedDamageBonus(s.bspeed, BASE_BULLET_SPEED, s.speedDmg + 1, false))),
         valueLine('ダッシュ攻撃の追加ダメージ', formatPercent(speedDamageBonus(pl.speed, PLAYER_BASE_SPEED, s.speedDmg, true)), formatPercent(speedDamageBonus(pl.speed, PLAYER_BASE_SPEED, s.speedDmg + 1, true)))
       ];
-      case 'berserk': return [valueLine('追加ダメージ', formatPercent(berserkerDamageBonus(pl)), formatPercent(berserkerDamageBonus(pl, s.berserk + 1)))];
+      case 'berserk': return [valueLine('体力1あたりの追加ダメージ', formatPercent(berserkerDamageRatio(s.berserk)), formatPercent(berserkerDamageRatio(s.berserk + 1)))];
       case 'lifesteal': return [valueLine('撃破時回復', lifeStealHeal(s.lifeSteal) + ' HP', lifeStealHeal(s.lifeSteal + 1) + ' HP')];
       case 'armorburst': return [valueLine('ダメージ軽減', s.armor ? Math.round(s.armor * 100) + '%' : 'OFF', Math.round((s.armor + 0.15) * 100) + '%'), valueLine('クールダウン', (s.armorCd || 2.5).toFixed(1) + '秒', '2.5秒')];
       case 'dashcool': return [valueLine('ダッシュ間隔', (s.dashCooldown || DASH_CD).toFixed(2) + '秒', Math.max(DASH_CD_MIN, (s.dashCooldown || DASH_CD) - DASH_CD_STEP).toFixed(2) + '秒')];
@@ -368,7 +374,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const guaranteed = Math.floor(v), chance = Math.round((v - guaranteed) * 100);
     return guaranteed ? guaranteed + '回確定' + (chance ? ' + ' + chance + '%' : '') : chance + '%';
   }
-  function formatPercent(v) { return Math.round(v * 100) + '%'; }
+  function formatPercent(v) { return Math.round(v * 1000) / 10 + '%'; }
   const RARITY = {
     common: { name: 'コモン', color: '#9ca3af', weight: 3 },
     rare: { name: 'レア', color: '#60a5fa', weight: 2 },
@@ -403,7 +409,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     { id: 'heal', name: '応急修復', rarity: 'rare', categories: ['none', 'tank'], desc: '体力を 200 回復', apply: (s, p) => { p.hp = Math.min(p.maxHp, p.hp + 200); } },
     { id: 'momentum', name: 'モメンタム', rarity: 'rare', categories: ['speed'], desc: '弾速・移動速度の基礎値からの上昇率×モメンタム効果を追加ダメージに加算（通常100%、ダッシュ200%、以降各+50%）', apply: (s) => { s.speedDmg += 1; } },
     { id: 'multi', name: 'マルチショット', rarity: 'epic', categories: ['shot'], desc: '同時発射数が 1 個増加。ただし弾ごとの攻撃力が減衰', apply: (s) => { s.shots = Math.floor(s.shots) + 1; } },
-    { id: 'berserk', name: 'バーサーカー', rarity: 'epic', categories: ['shot', 'tank'], desc: '失った体力に応じて与えるダメージが増加', apply: (s) => { s.berserk += 1; } },
+    { id: 'berserk', name: 'バーサーカー', rarity: 'epic', categories: ['shot', 'tank'], desc: '失った体力ポイントに比例して与えるダメージが増加', apply: (s) => { s.berserk += 1; } },
     { id: 'lifesteal', name: 'ライフスティール', rarity: 'epic', categories: ['none', 'tank'], desc: '敵を倒すとHPを 5 回復／レベルごとに回復量が 1 増加', apply: (s) => { s.lifeSteal += 1; } },
     { id: 'armorburst', name: '消弾装甲', rarity: 'epic', categories: ['tank'], desc: '受けるダメージを減少し、被弾時周囲の敵弾を消す。クールダウン 2.5秒', apply: (s) => { s.armor += 0.15; s.armorCd = 2.5; } },
     { id: 'dashcool', name: 'ダッシュCT短縮', rarity: 'rare', categories: ['speed'], desc: 'ダッシュ後のクールダウンが 0.1秒 短縮。最短0.3秒', apply: (s) => { s.dashCooldown = Math.max(DASH_CD_MIN, (s.dashCooldown || DASH_CD) - DASH_CD_STEP); } },
@@ -1056,7 +1062,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function applyEnemyDamage(enemy, amount, sourcePlayerId, hitX, hitY, hitRadius) {
     if (enemy.type === 'matrix') {
-      const turret = matrixFindTurret(enemy, hitX, hitY, hitRadius || 0);
+      const unit = matrixFindDamageUnit(enemy, hitX, hitY, hitRadius || 0);
+      if (unit) {
+        unit.hp -= amount; unit.flash = 0.12;
+        if (unit.hp <= 0) matrixDestroyUnit(enemy, unit);
+        return amount;
+      }
+      const turret = enemy.mxGridCells ? null : matrixFindTurret(enemy, hitX, hitY, hitRadius || 0);
       if (turret) {
         turret.hp -= amount; turret.flash = 0.12;
         if (turret.hp <= 0) {
@@ -1073,6 +1085,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       enemy.hp -= amount;
       enemy.flash = 0.09;
       if (enemy.type === 'matrix') {
+        if (enemy.mxGridCells) {
+          if (enemy.mxForm < 3 && enemy.hp <= 0) matrixEnterFormV2(enemy, enemy.mxForm + 1);
+          else if (enemy.mxForm === 3 && enemy.hp <= enemy.mxNextSplitHp && enemy.mxCoreRadius > MATRIX_CELL * .5) { matrixSpawnChild(enemy); enemy.mxNextSplitHp -= enemy.maxHp * .1; }
+          return amount;
+        }
         const form = enemy.mxForm;
         if (enemy.hp <= 0 && form < 3) matrixEnterForm(enemy, form + 1);
         else if (form === 3) matrixSplitOnDamage(enemy, hitX, hitY);
@@ -1827,6 +1844,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ) || null;
   }
   function initMatrix(e) {
+    initMatrixV2(e);
+    return;
     e.x = Math.round((e.x - MATRIX_MAIN_SIZE * MATRIX_CELL / 2) / MATRIX_CELL) * MATRIX_CELL + MATRIX_MAIN_SIZE * MATRIX_CELL / 2;
     e.y = Math.round((e.y - MATRIX_MAIN_SIZE * MATRIX_CELL / 2) / MATRIX_CELL) * MATRIX_CELL + MATRIX_MAIN_SIZE * MATRIX_CELL / 2;
     e.bx = e.x; e.by = e.y;
@@ -2089,6 +2108,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     e.mxNextSplitHp -= e.maxHp * 0.1;
   }
   function updateMatrix(e, dt) {
+    updateMatrixV2(e, dt);
+    return;
     if (state === 'dying' || e.born < 0.8) return;
     const margin = MATRIX_CELL * 4;
     matrixMoveUnit(e, dt, MATRIX_CHARGE_SPEED, e.mxForm === 3, margin);
@@ -2103,6 +2124,147 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     matrixUpdateLasers(e, dt);
     matrixUpdateGates(e, dt);
     if (e.mxForm === 2) matrixUpdateBombs(e, dt);
+  }
+  /* ---------- Matrix v2: virtual circles paint the actual hit grid ---------- */
+  function initMatrixV2(e) {
+    e.matrixCells = []; e.mxForm = 1; e.mxPaint = new Map(); e.mxGridCells = [];
+    e.mxRefreshT = 0; e.mxVx = (Math.random() < .5 ? -1 : 1) * 105; e.mxVy = (Math.random() < .5 ? -1 : 1) * 82;
+    e.mxTurnT = 2.8 + Math.random() * 2; e.mxSlowT = 0; e.mxThrowT = 2.2; e.mxMeteorT = 3.6;
+    e.mxSubs = []; e.mxChildren = []; e.mxLasers = []; e.mxGates = []; e.mxSpin = null;
+    matrixSetSubCount(e, 2); e.mxCoreRadius = MATRIX_MAIN_RADIUS;
+  }
+  function matrixSetSubCount(e, count) {
+    while (e.mxSubs.length < count) {
+      const a = Math.random() * TAU;
+      e.mxSubs.push({ x: e.x + Math.cos(a) * MATRIX_CELL * 3, y: e.y + Math.sin(a) * MATRIX_CELL * 3, vx: Math.cos(a) * 55, vy: Math.sin(a) * 55, r: MATRIX_SUB_RADIUS, mode: 'orbit', hp: 90, maxHp: 90, fireT: 1.5, gateT: .5, flash: 0 });
+    }
+  }
+  function matrixGridKey(x, y) { return x + ',' + y; }
+  function matrixPaintCircle(e, unit, radius, color, linger) {
+    const cx = Math.floor(unit.x / MATRIX_CELL), cy = Math.floor(unit.y / MATRIX_CELL), rg = Math.ceil(radius / MATRIX_CELL);
+    for (let y = cy - rg; y <= cy + rg; y++) for (let x = cx - rg; x <= cx + rg; x++) {
+      const p = matrixTilePosition(x, y);
+      if (Math.hypot(p.x - unit.x, p.y - unit.y) <= radius) e.mxPaint.set(matrixGridKey(x, y), { x: p.x, y: p.y, expire: time + linger, color });
+    }
+  }
+  function matrixPaintThread(e, a, b, ca, cb) {
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, steps = Math.ceil(d / (MATRIX_CELL * .7));
+    for (let i = 0; i <= steps; i++) {
+      const p = i / steps, x = a.x + dx * p, y = a.y + dy * p, width = 1.8 - Math.abs(p - .5) * 1.2;
+      const gx = Math.round(x / MATRIX_CELL), gy = Math.round(y / MATRIX_CELL), pos = matrixTilePosition(gx, gy);
+      e.mxPaint.set(matrixGridKey(gx, gy), { x: pos.x, y: pos.y, expire: time + MATRIX_THREAD_LINGER, color: p < .5 ? ca : cb, width });
+    }
+  }
+  function matrixRefreshGrid(e) {
+    for (const [key, cell] of e.mxPaint) if (cell.expire <= time) e.mxPaint.delete(key);
+    const coreColor = e.mxForm === 2 ? '#ff6878' : '#58e0d1';
+    matrixPaintCircle(e, e, e.mxCoreRadius, coreColor, e.mxForm === 3 ? MATRIX_REFRESH : MATRIX_GRID_LINGER);
+    if (e.mxForm < 3) for (const sub of e.mxSubs) {
+      const subColor = sub.mode === 'turret' ? '#fff29b' : sub.mode === 'gate' ? '#b78cff' : '#7ad7ff';
+      matrixPaintCircle(e, sub, sub.r, subColor, MATRIX_GRID_LINGER);
+      if (sub.mode === 'orbit' || sub.mode === 'return') matrixPaintThread(e, e, sub, coreColor, subColor);
+    }
+    for (const child of e.mxChildren) matrixPaintCircle(e, child, child.r, '#c075ff', MATRIX_REFRESH);
+    e.mxGridCells = [...e.mxPaint.values()];
+  }
+  function matrixGridHit(e, x, y, rad) {
+    return e.mxGridCells.some((cell) => Math.abs(cell.x - x) <= MATRIX_CELL / 2 + rad && Math.abs(cell.y - y) <= MATRIX_CELL / 2 + rad);
+  }
+  function matrixFindDamageUnit(e, x, y, radius) {
+    if (!Number.isFinite(x)) return null;
+    return [...e.mxSubs, ...e.mxChildren].find((u) => (u.mode === 'turret' || u.mode === 'gate' || u.child) && Math.hypot(u.x - x, u.y - y) <= u.r + radius) || null;
+  }
+  function matrixDestroyUnit(e, unit) {
+    if (unit.child) {
+      e.mxChildren.splice(e.mxChildren.indexOf(unit), 1);
+      const a0 = Math.random() * TAU;
+      for (let i = 0; i < 4; i++) { const a = a0 + i * TAU / 4; ebullets.push({ x: unit.x, y: unit.y, vx: Math.cos(a) * 220, vy: Math.sin(a) * 220, r: 6, life: 4, color: '#c075ff', dmg: 10 }); }
+    } else {
+      items.push({ x: unit.x - 12, y: unit.y, life: 12, max: 12, ph: Math.random() * TAU }, { x: unit.x + 12, y: unit.y, life: 12, max: 12, ph: Math.random() * TAU });
+      unit.mode = 'return'; unit.hp = unit.maxHp; unit.fireT = 1.2;
+    }
+    burst(unit.x, unit.y, 14, '#ffffff', 240, .35, 3); ring(unit.x, unit.y, 52, .3, '#fff29b', 3);
+  }
+  function matrixMoveCore(e, dt) {
+    e.mxTurnT -= dt;
+    if (e.mxTurnT <= 0) { e.mxTurnT = 2.5 + Math.random() * 2.5; e.mxSlowT = .45; const a = Math.random() * TAU, sp = 95 + Math.random() * 40; e.mxVx = Math.cos(a) * sp; e.mxVy = Math.sin(a) * sp; }
+    if (e.mxSlowT > 0) { e.mxSlowT -= dt; return; }
+    e.x += e.mxVx * dt; e.y += e.mxVy * dt;
+    const m = MATRIX_MAIN_RADIUS + MATRIX_CELL;
+    if (e.x < m || e.x > W - m) { e.x = Math.max(m, Math.min(W - m, e.x)); e.mxVx *= -1; }
+    if (e.y < m || e.y > H - m) { e.y = Math.max(m, Math.min(H - m, e.y)); e.mxVy *= -1; }
+  }
+  function matrixMoveSubs(e, dt) {
+    for (const sub of e.mxSubs) {
+      sub.flash = Math.max(0, sub.flash - dt);
+      if (sub.mode === 'throw-warn') continue;
+      if (sub.mode === 'throw') { sub.x += sub.vx * dt; sub.y += sub.vy * dt; sub.throwT -= dt; if (sub.throwT <= 0) { sub.mode = Math.random() < .5 ? 'turret' : 'gate'; sub.fireT = 1.6; sub.gateT = .5; } continue; }
+      if (sub.mode === 'turret') { sub.fireT -= dt; if (sub.fireT <= 0) { matrixFireSub(e, sub); sub.fireT = 3.4 + Math.random() * .5; } continue; }
+      if (sub.mode === 'gate') { sub.gateT -= dt; if (sub.gateT <= 0) { matrixSummon(e, { x: Math.round(sub.x / MATRIX_CELL), y: Math.round(sub.y / MATRIX_CELL) }); sub.gateT = 1.55 + Math.random() * .45; } continue; }
+      const dx = e.x - sub.x, dy = e.y - sub.y, d = Math.hypot(dx, dy) || 1;
+      if (sub.mode === 'return') { sub.vx += dx / d * 280 * dt; sub.vy += dy / d * 280 * dt; if (d < MATRIX_CELL * 3) sub.mode = 'orbit'; }
+      else if (d > MATRIX_CELL * 5) { sub.vx += dx / d * 80 * dt; sub.vy += dy / d * 80 * dt; }
+      else { sub.vx += (Math.random() - .5) * 40 * dt; sub.vy += (Math.random() - .5) * 40 * dt; }
+      const k = Math.exp(-1.8 * dt); sub.vx *= k; sub.vy *= k; sub.x += sub.vx * dt; sub.y += sub.vy * dt;
+    }
+  }
+  function matrixFireSub(e, sub) {
+    const target = getTargetPlayer(sub.x, sub.y), a = Math.atan2(target.y - sub.y, target.x - sub.x);
+    for (let i = -1; i <= 1; i++) { const q = a + i * .25; ebullets.push({ x: sub.x, y: sub.y, vx: Math.cos(q) * 230, vy: Math.sin(q) * 230, r: 6, life: 6, color: '#fff29b', dmg: 10, bounce: e.mxForm >= 2 ? 1 : 0, star: e.mxForm >= 2 }); }
+    sfx.eshoot();
+  }
+  function matrixStartThrow(e) {
+    const available = e.mxSubs.filter((s) => s.mode === 'orbit'); if (!available.length) return;
+    const sub = available[Math.floor(Math.random() * available.length)], target = getTargetPlayer(e.x, e.y), a = Math.atan2(target.y - sub.y, target.x - sub.x);
+    sub.mode = 'throw-warn'; sub.throwAngle = a; sub.throwT = MATRIX_THROW_WARN; sub.vx = Math.cos(a) * MATRIX_THROW_SPEED; sub.vy = Math.sin(a) * MATRIX_THROW_SPEED;
+  }
+  function matrixUpdateThrows(e, dt) {
+    for (const sub of e.mxSubs) if (sub.mode === 'throw-warn') { sub.throwT -= dt; if (sub.throwT <= 0) { sub.mode = 'throw'; sub.throwT = MATRIX_THROW_TIME; } }
+  }
+  function matrixStartMeteors(e) {
+    const count = e.p2 ? 4 : 2;
+    for (let i = 0; i < count; i++) meteors.push({ x: MATRIX_CELL + Math.random() * (W - MATRIX_CELL * 2), y: MATRIX_CELL + Math.random() * (H - MATRIX_CELL * 2), t: -i * .16, warn: .9, fall: .3, r: 54, fell: false, color: '#ff465e', matrix: true, owner: e });
+  }
+  function matrixUpdateLasersV2(e, dt) {
+    for (let i = e.mxLasers.length - 1; i >= 0; i--) {
+      const laser = e.mxLasers[i]; for (const cell of laser.cells) cell.life -= dt; laser.cells = laser.cells.filter((cell) => cell.life > 0); laser.stepT -= dt;
+      if (laser.stepT <= 0 && laser.step <= laser.maxStep) { const offsets = laser.step ? [[laser.step,0],[-laser.step,0],[0,laser.step],[0,-laser.step]] : [[0,0]]; for (const o of offsets) { const x = laser.x + o[0], y = laser.y + o[1]; laser.cells.push({ x, y, life: .48 }); matrixDamageTile(x, y, 12); } laser.step++; laser.stepT = Math.max(.053, MATRIX_LASER_STEP * (1 - laser.step / Math.max(1, laser.maxStep) * 2 / 3)); }
+      else if (laser.step > laser.maxStep && !laser.cells.length) e.mxLasers.splice(i, 1);
+    }
+  }
+  function matrixUpdateSpin(e, dt) {
+    const spin = e.mxSpin; if (!spin) return false; spin.t += dt;
+    const n = e.mxSubs.length;
+    if (spin.phase === 'gather') { for (let i = 0; i < n; i++) { const s = e.mxSubs[i], a = i * TAU / n; s.x += (e.x + Math.cos(a) * MATRIX_CELL * 3 - s.x) * Math.min(1, dt * 5); s.y += (e.y + Math.sin(a) * MATRIX_CELL * 3 - s.y) * Math.min(1, dt * 5); } if (spin.t >= 1) { spin.phase = 'warn'; spin.t = 0; spin.angle = Math.atan2(getTargetPlayer(e.x,e.y).y-e.y,getTargetPlayer(e.x,e.y).x-e.x); } }
+    else if (spin.phase === 'warn') { if (spin.t >= 1) { spin.phase = 'rotate'; spin.t = 0; e.mxVx = Math.cos(spin.angle) * 620; e.mxVy = Math.sin(spin.angle) * 620; } }
+    else { e.x += e.mxVx * dt; e.y += e.mxVy * dt; for (let i = 0; i < n; i++) { const a = spin.angle + i * TAU / n + spin.t * 3.4, r = MATRIX_CELL * 8; e.mxSubs[i].x = e.x + Math.cos(a) * r; e.mxSubs[i].y = e.y + Math.sin(a) * r; } if (spin.t >= 5) { e.mxSpin = null; e.mxThrowT = .5; } }
+    return true;
+  }
+  function matrixSpawnChild(e) {
+    const a = Math.random() * TAU, r = MATRIX_CELL * .5;
+    e.mxChildren.push({ x: e.x, y: e.y, r, hp: 65, maxHp: 65, child: true, vx: Math.cos(a) * 340, vy: Math.sin(a) * 340, chargeT: 1.5 + Math.random(), charge: 0 });
+    e.mxCoreRadius = Math.max(MATRIX_CELL * .5, e.mxCoreRadius - MATRIX_CELL * (.2 + (runPlayerCount - 4) * .05));
+    if (e.mxCoreRadius <= MATRIX_CELL * .5) e.hp = 0;
+  }
+  function matrixUpdateForm3(e, dt) {
+    const t = getTargetPlayer(e.x, e.y), dx = t.x - e.x, dy = t.y - e.y, d = Math.hypot(dx,dy)||1; e.x += dx/d * 54 * dt; e.y += dy/d * 54 * dt;
+    for (const child of e.mxChildren) { child.chargeT -= dt; if (child.chargeT <= 0) { child.charge = .42; child.chargeT = 2.2 + Math.random(); child.a = Math.atan2(t.y-child.y,t.x-child.x); } if (child.charge > 0) { child.charge -= dt; child.vx = Math.cos(child.a)*460; child.vy = Math.sin(child.a)*460; } else { child.vx += (Math.random()-.5)*50*dt; child.vy += (Math.random()-.5)*50*dt; } child.x += child.vx*dt; child.y += child.vy*dt; child.vx *= Math.exp(-1.2*dt); child.vy *= Math.exp(-1.2*dt); }
+  }
+  function matrixEnterFormV2(e, form) {
+    e.mxForm = form; e.hp = e.maxHp; e.mxSpin = null;
+    if (form === 2) { matrixSetSubCount(e, e.p2 ? 4 : 3); e.mxSpin = { phase: 'gather', t: 0 }; e.mxThrowT = .6; }
+    if (form === 3) { e.mxSubs.length = 0; e.mxPaint.clear(); e.mxChildren = []; e.mxCoreRadius = MATRIX_MAIN_RADIUS; e.mxNextSplitHp = e.maxHp - e.maxHp * .1; }
+    floatText(e.x, e.y - 100, 'FORM ' + form, ET.matrix.color); ring(e.x,e.y,190,.65,ET.matrix.color,4); sfx.boss();
+  }
+  function updateMatrixV2(e, dt) {
+    if (state === 'dying' || e.born < .8) return;
+    if (!e.p2 && e.hp <= e.maxHp * .5) {
+      e.p2 = true; floatText(e.x, e.y - 86, 'ENRAGED', '#ff6b73'); ring(e.x, e.y, 150, .5, '#ff6b73', 3);
+      if (e.mxForm === 2) matrixSetSubCount(e, 4);
+    }
+    if (e.mxForm === 3) matrixUpdateForm3(e, dt);
+    else if (!matrixUpdateSpin(e, dt)) { matrixMoveCore(e, dt); matrixMoveSubs(e, dt); matrixUpdateThrows(e, dt); e.mxThrowT -= dt; if (e.mxThrowT <= 0) { matrixStartThrow(e); e.mxThrowT = (e.mxForm === 2 ? 1.5 : 3.4) + Math.random() * 1.2; } if (e.mxForm === 1) { e.mxMeteorT -= dt; if (e.mxMeteorT <= 0) { matrixStartMeteors(e); e.mxMeteorT = 5.4 + Math.random()*1.2; } } }
+    matrixUpdateLasersV2(e, dt); e.mxRefreshT -= dt; if (e.mxRefreshT <= 0) { matrixRefreshGrid(e); e.mxRefreshT = MATRIX_REFRESH; }
   }
   /* ---------- 敵同士の反発 ---------- */
   function separate(dt) {
@@ -2364,7 +2526,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   // 複数パーツを持つ敵(Trinity)用の当たり判定ヘルパー
   function bodyHit(e, x, y, rad) {
     if (e.type === 'fortless') return fortlessBodyHit(e, x, y, rad);
-    if (e.matrixCells) {
+    if (e.type === 'matrix' && e.mxGridCells) return matrixGridHit(e, x, y, rad);
+    if (e.matrixCells && !e.mxGridCells) {
       if (matrixFindTurret(e, x, y, rad)) return true;
       if (e.matrixCells.some((cell) => {
         const pos = matrixCellCenter(e, cell);
@@ -2390,6 +2553,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     return null;
   }
   function nearPt(e, x, y, radius) {
+    if (e.type === 'matrix' && e.mxGridCells) {
+      const unit = matrixFindDamageUnit(e, x, y, radius || 0);
+      if (unit) return unit;
+      let best = { x: e.x, y: e.y }, distance = Infinity;
+      for (const cell of e.mxGridCells) {
+        const d = Math.hypot(cell.x - x, cell.y - y);
+        if (d < distance) { distance = d; best = cell; }
+      }
+      return best;
+    }
     if (e.matrixCells) {
       if (e.mxLastTurretHit && Math.hypot(e.mxLastTurretHit.x - x, e.mxLastTurretHit.y - y) <= MATRIX_CELL + (radius || 0)) {
         const hit = e.mxLastTurretHit; e.mxLastTurretHit = null; return hit;
@@ -2471,13 +2644,20 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (m.t < m.warn + m.fall) continue;
       meteors.splice(i, 1);
       const color = m.color || BOSS_COL;
+      if (m.matrix && m.owner && m.owner.hp > 0) {
+        const tx = Math.max(0, Math.min(Math.floor(W / MATRIX_CELL) - 1, Math.floor(m.x / MATRIX_CELL)));
+        const ty = Math.max(0, Math.min(Math.floor(H / MATRIX_CELL) - 1, Math.floor(m.y / MATRIX_CELL)));
+        matrixStartLaser(m.owner, tx, ty);
+        // The impact itself is grid based: the centre tile is hit first and the laser expands from it.
+        matrixDamageTile(tx, ty, 15);
+      }
       burst(m.x, m.y, 16, color, 300, 0.5, 3.2);
       burst(m.x, m.y, 6, '#ffffff', 200, 0.3, 2.2);
       ring(m.x, m.y, m.r + 14, 0.35, color, 3);
       shake = Math.max(shake, 6); sfx.impact();
       for (const pl of partyPlayers()) {
         const pos = playerPosition(pl);
-        if (pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && Math.hypot(m.x - pos.x, m.y - pos.y) < m.r + pl.r * 0.4) {
+        if (!m.matrix && pl.hp > 0 && pl.inv <= 0 && (pl !== P || state !== 'dying') && Math.hypot(m.x - pos.x, m.y - pos.y) < m.r + pl.r * 0.4) {
           if (pl === P) hurtPlayer(15, m.x, m.y); else hurtRemotePlayer(pl, 15, m.x, m.y);
         }
       }
@@ -2516,7 +2696,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     };
     for (const e of enemies) {
       if (e.hp <= 0) continue;
-      if (e.matrixCells) for (const cell of e.matrixCells) { const pos = matrixCellCenter(e, cell); addEnemy(e, pos.x, pos.y); }
+      if (e.mxGridCells) for (const cell of e.mxGridCells) addEnemy(e, cell.x, cell.y);
+      else if (e.matrixCells) for (const cell of e.matrixCells) { const pos = matrixCellCenter(e, cell); addEnemy(e, pos.x, pos.y); }
       else if (e.parts) for (const part of e.parts) addEnemy(e, part.x, part.y);
       else if (e.plates) { addEnemy(e, e.x, e.y); for (let i = 0; i < e.plates.length; i++) { const p = fortlessPanelCenter(e, i); addEnemy(e, p.x, p.y); } }
       else addEnemy(e, e.x, e.y);
@@ -3297,7 +3478,33 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     ctx.restore();
   }
+  function drawMatrixV2(e, sc) {
+    const outline = e.flash > 0 ? '#ffffff' : ET.matrix.color;
+    ctx.save(); ctx.lineWidth = 1.5 * sc; ctx.shadowBlur = bloomEnabled ? 12 : 0;
+    for (const cell of e.mxGridCells) {
+      ctx.fillStyle = cell.color || ET.matrix.color; ctx.globalAlpha = .2 + (cell.width || 1) * .16;
+      ctx.shadowColor = cell.color || ET.matrix.color;
+      ctx.fillRect(cell.x - MATRIX_CELL / 2 + sc, cell.y - MATRIX_CELL / 2 + sc, MATRIX_CELL - 2 * sc, MATRIX_CELL - 2 * sc);
+      ctx.globalAlpha = .78; ctx.strokeStyle = cell.color || outline;
+      ctx.strokeRect(cell.x - MATRIX_CELL / 2 + 2 * sc, cell.y - MATRIX_CELL / 2 + 2 * sc, MATRIX_CELL - 4 * sc, MATRIX_CELL - 4 * sc);
+    }
+    ctx.restore();
+    for (const sub of e.mxSubs) {
+      if (sub.mode === 'throw-warn') {
+        const ex = sub.x + Math.cos(sub.throwAngle) * 150, ey = sub.y + Math.sin(sub.throwAngle) * 150;
+        ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.globalAlpha = .8; ctx.beginPath(); ctx.moveTo(sub.x,sub.y); ctx.lineTo(ex,ey); ctx.stroke(); ctx.fillStyle='#ffffff'; ctx.translate(ex,ey); ctx.rotate(sub.throwAngle); ctx.beginPath(); ctx.moveTo(14,0);ctx.lineTo(-8,-7);ctx.lineTo(-8,7);ctx.closePath();ctx.fill();ctx.restore();
+      }
+      if (sub.mode === 'turret' || sub.mode === 'gate') {
+        ctx.save(); ctx.translate(sub.x,sub.y); ctx.rotate(time*.7); ctx.fillStyle=sub.mode==='turret'?'#75662d':'#40235d'; ctx.strokeStyle=sub.mode==='turret'?'#fff29b':'#d9b7ff'; ctx.lineWidth=2; ctx.fillRect(-14*sc,-14*sc,28*sc,28*sc);ctx.strokeRect(-14*sc,-14*sc,28*sc,28*sc);ctx.restore();
+        ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillRect(sub.x-16*sc,sub.y+18*sc,32*sc,3*sc);ctx.fillStyle=sub.mode==='turret'?'#fff29b':'#d9b7ff';ctx.fillRect(sub.x-16*sc,sub.y+18*sc,32*sc*(sub.hp/sub.maxHp),3*sc);
+      }
+    }
+    for (const child of e.mxChildren) { ctx.save();ctx.fillStyle='#c075ff';ctx.strokeStyle='#f1dcff';ctx.shadowColor='#c075ff';ctx.shadowBlur=bloomEnabled?15:0;ctx.beginPath();ctx.arc(child.x,child.y,child.r*.72,0,TAU);ctx.fill();ctx.stroke();ctx.restore(); }
+    for (const laser of e.mxLasers) for (const cell of laser.cells) { const pos=matrixTilePosition(cell.x,cell.y), a=Math.min(1,cell.life/.48);ctx.save();ctx.globalAlpha=a;ctx.fillStyle='#ff465e';ctx.shadowColor='#ff344f';ctx.shadowBlur=18;ctx.fillRect(pos.x-MATRIX_CELL/2,pos.y-MATRIX_CELL/2,MATRIX_CELL,MATRIX_CELL);ctx.strokeStyle='#fff';ctx.strokeRect(pos.x-MATRIX_CELL/2+2,pos.y-MATRIX_CELL/2+2,MATRIX_CELL-4,MATRIX_CELL-4);ctx.restore(); }
+    if (e.mxSpin && e.mxSpin.phase === 'warn') { const a=e.mxSpin.angle;ctx.save();ctx.strokeStyle='#ffffff';ctx.globalAlpha=.75;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(e.x+Math.cos(a)*170,e.y+Math.sin(a)*170);ctx.stroke();ctx.restore(); }
+  }
   function drawMatrix(e, sc) {
+    if (e.mxGridCells) { drawMatrixV2(e, sc); return; }
     const fill = e.mxForm === 3 ? 'rgba(192,117,255,.48)' : e.mxForm === 2 ? 'rgba(255,105,127,.42)' : 'rgba(88,224,209,.36)';
     const outline = e.flash > 0 ? '#ffffff' : ET.matrix.color;
     const sourceKey = e.mxLaunch && e.mxLaunch.phase === 1 ? matrixShapeKey(e.mxLaunch.sourceCell) : null;
@@ -4088,7 +4295,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       o.p2 = e.p2 ? 1 : 0;
       o.fp = e.plates.map((p) => [r1(p.hp), p.maxHp, r2(p.repairT), r2(p.flash), p.laserPhase, r2(p.laserAngle), p.type, r2(p.laserT)]);
     }
-    if (e.matrixCells) {
+    if (e.mxGridCells) {
+      o.mx2 = { f: e.mxForm, cr: r1(e.mxCoreRadius), p2: e.p2 ? 1 : 0,
+        c: e.mxGridCells.map((cell) => [r1(cell.x), r1(cell.y), cell.color || '', r1(cell.width || 1)]),
+        s: e.mxSubs.map((sub) => [r1(sub.x), r1(sub.y), r1(sub.r), sub.mode, r1(sub.hp), sub.maxHp, r2(sub.throwAngle || 0)]),
+        d: e.mxChildren.map((child) => [r1(child.x), r1(child.y), r1(child.r), r1(child.hp), child.maxHp]),
+        l: e.mxLasers.map((laser) => [laser.x, laser.y, laser.step, laser.maxStep, r2(laser.stepT), laser.cells.map((cell) => [cell.x, cell.y, r2(cell.life)])]) };
+    } else if (e.matrixCells) {
       o.mx = {
         c: e.matrixCells.map((cell) => [cell.x, cell.y]), a: e.mxAttack, s: e.mxPhase, t: r2(e.mxT), f: e.mxForm,
         u: e.mxTurrets.map((turret) => [r1(turret.x), r1(turret.y), r1(turret.hp), turret.maxHp, r2(turret.fireT), r2(turret.flash || 0)]),
@@ -4212,6 +4425,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         mxChargePhase: part[3], mxChargeAngle: part[4]
       }));
       e.mxChargePhase = o.mx.cp || 0; e.mxChargeT = o.mx.ct || 0; e.mxChargeAngle = o.mx.ca || 0;
+    }
+    if (o.mx2) {
+      e.mxForm = o.mx2.f || 1; e.mxCoreRadius = o.mx2.cr || MATRIX_MAIN_RADIUS; e.p2 = !!o.mx2.p2;
+      e.mxGridCells = (o.mx2.c || []).map((cell) => ({ x: cell[0], y: cell[1], color: cell[2], width: cell[3] }));
+      e.mxSubs = (o.mx2.s || []).map((sub) => ({ x: sub[0], y: sub[1], r: sub[2], mode: sub[3], hp: sub[4], maxHp: sub[5], throwAngle: sub[6] }));
+      e.mxChildren = (o.mx2.d || []).map((child) => ({ x: child[0], y: child[1], r: child[2], hp: child[3], maxHp: child[4], child: true }));
+      e.mxLasers = (o.mx2.l || []).map((laser) => ({ x: laser[0], y: laser[1], step: laser[2], maxStep: laser[3], stepT: laser[4], cells: (laser[5] || []).map((cell) => ({ x: cell[0], y: cell[1], life: cell[2] })) }));
+      e.mxPaint = new Map();
     }
     if (o.pa) {
       e.form = o.fo || '';
