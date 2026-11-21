@@ -222,7 +222,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const MATRIX_TURRET_HP = 90, MATRIX_TURRET_INTERVAL = 2.2, MATRIX_GATE_LIFETIME = 8;
   const MATRIX_LASER_STEP = 0.16, MATRIX_BOMB_INTERVAL = 0.82, MATRIX_BOMB_FALL = 0.72;
   const MATRIX_CHARGE_WARN = 0.52, MATRIX_CHARGE_DURATION = 0.58, MATRIX_CHARGE_SPEED = 620;
-  const MATRIX_REFRESH = 0.25, MATRIX_GRID_LINGER = 1, MATRIX_THREAD_LINGER = 0.25;
+  // Faster refresh keeps the painted hit-grid responsive while preserving the stepped look.
+  const MATRIX_REFRESH = 0.1, MATRIX_GRID_LINGER = 1, MATRIX_THREAD_LINGER = 0.1;
   const MATRIX_MAIN_RADIUS = 3.5 * MATRIX_CELL, MATRIX_SUB_RADIUS = 2 * MATRIX_CELL;
   const MATRIX_THROW_WARN = 1.05, MATRIX_THROW_SPEED = 1240, MATRIX_THROW_TIME = 0.55;
   const FIELD_SCALE_PER_PLAYER = 1 / 8, ENEMY_COUNT_PER_PLAYER = 0.3, PHASE_CAPACITY_PER_PLAYER = 5, BOSS_HP_PER_PLAYER = 0.7;
@@ -3499,7 +3500,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         ctx.fillStyle='rgba(255,255,255,.18)';ctx.fillRect(sub.x-16*sc,sub.y+18*sc,32*sc,3*sc);ctx.fillStyle=sub.mode==='turret'?'#fff29b':'#d9b7ff';ctx.fillRect(sub.x-16*sc,sub.y+18*sc,32*sc*(sub.hp/sub.maxHp),3*sc);
       }
     }
-    for (const child of e.mxChildren) { ctx.save();ctx.fillStyle='#c075ff';ctx.strokeStyle='#f1dcff';ctx.shadowColor='#c075ff';ctx.shadowBlur=bloomEnabled?15:0;ctx.beginPath();ctx.arc(child.x,child.y,child.r*.72,0,TAU);ctx.fill();ctx.stroke();ctx.restore(); }
     for (const laser of e.mxLasers) for (const cell of laser.cells) { const pos=matrixTilePosition(cell.x,cell.y), a=Math.min(1,cell.life/.48);ctx.save();ctx.globalAlpha=a;ctx.fillStyle='#ff465e';ctx.shadowColor='#ff344f';ctx.shadowBlur=18;ctx.fillRect(pos.x-MATRIX_CELL/2,pos.y-MATRIX_CELL/2,MATRIX_CELL,MATRIX_CELL);ctx.strokeStyle='#fff';ctx.strokeRect(pos.x-MATRIX_CELL/2+2,pos.y-MATRIX_CELL/2+2,MATRIX_CELL-4,MATRIX_CELL-4);ctx.restore(); }
     if (e.mxSpin && e.mxSpin.phase === 'warn') { const a=e.mxSpin.angle;ctx.save();ctx.strokeStyle='#ffffff';ctx.globalAlpha=.75;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(e.x+Math.cos(a)*170,e.y+Math.sin(a)*170);ctx.stroke();ctx.restore(); }
   }
