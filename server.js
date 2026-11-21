@@ -139,6 +139,11 @@ function validateEnemyBulletHit(d) {
   return isPlainObject(d) && Number.isSafeInteger(d.bulletId) &&
     finite(d.fromX, -10000, 10000) && finite(d.fromY, -10000, 10000);
 }
+function validateEnemyContact(d) {
+  return isPlainObject(d) && Number.isSafeInteger(d.enemyId) &&
+    finite(d.x, -10000, 10000) && finite(d.y, -10000, 10000) &&
+    typeof d.dash === 'boolean';
+}
 
 io.on('connection', socket => {
   socket.data.roomCode = null;
@@ -212,7 +217,7 @@ io.on('connection', socket => {
   socket.on('snapshot', payload => {
     if (!hasRoomMembership(socket) || !socket.data.isHost || !isPlainObject(payload) ||
         !allowRate(socket, 'snapshot', 45)) return;
-    socket.to(socket.data.roomCode).emit('snapshot', payload);
+    socket.to(socket.data.roomCode).volatile.emit('snapshot', payload);
   });
 
   // Guest -> host: input, upgrade choice and locally computed hit reports.
@@ -226,6 +231,12 @@ io.on('connection', socket => {
         !allowRate(socket, 'upgrade-pick', 5)) return;
     sendGuestEventToHost(socket, 'upgrade-pick', { index: payload.index });
   });
+  socket.on('job-pick', payload => {
+    const jobs = ['gunner', 'trick', 'assassin', 'guardian', 'paladin'];
+    if (!hasRoomMembership(socket) || socket.data.isHost || !isPlainObject(payload) ||
+        !jobs.includes(payload.jobId) || !allowRate(socket, 'job-pick', 3)) return;
+    sendGuestEventToHost(socket, 'job-pick', { jobId: payload.jobId });
+  });
   socket.on('bullet-hit', payload => {
     if (!hasRoomMembership(socket) || socket.data.isHost || !validateBulletHit(payload) || !allowRate(socket, 'bullet-hit', 180)) return;
     sendGuestEventToHost(socket, 'bullet-hit', payload);
@@ -233,6 +244,10 @@ io.on('connection', socket => {
   socket.on('enemy-bullet-hit', payload => {
     if (!hasRoomMembership(socket) || socket.data.isHost || !validateEnemyBulletHit(payload) || !allowRate(socket, 'enemy-bullet-hit', 40)) return;
     sendGuestEventToHost(socket, 'enemy-bullet-hit', payload);
+  });
+  socket.on('enemy-contact', payload => {
+    if (!hasRoomMembership(socket) || socket.data.isHost || !validateEnemyContact(payload) || !allowRate(socket, 'enemy-contact', 80)) return;
+    sendGuestEventToHost(socket, 'enemy-contact', payload);
   });
   // Kept for compatibility with client versions that may send player-state.
   socket.on('player-state', payload => {
