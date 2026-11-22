@@ -48,6 +48,7 @@ app.use(express.static(PUBLIC_DIR, { extensions: ['html'], index: 'index.html' }
 
 // room code -> host socket id. Socket.IO itself maintains room membership.
 const roomHosts = new Map();
+const roomGames = new Map();
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -71,7 +72,7 @@ function getRoomPlayers(code) {
   return [...members]
     .map(socketId => io.sockets.sockets.get(socketId))
     .filter(Boolean)
-    .map(s => ({ playerId: s.data.playerId, isHost: s.data.isHost === true, name: s.data.playerName || `P${s.data.playerId}` }))
+    .map(s => ({ playerId: s.data.playerId, isHost: s.data.isHost === true, name: s.data.playerName || `P${s.data.playerId}`, color: s.data.playerColor || '', icon: s.data.playerIcon || '' }))
     .filter(p => Number.isInteger(p.playerId))
     .sort((a, b) => a.playerId - b.playerId);
 }
@@ -133,10 +134,11 @@ function validateBulletHit(d) {
     Number.isSafeInteger(d.enemyId) && finite(d.damage, 0.001, 1000) &&
     finite(d.kb, 0, 100) && finite(d.vx, -10000, 10000) &&
     finite(d.vy, -10000, 10000) && finite(d.x, -10000, 10000) &&
-    finite(d.y, -10000, 10000);
+    finite(d.y, -10000, 10000) && (d.r === undefined || finite(d.r, 0, 100));
 }
 function validateEnemyBulletHit(d) {
   return isPlainObject(d) && Number.isSafeInteger(d.bulletId) &&
+    finite(d.x, -10000, 10000) && finite(d.y, -10000, 10000) &&
     finite(d.fromX, -10000, 10000) && finite(d.fromY, -10000, 10000);
 }
 function validateEnemyContact(d) {
@@ -150,11 +152,24 @@ io.on('connection', socket => {
   socket.data.playerId = null;
   socket.data.isHost = false;
   socket.data.playerName = '';
+  socket.data.playerIcon = '';
 
   socket.on('set-name', payload => {
     if (!hasRoomMembership(socket) || !isPlainObject(payload)) return;
     const name = typeof payload.name === 'string' ? payload.name.trim().slice(0, 16) : '';
     socket.data.playerName = name || `P${socket.data.playerId}`;
+    publishRoster(socket.data.roomCode);
+  });
+  socket.on('set-color', payload => {
+    if (!hasRoomMembership(socket) || !isPlainObject(payload) || typeof payload.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(payload.color)) return;
+    socket.data.playerColor = payload.color;
+    publishRoster(socket.data.roomCode);
+  });
+  socket.on('set-icon', payload => {
+    if (!hasRoomMembership(socket) || !isPlainObject(payload) || typeof payload.icon !== 'string') return;
+    const icon = payload.icon === '' ? '' : payload.icon;
+    if (icon && (!/^data:image\/(png|jpeg|webp);base64,/i.test(icon) || icon.length > 220000)) return;
+    socket.data.playerIcon = icon;
     publishRoster(socket.data.roomCode);
   });
 
@@ -170,6 +185,7 @@ io.on('connection', socket => {
     socket.data.isHost = true;
     socket.data.playerName = `P${socket.data.playerId}`;
     roomHosts.set(code, socket.id);
+    roomGames.set(code, false);
     socket.emit('room-created', { code, playerId: 1, maxPlayers: MAX_PLAYERS });
     publishRoster(code);
   });
@@ -204,15 +220,29 @@ io.on('connection', socket => {
     socket.data.playerId = playerId;
     socket.data.isHost = false;
     socket.data.playerName = `P${playerId}`;
-    socket.emit('room-joined', { code, playerId, maxPlayers: MAX_PLAYERS });
-    socket.to(code).emit('peer-joined', { playerId });
+    socket.emit('room-joined', { code, playerId, maxPlayers: MAX_PLAYERS, inGame: roomGames.get(code) === true });
+    socket.to(code).emit('peer-joined', { playerId, name: socket.data.playerName });
     publishRoster(code);
   });
 
   // Host -> guests: authoritative game start and world snapshots.
   socket.on('start-game', () => {
     if (!hasRoomMembership(socket) || !socket.data.isHost || !allowRate(socket, 'start-game', 3)) return;
+    roomGames.set(socket.data.roomCode, true);
     socket.to(socket.data.roomCode).emit('start-game');
+  });
+  socket.on('end-game', () => {
+    if (!hasRoomMembership(socket) || !socket.data.isHost || !allowRate(socket, 'end-game', 3)) return;
+    roomGames.set(socket.data.roomCode, false);
+    socket.to(socket.data.roomCode).emit('game-ended');
+  });
+  socket.on('enter-game', () => {
+    if (!hasRoomMembership(socket) || socket.data.isHost || !allowRate(socket, 'enter-game', 5)) return;
+    sendGuestEventToHost(socket, 'enter-game', {});
+  });
+  socket.on('return-lobby', () => {
+    if (!hasRoomMembership(socket) || socket.data.isHost || !allowRate(socket, 'return-lobby', 5)) return;
+    sendGuestEventToHost(socket, 'guest-returned-lobby', {});
   });
   socket.on('snapshot', payload => {
     if (!hasRoomMembership(socket) || !socket.data.isHost || !isPlainObject(payload) ||
@@ -230,6 +260,12 @@ io.on('connection', socket => {
         !Number.isInteger(payload.index) || payload.index < 0 || payload.index > 100 ||
         !allowRate(socket, 'upgrade-pick', 5)) return;
     sendGuestEventToHost(socket, 'upgrade-pick', { index: payload.index });
+  });
+  socket.on('late-upgrade-pick', payload => {
+    if (!hasRoomMembership(socket) || socket.data.isHost || !isPlainObject(payload) ||
+        !Number.isInteger(payload.index) || payload.index < 0 || payload.index > 2 ||
+        !allowRate(socket, 'late-upgrade-pick', 5)) return;
+    sendGuestEventToHost(socket, 'late-upgrade-pick', { index: payload.index });
   });
   socket.on('job-pick', payload => {
     const jobs = ['gunner', 'trick', 'assassin', 'guardian', 'paladin'];
@@ -270,6 +306,7 @@ io.on('connection', socket => {
     if (socket.data.isHost) {
       // A room cannot continue without its authoritative host.
       roomHosts.delete(code);
+      roomGames.delete(code);
       socket.to(code).emit('peer-left', { hostLeft: true, playerId: 1 });
       for (const socketId of io.sockets.adapter.rooms.get(code) || []) {
         const member = io.sockets.sockets.get(socketId);
@@ -282,7 +319,7 @@ io.on('connection', socket => {
         }
       }
     } else {
-      socket.to(code).emit('peer-left', { playerId: socket.data.playerId });
+      socket.to(code).emit('peer-left', { playerId: socket.data.playerId, name: socket.data.playerName || `P${socket.data.playerId}` });
       // Socket.IO removes the disconnecting socket from rooms after this handler.
       setImmediate(() => {
         if (roomHosts.has(code)) publishRoster(code);

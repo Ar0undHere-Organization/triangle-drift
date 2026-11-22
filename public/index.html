@@ -75,6 +75,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .job-grid strong { color: var(--accent); font: 700 14px var(--font-display); }
 .job-grid span { color: var(--muted); font-size: 11px; }
 .lobby-list .lobby-state { color: var(--muted); }
+.lobby-player { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.lobby-player-icon { width: 28px; height: 28px; flex: 0 0 28px; border: 1px solid #59627a; border-radius: 50%; object-fit: cover; background: #090d17; }
+.icon-crop { display: grid; gap: 8px; max-width: 280px; }
+.icon-crop canvas { width: 128px; height: 128px; border: 1px solid #394157; border-radius: 50%; background: #090d17; cursor: move; touch-action: none; }
+.icon-crop label { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; }
 .skill-entry { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; justify-content: initial !important; gap: 10px !important; border-left: 3px solid var(--skill-color); padding: 8px 10px !important; }
 .skill-entry canvas { width: 40px; height: 40px; }
 .skill-entry-details { display: grid; gap: 3px; min-width: 0; }
@@ -123,6 +128,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         <div class="screen-fields">
           <label for="playerName">プレイヤー名</label><input id="playerName" type="text" maxlength="16" placeholder="プレイヤー名" aria-label="プレイヤー名">
           <label for="playerColor">自機カラー</label><input id="playerColor" type="color" value="#ffffff" aria-label="自機カラー">
+          <label for="playerIconFile">アイコン画像</label><input id="playerIconFile" type="file" accept="image/*" aria-label="アイコン画像">
+          <div id="playerIconCrop" class="icon-crop" hidden>
+            <canvas id="playerIconPreview" width="128" height="128" aria-label="アイコンのトリミングプレビュー"></canvas>
+            <label>拡大 <input id="playerIconZoom" type="range" min="100" max="300" value="100"></label>
+            <label>左右 <input id="playerIconX" type="range" min="-100" max="100" value="0"></label>
+            <label>上下 <input id="playerIconY" type="range" min="-100" max="100" value="0"></label>
+            <button id="playerIconRemove" type="button" class="secondary">アイコンを削除</button>
+          </div>
           <label><input id="roomCodeToggle" type="checkbox" checked> マルチプレイ中にルームコードを表示</label>
         </div>
         <div class="screen-actions"><button id="playerSettingsSave">保存して戻る</button></div>
@@ -354,6 +367,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const BOSS_EVERY = 5;
   const BOSS_ORDER = ['stardust', 'train', 'trinity', 'fortless', 'matrix'];
   const ENEMY_DAMAGE_MULTIPLIER = 5;
+  const enemyDamageMultiplier = () => ENEMY_DAMAGE_MULTIPLIER * (wave >= 101 ? 1 + (wave - 100) * 0.02 : 1);
   const MATRIX_CELL = 40, MATRIX_MAIN_SIZE = 4, MATRIX_EXTRA_CELLS = 14, MATRIX_FRAGMENT_CELL = 24;
   const MATRIX_BLOCK_CHARGE = 0.48, MATRIX_BLOCK_FLIGHT = 0.62, MATRIX_SHAPE_STEP = 0.24;
   const MATRIX_TURRET_HP = 90, MATRIX_TURRET_INTERVAL = 2.2, MATRIX_GATE_LIFETIME = 8;
@@ -538,7 +552,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const UPG = [
     { id: 'rate', name: '攻撃速度増加', rarity: 'common', categories: ['none', 'shot'], desc: '時間あたりの攻撃回数が 15% 増加', apply: (s) => { s.rate += 0.15; s.fireDelay = BASE_DELAY / s.rate; } },
     { id: 'dmg', name: '攻撃力増加', rarity: 'common', categories: ['none'], desc: '弾の攻撃力が 10 増加', apply: (s) => { s.dmg += 10; } },
-    { id: 'bulletforce', name: '弾勢強化', rarity: 'common', categories: ['shot', 'speed'], desc: '弾速が 15% 増加し、弾丸ノックバックが 0.15、炸裂ノックバックが 1 増加', apply: (s) => { s.bspeed += BASE_BULLET_SPEED * BULLET_SPEED_STEP; s.kb += 0.15; s.burstKb += 1; } },
+    { id: 'bulletforce', name: '弾勢強化', rarity: 'common', categories: ['shot', 'speed'], desc: '弾速が 15% 増加し、弾丸ノックバックが 0.025、炸裂ノックバックが 0.05 増加', apply: (s) => { s.bspeed += BASE_BULLET_SPEED * BULLET_SPEED_STEP; s.kb += 0.025; s.burstKb += 0.05; } },
     { id: 'movespeed', name: 'スラスター', rarity: 'common', categories: ['none', 'speed'], desc: '通常移動速度とダッシュ速度が、それぞれ基準値の 10% ずつ加算', apply: (s, p) => { p.speed += PLAYER_BASE_SPEED * PLAYER_SPEED_STEP; s.dashSpeed += DASH_SPEED * PLAYER_SPEED_STEP; } },
     { id: 'crit', name: 'クリティカル率増加', rarity: 'common', categories: ['shot', 'critical'], desc: 'クリティカル率が 5% 増加', apply: (s) => { s.critChance += 0.05; } },
     { id: 'size', name: '大口径', rarity: 'common', categories: ['explosive'], desc: '弾の面積と炸裂範囲がそれぞれ 15% ずつ加算', apply: (s) => { s.sizeLevel += 1; s.bsize = BASE_BULLET_RADIUS * Math.sqrt(1 + s.sizeLevel * BULLET_AREA_STEP); s.burstRange += BURST_AREA_STEP; } },
@@ -632,6 +646,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let playerId = 1, roomRoster = [{ playerId: 1, isHost: true, name: 'P1' }];
   let playerName = 'P1';
   let chosenPlayerColor = '#ffffff', showRoomCode = true, joinedDuringGame = false;
+  let chosenPlayerIcon = '', iconSource = null, iconCrop = { zoom: 1, x: 0, y: 0 };
   const freshRemoteInput = () => ({ has: false, x: W / 2 + 45, y: H / 2, aimX: W / 2, aimY: H / 2, firing: false, dashT: 0, dashCd: 0 });
   let remotePlayer = null, lastNetSend = 0, lastInputAt = 0, lastSnapshotAt = 0, netConnected = false;
   let remotePlayers = new Map(), remoteInputs = new Map(), remoteCursors = new Map(), remotePickStates = new Map();
@@ -693,6 +708,45 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     document.getElementById('skillListScreen').hidden = true;
     document.getElementById('gameOverScreen').hidden = true;
     document.getElementById('lateJoinScreen').hidden = true;
+  }
+  function drawPlayerIconPreview() {
+    if (!iconSource) return;
+    const canvas = document.getElementById('playerIconPreview'), ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(64, 64, 64, 0, Math.PI * 2); ctx.clip();
+    const cropSize = Math.min(iconSource.naturalWidth, iconSource.naturalHeight) / iconCrop.zoom;
+    const maxX = Math.max(0, iconSource.naturalWidth - cropSize);
+    const maxY = Math.max(0, iconSource.naturalHeight - cropSize);
+    const sx = maxX * (iconCrop.x + 100) / 200;
+    const sy = maxY * (iconCrop.y + 100) / 200;
+    ctx.drawImage(iconSource, sx, sy, cropSize, cropSize, 0, 0, 128, 128);
+    ctx.restore();
+  }
+  function cropPlayerIcon() {
+    if (!iconSource) return '';
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const cropSize = Math.min(iconSource.naturalWidth, iconSource.naturalHeight) / iconCrop.zoom;
+    const maxX = Math.max(0, iconSource.naturalWidth - cropSize);
+    const maxY = Math.max(0, iconSource.naturalHeight - cropSize);
+    ctx.drawImage(iconSource, maxX * (iconCrop.x + 100) / 200, maxY * (iconCrop.y + 100) / 200,
+      cropSize, cropSize, 0, 0, 128, 128);
+    return canvas.toDataURL('image/png');
+  }
+  function loadPlayerIcon(src) {
+    const image = new Image();
+    image.onload = () => {
+      iconSource = image;
+      iconCrop = { zoom: 1, x: 0, y: 0 };
+      document.getElementById('playerIconZoom').value = '100';
+      document.getElementById('playerIconX').value = '0';
+      document.getElementById('playerIconY').value = '0';
+      document.getElementById('playerIconCrop').hidden = false;
+      drawPlayerIconPreview();
+    };
+    image.src = src;
   }
   function showDebugScreen() {
     document.getElementById('sandboxScreen').hidden = true;
@@ -777,6 +831,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     document.getElementById('playerName').value = playerName === 'P1' ? '' : playerName;
     document.getElementById('playerColor').value = chosenPlayerColor;
     document.getElementById('roomCodeToggle').checked = showRoomCode;
+    if (chosenPlayerIcon) loadPlayerIcon(chosenPlayerIcon);
+    else document.getElementById('playerIconCrop').hidden = true;
     document.getElementById('mainMenu').hidden = true;
     document.getElementById('pauseScreen').hidden = true;
     document.getElementById('lobbyScreen').hidden = true;
@@ -786,11 +842,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     readPlayerName();
     const colorInput = document.getElementById('playerColor');
     if (colorInput && /^#[0-9a-f]{6}$/i.test(colorInput.value)) chosenPlayerColor = colorInput.value;
+    if (iconSource) chosenPlayerIcon = cropPlayerIcon();
     showRoomCode = document.getElementById('roomCodeToggle').checked;
-    try { localStorage.setItem('td-player-name', playerName); localStorage.setItem('td-player-color', chosenPlayerColor); localStorage.setItem('td-room-code', showRoomCode ? '1' : '0'); } catch (_) {}
+    try { localStorage.setItem('td-player-name', playerName); localStorage.setItem('td-player-color', chosenPlayerColor); localStorage.setItem('td-player-icon', chosenPlayerIcon); localStorage.setItem('td-room-code', showRoomCode ? '1' : '0'); } catch (_) {}
     const ownPlayer = netRole === 'guest' ? remotePlayer : P;
-    if (ownPlayer) ownPlayer.color = chosenPlayerColor;
+    if (ownPlayer) { ownPlayer.color = chosenPlayerColor; ownPlayer.icon = chosenPlayerIcon; }
     if (netSocket && netSocket.connected) netSocket.emit('set-color', { color: chosenPlayerColor });
+    if (netSocket && netSocket.connected) netSocket.emit('set-icon', { icon: chosenPlayerIcon });
     document.getElementById('playerSettingsScreen').hidden = true;
     if (pauseMenuOpen) document.getElementById('pauseScreen').hidden = false;
     else if (netRole !== 'solo' && document.getElementById('lobbyCode').textContent) showLobbyScreen(netRole === 'host');
@@ -852,7 +910,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     list.replaceChildren();
     for (const entry of roomRoster) {
       const item = document.createElement('li'), name = document.createElement('span'), status = document.createElement('span');
-      name.textContent = (entry.name || 'P' + entry.playerId) + (entry.isHost ? ' (ホスト)' : '') + (entry.playerId === playerId ? ' (あなた)' : '') + '  / P' + entry.playerId;
+      name.className = 'lobby-player';
+      if (entry.icon) {
+        const icon = document.createElement('img');
+        icon.className = 'lobby-player-icon';
+        icon.src = entry.icon;
+        icon.alt = '';
+        name.append(icon);
+      }
+      const nameText = document.createElement('span');
+      nameText.textContent = (entry.name || 'P' + entry.playerId) + (entry.isHost ? ' (ホスト)' : '') + (entry.playerId === playerId ? ' (あなた)' : '') + '  / P' + entry.playerId;
+      name.append(nameText);
       name.style.color = entry.color || playerColor(entry.playerId);
       status.className = 'lobby-state'; status.textContent = entry.isHost ? 'ホスト' : '接続中';
       item.append(name, status); list.append(item);
@@ -952,6 +1020,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const pl = getRemotePlayer(id);
       const rosterEntry = roomRoster.find((entry) => entry.playerId === id);
       pl.color = rosterEntry && rosterEntry.color || pl.color || playerColor(id);
+      pl.icon = rosterEntry && rosterEntry.icon || pl.icon || '';
       if (!remoteInputs.has(id)) remoteInputs.set(id, freshRemoteInput());
     }
     for (const id of remotePlayers.keys()) if (!activeIds.has(id)) { remoteInputs.delete(id); remoteCursors.delete(id); }
@@ -990,14 +1059,22 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     { pair: ['quadstar', 'equadstar'], pure: 'pquadstar', label: '四芒星' },
     { pair: ['hexstar', 'ehexstar'], pure: 'phexstar', label: '六芒星' }
   ];
-  let wavePureTypes = new Set();
+  let wavePureTypes = new Map();
+  const pureLimit = () => wave >= 101 ? 2 : 1;
+  const pureCount = (type) => wavePureTypes.get(type) || 0;
+  const canAddPure = (type) => pureCount(type) < pureLimit();
+  const addPure = (type) => {
+    if (!canAddPure(type)) return false;
+    wavePureTypes.set(type, pureCount(type) + 1);
+    return true;
+  };
   function createRandomEvent() {
     const kinds = ['horde', 'meteor', 'items', 'size', 'nineLives', 'train'];
     if (wave % BOSS_EVERY === 0) kinds.splice(kinds.indexOf('nineLives'), 1);
-    if (wave < 101 && wavePureTypes.size >= HORDE_EVENT_TYPES.length) kinds.splice(kinds.indexOf('horde'), 1);
+    if (wave < 101 && [...wavePureTypes.keys()].filter((type) => pureCount(type) > 0).length >= HORDE_EVENT_TYPES.length) kinds.splice(kinds.indexOf('horde'), 1);
     const kind = kinds[Math.floor(Math.random() * kinds.length)];
     if (kind === 'horde') {
-      const available = wave >= 101 ? HORDE_EVENT_TYPES : HORDE_EVENT_TYPES.filter((group) => !wavePureTypes.has(group.pure));
+      const available = wave >= 101 ? HORDE_EVENT_TYPES : HORDE_EVENT_TYPES.filter((group) => pureCount(group.pure) === 0);
       const group = available[Math.floor(Math.random() * available.length)] || HORDE_EVENT_TYPES[0];
       return { type: kind, pair: group.pair, pure: group.pure, title: group.label + '大量発生！' };
     }
@@ -1032,6 +1109,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (state !== 'play' || !randomEvent || randomEvent.type !== 'train') return;
     randomEvent.trainTimer -= dt;
     if (randomEvent.trainTimer > 0) return;
+    if (trainRushes.length > 0 || spawns.some((spawn) => spawn.type === 'trainRush')) {
+      randomEvent.trainTimer = 1;
+      return;
+    }
     const edge = Math.floor(Math.random() * 4);
     const x = edge < 2 ? (edge === 0 ? 0 : W) : Math.random() * W;
     const y = edge >= 2 ? (edge === 2 ? 0 : H) : Math.random() * H;
@@ -1071,7 +1152,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     hideMenuScreens();
     wave = n; state = 'play'; waveClearGuard = 1.2;
     bannerT = 1.8; bannerText = 'WAVE ' + n;
-    randomEvent = null; wavePureTypes = new Set(); bannerBossTypes = null;
+    randomEvent = null; wavePureTypes = new Map(); bannerBossTypes = null;
     clearProjectiles(bullets, C.bullet); clearProjectiles(ebullets, ET.pent.color); meteors.length = 0;
     if (n % BOSS_EVERY === 0) {
       let bossTypes;
@@ -1112,10 +1193,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           spawns.push({
             x: 80 + Math.random() * (W - 160), y: 80 + Math.random() * (H - 160),
             t: 0, delay: 0.9 + i * 0.08,
-            type: i === 0 && !wavePureTypes.has(randomEvent.pure) ? randomEvent.pure : randomEvent.pair[Math.random() < 0.72 ? 0 : 1]
+            type: i === 0 && pureCount(randomEvent.pure) === 0 ? randomEvent.pure : randomEvent.pair[Math.random() < 0.72 ? 0 : 1]
           });
         }
-        if (!wavePureTypes.has(randomEvent.pure)) wavePureTypes.add(randomEvent.pure);
+        addPure(randomEvent.pure);
       }
       sfx.boss();
       return;
@@ -1192,17 +1273,28 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (wave >= 26) {
       const pureChance = Math.min(0.4, 0.12 + (wave - 26) * 0.015);
       if (wave >= 101) {
-        if (randomEvent && randomEvent.type === 'horde' && list.length) list[0] = randomEvent.pure;
-        else for (let i = 0; i < list.length; i++) {
-          if (Math.random() < pureChance) list[i] = PURE_TYPES[Math.floor(Math.random() * PURE_TYPES.length)];
+        for (let i = 0; i < list.length && pureChance > 0; i++) {
+          if (Math.random() >= pureChance) continue;
+          const eligible = PURE_TYPES.filter(canAddPure);
+          if (!eligible.length) break;
+          const pure = eligible[Math.floor(Math.random() * eligible.length)];
+          list[i] = pure;
+          addPure(pure);
+        }
+        if (randomEvent && randomEvent.type === 'horde' && list.length) {
+          const hordeIndex = list.findIndex((type) => isPureEnemy(type));
+          if (hordeIndex < 0 && canAddPure(randomEvent.pure)) {
+            list[0] = randomEvent.pure;
+            addPure(randomEvent.pure);
+          }
         }
       } else {
-        const availablePureTypes = PURE_TYPES.filter((type) => !wavePureTypes.has(type));
+        const availablePureTypes = PURE_TYPES.filter(canAddPure);
         const pure = randomEvent && randomEvent.type === 'horde' ? randomEvent.pure
           : Math.random() < pureChance && availablePureTypes.length ? availablePureTypes[Math.floor(Math.random() * availablePureTypes.length)] : null;
-        if (pure && !wavePureTypes.has(pure) && list.length) {
+        if (pure && canAddPure(pure) && list.length) {
           list[Math.floor(Math.random() * list.length)] = pure;
-          wavePureTypes.add(pure);
+          addPure(pure);
         }
       }
     }
@@ -1822,7 +1914,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       P.inv = Math.max(P.inv, 0.75); P.kx = 0; P.ky = 0;
       return;
     }
-    amount *= ENEMY_DAMAGE_MULTIPLIER;
+    amount *= enemyDamageMultiplier();
     if (activateArmor(P, P.x, P.y)) amount *= 1 - P.S.armor;
     P.hp -= amount; P.inv = 0.75;
     const a = Math.atan2(P.y - fromY, P.x - fromX);
@@ -1846,7 +1938,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function hurtRemotePlayer(rp, amount, fromX, fromY, hitPosition) {
     if (state === 'clear' || !rp || rp.inv > 0 || rp.hp <= 0) return;
-    amount *= ENEMY_DAMAGE_MULTIPLIER;
+    amount *= enemyDamageMultiplier();
     const pos = hitPosition || playerPosition(rp);
     if (activateArmor(rp, pos.x, pos.y)) amount *= 1 - rp.S.armor;
 
@@ -3469,18 +3561,24 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function collectRemainingItems() {
     const players = partyPlayers().filter((player) => player.hp > 0);
-    for (const it of items) {
-      let nearest = null, nearestDistance = Infinity;
-      for (const player of players) {
-        const pos = playerPosition(player), distance = Math.hypot(pos.x - it.x, pos.y - it.y);
-        if (distance < nearestDistance) { nearest = { player, pos }; nearestDistance = distance; }
-      }
-      if (nearest) {
-        it.targetId = nearest.player.id || 1;
-        it.attracted = true;
-        it.speed = it.speed || ITEM_ATTRACT_INITIAL_SPEED;
-      }
+    if (!items.length || !players.length) return;
+    let remainingHeal = items.length * ITEM_HEAL;
+    const allocations = players
+      .map((player) => ({ player, missing: Math.max(0, player.maxHp - player.hp) }))
+      .sort((a, b) => b.missing - a.missing);
+    for (const allocation of allocations) {
+      if (remainingHeal <= 0) break;
+      const heal = Math.min(allocation.missing, remainingHeal);
+      if (heal <= 0) continue;
+      allocation.player.hp += heal;
+      remainingHeal -= heal;
+      const pos = playerPosition(allocation.player);
+      floatText(pos.x, pos.y - 34, '+' + Math.round(heal), '#7df0a8');
+      ring(pos.x, pos.y, 50, 0.3, '#7df0a8', 2);
+      burst(pos.x, pos.y, 10, '#7df0a8', 180, 0.35, 2.5);
     }
+    sfx.heal();
+    items.length = 0;
   }
   function showWaveClearFx() {
     const player = myPlayer() || P;
@@ -4305,15 +4403,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const et = ET[s.type];
       ctx.strokeStyle = isPureEnemy(s.type) ? '#ffffff' : et.color; ctx.lineWidth = 2;
       ctx.setLineDash([6, 6]); ctx.lineDashOffset = -s.t * 30;
-      ctx.beginPath(); ctx.arc(s.x, s.y, (et.boss ? et.r * 1.35 : 20) + 30 * (1 - p), 0, TAU); ctx.stroke();
+      const enemyScale = eventSizeScale('enemy');
+      ctx.beginPath(); ctx.arc(s.x, s.y, ((et.boss ? et.r * 1.35 : 20) + 30 * (1 - p)) * enemyScale, 0, TAU); ctx.stroke();
       ctx.setLineDash([]);
       const ga = ctx.globalAlpha;
       ctx.globalAlpha = ga * (0.12 + 0.25 * p);
       ctx.fillStyle = et.color;
-      if (isLaserStar(s.type)) drawSixStar(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), time * 0.6);
-      else if (et.star) drawStar(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), time * 0.6, 0.36);
-      else if (et.cross) drawCross(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), time * 1.2);
-      else drawPoly(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), s.type === 'sq' ? Math.PI / 4 : -Math.PI / 2, et.sides);
+      const warnRadius = et.r * et.vr * (0.6 + 0.4 * p) * enemyScale;
+      if (isLaserStar(s.type)) drawSixStar(s.x, s.y, warnRadius, time * 0.6);
+      else if (et.star) drawStar(s.x, s.y, warnRadius, time * 0.6, 0.36);
+      else if (et.cross) drawCross(s.x, s.y, warnRadius, time * 1.2);
+      else drawPoly(s.x, s.y, warnRadius, s.type === 'sq' ? Math.PI / 4 : -Math.PI / 2, et.sides);
       ctx.fill();
       ctx.globalAlpha = ga;
       ctx.strokeStyle = isPureEnemy(s.type) ? '#ffffff' : et.color; ctx.stroke();
@@ -4375,7 +4475,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
   function drawTrainWarn(sp) {                          // 進入レーンの警告
-    const p = Math.min(1, sp.t / sp.delay), blink = Math.floor(sp.t * 6) % 2 ? 1 : 0.45, lane = 76;
+    if (!sp || sp.edge === undefined || sp.edge < 0 || sp.edge > 3) return;
+    const p = Math.min(1, sp.t / sp.delay), blink = Math.floor(sp.t * 6) % 2 ? 1 : 0.45, lane = 76 * eventSizeScale('enemy');
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1], horiz = sp.edge < 2;
     ctx.save();
     ctx.globalAlpha = (0.14 + 0.2 * p) * blink; ctx.fillStyle = '#ff4d4d';
@@ -5377,6 +5478,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       syncRoster([{ playerId: 1, isHost: true, name: playerName || 'P1', color: chosenPlayerColor }]); showLobbyScreen(true);
       netSocket.emit('set-name', { name: playerName });
       netSocket.emit('set-color', { color: chosenPlayerColor });
+      netSocket.emit('set-icon', { icon: chosenPlayerIcon });
       setNetStatus('ルーム ' + d.code + ' を作成しました。参加者を待っています。');
     });
     netSocket.on('room-joined', d => {
@@ -5385,14 +5487,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       showLobbyScreen(false);
       netSocket.emit('set-name', { name: playerName });
       netSocket.emit('set-color', { color: chosenPlayerColor });
+      netSocket.emit('set-icon', { icon: chosenPlayerIcon });
       setNetStatus(joinedDuringGame ? 'ゲーム中のルームです。途中参加を選んでください。' : 'ルーム ' + d.code + ' に参加しました。ホストの開始を待っています。');
     });
     netSocket.on('room-error', d => setNetStatus(d.message || 'ルーム処理に失敗しました'));
     netSocket.on('room-roster', d => {
       syncRoster(d && d.players);
       if (d && d.players) for (const entry of d.players) {
-        if (entry.playerId === 1 && netRole !== 'guest') { P.name = entry.name || 'P1'; P.color = entry.color || chosenPlayerColor; }
-        else { const pl = getRemotePlayer(entry.playerId); pl.name = entry.name || 'P' + entry.playerId; pl.color = entry.color || pl.color; }
+        if (entry.playerId === 1 && netRole !== 'guest') { P.name = entry.name || 'P1'; P.color = entry.color || chosenPlayerColor; P.icon = entry.icon || P.icon || ''; }
+        else { const pl = getRemotePlayer(entry.playerId); pl.name = entry.name || 'P' + entry.playerId; pl.color = entry.color || pl.color; pl.icon = entry.icon || pl.icon || ''; }
       }
       renderLobbyRoster();
       if (netRole === 'host') setNetStatus('待機中: ' + roomRoster.length + ' / ' + MAX_PLAYERS + ' 人');
@@ -5920,7 +6023,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         const b = ebullets[i];
         if (b.remove) { ebullets.splice(i, 1); continue; }
         if (Math.hypot(b.x - g.x, b.y - g.y) < b.r * eventSizeScale('enemy') + g.r * eventSizeScale('player') && g.inv <= 0) {
-          const baseDamage = (b.dmg || 10) * ENEMY_DAMAGE_MULTIPLIER;
+          const baseDamage = (b.dmg || 10) * enemyDamageMultiplier();
           const damage = activateArmor(g, g.x, g.y) ? baseDamage * (1 - g.S.armor) : baseDamage;
           if (Number.isSafeInteger(b.id) && netSocket && netSocket.connected) netSocket.emit('enemy-bullet-hit', { bulletId: b.id, x: r1(g.x), y: r1(g.y), fromX: r1(b.x - b.vx * 0.1), fromY: r1(b.y - b.vy * 0.1) });
           g.hp = Math.max(0, g.hp - damage); g.inv = 0.75;
@@ -5959,6 +6062,34 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     renderLobbyRoster();
   }
   document.getElementById('playerName').addEventListener('change', readPlayerName);
+  document.getElementById('playerIconFile').addEventListener('change', (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/') || file.size > 4 * 1024 * 1024) {
+      setNetStatus('4MB以下の画像ファイルを選択してください。');
+      event.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => loadPlayerIcon(reader.result);
+    reader.readAsDataURL(file);
+  });
+  for (const [id, key, scale] of [
+    ['playerIconZoom', 'zoom', 100],
+    ['playerIconX', 'x', 1],
+    ['playerIconY', 'y', 1]
+  ]) {
+    document.getElementById(id).addEventListener('input', (event) => {
+      iconCrop[key] = scale === 100 ? Number(event.target.value) / 100 : Number(event.target.value);
+      drawPlayerIconPreview();
+    });
+  }
+  document.getElementById('playerIconRemove').addEventListener('click', () => {
+    iconSource = null;
+    chosenPlayerIcon = '';
+    document.getElementById('playerIconFile').value = '';
+    document.getElementById('playerIconCrop').hidden = true;
+  });
   document.getElementById('playerSettingsOpen').addEventListener('click', showPlayerSettings);
   document.getElementById('playerSettingsSave').addEventListener('click', savePlayerSettings);
   document.getElementById('pausePlayerSettings').addEventListener('click', showPlayerSettings);
@@ -6010,10 +6141,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     bloomEnabled = localStorage.getItem('td-bloom') !== '0'; trailEnabled = localStorage.getItem('td-trails') !== '0';
     playerName = localStorage.getItem('td-player-name') || 'P1';
     chosenPlayerColor = localStorage.getItem('td-player-color') || '#ffffff';
+    chosenPlayerIcon = localStorage.getItem('td-player-icon') || '';
     showRoomCode = localStorage.getItem('td-room-code') !== '0';
   } catch (_) {}
   if (playerName !== 'P1') document.getElementById('playerName').value = playerName;
   if (P) P.color = chosenPlayerColor;
+  if (P) P.icon = chosenPlayerIcon;
   syncSettingsControls();
   document.getElementById('pauseResume').addEventListener('click', closePauseMenu);
   document.getElementById('pauseRestartSolo').addEventListener('click', () => {
