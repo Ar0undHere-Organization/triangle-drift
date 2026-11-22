@@ -76,7 +76,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .job-grid span { color: var(--muted); font-size: 11px; }
 .lobby-list .lobby-state { color: var(--muted); }
 .lobby-player { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.lobby-player-icon { width: 28px; height: 28px; flex: 0 0 28px; border: 1px solid #59627a; border-radius: 50%; object-fit: cover; background: #090d17; }
+.lobby-player-icon { display: block; width: 28px; height: 28px; flex: 0 0 28px; border: 1px solid #59627a; border-radius: 50%; object-fit: cover; background: #090d17; }
 .icon-crop { display: grid; gap: 8px; max-width: 280px; }
 .icon-crop canvas { width: 128px; height: 128px; border: 1px solid #394157; border-radius: 50%; background: #090d17; cursor: move; touch-action: none; }
 .icon-crop label { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; }
@@ -652,6 +652,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let playerName = 'P1';
   let chosenPlayerColor = '#ffffff', showRoomCode = true, joinedDuringGame = false;
   let chosenPlayerIcon = '', iconSource = null, iconCrop = { zoom: 1, x: 0, y: 0 };
+  const playerIconImages = new Map();
   const freshRemoteInput = () => ({ has: false, x: W / 2 + 45, y: H / 2, aimX: W / 2, aimY: H / 2, firing: false, dashT: 0, dashCd: 0 });
   let remotePlayer = null, lastNetSend = 0, lastInputAt = 0, lastSnapshotAt = 0, netConnected = false;
   let remotePlayers = new Map(), remoteInputs = new Map(), remoteCursors = new Map(), remotePickStates = new Map();
@@ -793,6 +794,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     document.getElementById('lateJoinScreen').hidden = true;
     renderJobSelection();
   }
+  function createPlayerAvatar(player, id) {
+    const avatar = document.createElement(player && player.icon ? 'img' : 'span');
+    avatar.className = 'lobby-player-icon';
+    if (player && player.icon) {
+      avatar.src = player.icon;
+      avatar.alt = '';
+    } else {
+      avatar.style.backgroundColor = player && player.color || playerColor(id);
+      avatar.setAttribute('aria-hidden', 'true');
+    }
+    return avatar;
+  }
   function renderJobSelection() {
     if (netRole !== 'guest') jobSelections = new Map(partyPlayers().map((player) => [player.id || 1, player.job]));
     const selfId = netRole === 'guest' ? playerId : 1;
@@ -810,9 +823,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (const [id, jobId] of entries) {
       const player = id === selfId ? (netRole === 'guest' ? remotePlayer : P)
         : id === 1 ? P : remotePlayers.get(id);
-      const item = document.createElement('li'), name = document.createElement('span'), choice = document.createElement('span');
-      name.textContent = (player && player.name || 'P' + id) + (id === selfId ? ' (あなた)' : '');
-      name.style.color = playerColor(id);
+      const item = document.createElement('li'), name = document.createElement('span'), label = document.createElement('span'), choice = document.createElement('span');
+      name.className = 'lobby-player';
+      name.append(createPlayerAvatar(player, id));
+      label.textContent = (player && player.name || 'P' + id) + (id === selfId ? ' (あなた)' : '');
+      name.append(label);
+      name.style.color = player && player.color || playerColor(id);
       choice.className = 'lobby-state';
       choice.textContent = JOB_BY_ID.has(jobId) ? JOB_BY_ID.get(jobId).name : '選択中…';
       item.append(name, choice); list.append(item);
@@ -1039,11 +1055,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     W = Math.round(BASE_W * fieldScale); H = Math.round(BASE_H * fieldScale);
     resize();
     mouse.x = W / 2; mouse.y = H / 2;
-    P = newPlayer(W / 2, H / 2, chosenPlayerColor);
-    P.name = playerName || 'P1';
+    const hostEntry = roomRoster.find((entry) => entry.playerId === 1);
+    const hostColor = netRole === 'guest' ? hostEntry && hostEntry.color || playerColor(1) : chosenPlayerColor;
+    P = newPlayer(W / 2, H / 2, hostColor);
+    P.name = netRole === 'guest' ? hostEntry && hostEntry.name || 'P1' : playerName || 'P1';
+    P.icon = netRole === 'guest' ? hostEntry && hostEntry.icon || '' : chosenPlayerIcon;
     P.id = 1;
     remotePlayers = new Map(); remoteInputs = new Map(); remoteCursors = new Map(); remotePickStates = new Map();
-    for (const entry of roomRoster) if (entry.playerId > 1) { getRemotePlayer(entry.playerId); remoteInputs.set(entry.playerId, freshRemoteInput()); }
+    for (const entry of roomRoster) if (entry.playerId > 1) {
+      const pl = getRemotePlayer(entry.playerId);
+      pl.name = entry.name || 'P' + entry.playerId; pl.color = entry.color || playerColor(entry.playerId); pl.icon = entry.icon || '';
+      remoteInputs.set(entry.playerId, freshRemoteInput());
+    }
     remotePlayer = netRole === 'guest' ? getRemotePlayer(playerId) : remotePlayers.get(2) || null;
     evq = [];
     enemies = []; bullets = []; ebullets = []; parts = []; rings = []; spawns = []; texts = []; meteors = []; items = []; reviveAnimations = []; trainRushes = [];
@@ -3192,15 +3215,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       quadStarFall(e, true);
       e.pseptPhaseT = 1.5;
     } else if (e.pseptAction === 3) {
-      const target = getTargetPlayer(e.x, e.y);
-      e.laserAngle = Math.atan2(target.y - e.y, target.x - e.x);
-      e.laserCopies = [-1, 1].map((side) => {
-        const angle = e.laserAngle + side * (Math.PI / 2 + (Math.random() - 0.5) * 0.35);
-        const speed = 300 + Math.random() * 60;
-        return { x: e.x, y: e.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
-          angle: e.laserAngle, turnVelocity: 0 };
-      });
-      e.laserPhase = 1; e.laserT = 1; e.laserT0 = 1; e.pseptPhaseT = 4.2;
+      e.laserCopies = []; e.laserPhase = 0; e.laserT = 0; e.laserT0 = 0; e.laserTurnVelocity = 0;
+      e.pseptPhaseT = 4.2;
     } else if (e.pseptAction === 4) {
       e.pseptChasePhase = 'warning'; e.pseptChaseT = ESQ_CHASE_WARN;
       e.pseptPhaseT = ESQ_CHASE_WARN + 0.65 + ESQ_CHASE_DURATION; e.vx = 0; e.vy = 0;
@@ -3320,7 +3336,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       : baseType === 'hexstar' ? bh * 3 + 4
       : baseType === 'tri' ? Math.round((bh * 2 + 1) * 0.9)
       : baseType === 'cross' ? bh * 2 + 4 : bh + 1;
-    const pureHpScale = type === 'psept' ? 5 : isPureEnemy(type) ? 3 : 1;
+    const pureHpScale = type === 'psept' ? 10 : isPureEnemy(type) ? 3 : 1;
     const hp = Math.round(HP_SCALE * baseHp * pureHpScale);
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
     const enemy = {
@@ -4451,12 +4467,45 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   const pickCode = (p) => (p.picked === null ? -1 : (p.picked === 'dead' || p.picked === 'skip') ? -2 : UPG.findIndex((u) => u.id === p.picked));
   const iHavePicked = () => (netRole === 'guest' ? guestPicked : P.picked !== null);
+  function upgradeRosterPlayers() {
+    if (netRole === 'guest') {
+      return [...remotePickStates.keys()].sort((a, b) => a - b).map((id) => [id, id === 1 ? P : remotePlayers.get(id) || getRemotePlayer(id)]);
+    }
+    return participants().map((player) => [player.id || 1, player]);
+  }
+  function upgradeWaitingPlayers() {
+    if (netRole === 'guest') {
+      return [...remotePickStates.entries()]
+        .filter(([id, picked]) => picked === -1 && !(id === playerId && guestPicked))
+        .map(([id]) => id === 1 ? P : remotePlayers.get(id) || getRemotePlayer(id));
+    }
+    return participants().filter((player) => player.hp > 0 && player.picked === null);
+  }
   function partnerPickText() {
     if (!coop()) return '';
-    const waiting = netRole === 'host'
-      ? participants().filter((p) => p !== P && p.hp > 0 && p.picked === null).length
-      : [...remotePickStates.entries()].filter(([id, pick]) => id !== playerId && pick === -1).length;
-    return waiting ? waiting + '人の選択待ち…' : '全員の選択が完了';
+    const waiting = upgradeWaitingPlayers();
+    if (waiting.length > 1) return waiting.length + '人が選択中';
+    if (waiting.length === 1) return (waiting[0].name || 'P' + (waiting[0].id || 1)) + 'が選択中';
+    return '';
+  }
+  function drawUpgradePlayerAvatar(player, x, y, radius, waiting) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, TAU); ctx.clip();
+    if (player.icon) {
+      let image = playerIconImages.get(player.icon);
+      if (!image) {
+        image = new Image();
+        image.src = player.icon;
+        playerIconImages.set(player.icon, image);
+      }
+      if (image.complete && image.naturalWidth > 0) ctx.drawImage(image, x - radius, y - radius, radius * 2, radius * 2);
+      else { ctx.fillStyle = player.color || playerColor(player.id || 1); ctx.fill(); }
+    } else {
+      ctx.fillStyle = player.color || playerColor(player.id || 1); ctx.fill();
+    }
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, TAU);
+    ctx.lineWidth = 2; ctx.strokeStyle = waiting ? '#ffd84a' : '#7df0a8'; ctx.stroke();
   }
 
   /* ---------- upgrade card layout ---------- */
@@ -5569,12 +5618,21 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     ctx.textAlign = 'center'; ctx.fillStyle = C.muted; setFont(13, 500);
     ctx.globalAlpha = Math.min(1, upT * 2);
-    const msg = !choices.length ? (coop() ? '仲間の選択を待っています…' : '') : done ? (coop() ? '相手の選択を待っています…' : '') : 'クリック、または 1 / 2 / 3 キーで決定';
+    const msg = !choices.length ? (coop() ? '仲間の選択を待っています…' : '') : done ? '' : 'クリック、または 1 / 2 / 3 キーで決定';
     ctx.fillText(msg, W / 2, 540);
+    const roster = coop() ? upgradeRosterPlayers() : [];
+    if (roster.length) {
+      const waiting = new Set(upgradeWaitingPlayers());
+      const spacing = 38, startX = W / 2 - (roster.length - 1) * spacing / 2;
+      for (let i = 0; i < roster.length; i++) {
+        const [id, player] = roster[i];
+        drawUpgradePlayerAvatar(player, startX + i * spacing, 568, 13, waiting.has(player));
+      }
+    }
     const ps = partnerPickText();
-    if (ps) { ctx.fillStyle = C.accent; setFont(13, 700); ctx.fillText(ps, W / 2, 566); }
+    if (ps) { ctx.fillStyle = C.accent; setFont(13, 700); ctx.fillText(ps, W / 2, 598); }
     if (!done && (pl.rerolls || 0) > 0) {
-      ctx.fillStyle = '#ffd84a'; setFont(14, 700); ctx.fillText('R  リロール残り ' + pl.rerolls, W / 2, 592);
+      ctx.fillStyle = '#ffd84a'; setFont(14, 700); ctx.fillText('R  リロール残り ' + pl.rerolls, W / 2, 624);
     }
     ctx.globalAlpha = 1;
   }
@@ -5771,8 +5829,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     netSocket.on('room-roster', d => {
       syncRoster(d && d.players);
       if (d && d.players) for (const entry of d.players) {
-        if (entry.playerId === 1 && netRole !== 'guest') { P.name = entry.name || 'P1'; P.color = entry.color || chosenPlayerColor; P.icon = entry.icon || P.icon || ''; }
-        else { const pl = getRemotePlayer(entry.playerId); pl.name = entry.name || 'P' + entry.playerId; pl.color = entry.color || pl.color; pl.icon = entry.icon || pl.icon || ''; }
+        if (entry.playerId === 1) { P.name = entry.name || P.name || 'P1'; P.color = entry.color || P.color || playerColor(1); P.icon = entry.icon || P.icon || ''; }
+        else { const pl = getRemotePlayer(entry.playerId); pl.name = entry.name || pl.name || 'P' + entry.playerId; pl.color = entry.color || pl.color || playerColor(entry.playerId); pl.icon = entry.icon || pl.icon || ''; }
       }
       renderLobbyRoster();
       if (netRole === 'host') setNetStatus('待機中: ' + roomRoster.length + ' / ' + MAX_PLAYERS + ' 人');
