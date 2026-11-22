@@ -54,6 +54,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .screen-actions .secondary { border-color: #394157; background: #171d2b; color: var(--fg); }
 .screen-fields { display: grid; gap: 7px; margin-top: 8px; }
 .screen-fields input, .screen-fields select { min-width: 0; width: 100%; border: 1px solid #30384f; border-radius: 3px; padding: 10px; background: #090d17; color: var(--fg); font: inherit; }
+.screen-fields textarea { min-width: 0; width: 100%; box-sizing: border-box; border: 1px solid #30384f; border-radius: 3px; padding: 10px; background: #090d17; color: var(--fg); font: 12px/1.5 monospace; resize: vertical; }
 .screen-fields input[type="checkbox"] { width: auto; margin-right: 7px; }
 .debug-upgrade-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
 .debug-upgrade-grid label { display: grid; min-width: 0; gap: 4px; color: var(--muted); font-size: 12px; }
@@ -84,6 +85,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .stage-banner { position: absolute; top: 20px; left: 50%; z-index: 5; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 10px 16px; border: 1px solid #59627a; border-radius: 3px; background: rgba(13,18,30,.96); color: var(--fg); font-weight: 700; text-align: center; box-shadow: 0 8px 26px rgba(0,0,0,.4); }
 .skill-button { position: absolute; right: 14px; bottom: 12px; z-index: 3; border: 1px solid #394157; border-radius: 3px; padding: 8px 10px; background: #171d2b; color: var(--fg); font: 700 12px var(--font-body); cursor: pointer; }
 .skill-button[hidden] { display: none; }
+.sandbox-open-button { position: absolute; left: 14px; bottom: 12px; z-index: 3; border: 1px solid #394157; border-radius: 3px; padding: 8px 10px; background: #171d2b; color: var(--fg); font: 700 12px var(--font-body); cursor: pointer; }
+.sandbox-open-button[hidden] { display: none; }
+.sandbox-screen { z-index: 6; }
+.sandbox-panel { width: min(760px, 100%); }
+.sandbox-fields-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (max-width: 520px) { .screen-panel { padding: 16px; } .screen-panel h2 { font-size: 23px; } }
 </style>
 
@@ -143,8 +149,42 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           <div id="debugUpgradeFields" class="debug-upgrade-grid"></div>
           <p class="debug-hint">手動レベルは0〜99。自動割り振りは開始ウェーブ - 1 回分です。</p>
         </div>
-        <div class="screen-actions"><button id="debugStart">指定条件でプレイ</button><button id="debugBack" class="secondary">戻る</button></div>
+        <div class="screen-actions"><button id="debugStart">指定条件でプレイ</button><button id="sandboxStart" class="secondary">サンドボックスを開く</button><button id="debugBack" class="secondary">戻る</button></div>
         <p id="debugStatus" class="screen-status" role="status"></p>
+      </div>
+    </section>
+    <section id="sandboxScreen" class="screen-layer sandbox-screen" aria-label="サンドボックス" hidden>
+      <div class="screen-panel sandbox-panel">
+        <div class="screen-kicker">SANDBOX / FREE TEST</div>
+        <h2>サンドボックス</h2>
+        <p class="screen-copy">ウェーブ進行なしで動作を確認できます。設定中はゲームが一時停止します。</p>
+        <div class="screen-fields">
+          <label for="sandboxJob">ジョブ</label>
+          <select id="sandboxJob" aria-label="サンドボックスのジョブ">
+            <option value="gunner">GUNNER</option><option value="trick">TRICK</option><option value="assassin">ASSASSIN</option><option value="guardian">GUARDIAN</option><option value="paladin">PALADIN</option>
+          </select>
+          <span>アップグレードレベル (0〜99)</span>
+          <div id="sandboxUpgradeFields" class="debug-upgrade-grid"></div>
+          <div class="screen-actions"><button id="sandboxApplyUpgrades">アップグレードを反映</button></div>
+          <label><input id="sandboxInvulnerable" type="checkbox" checked> 自機を無敵にする</label>
+        </div>
+        <div class="screen-fields">
+          <span>敵を召喚</span>
+          <div class="sandbox-fields-grid">
+            <label for="sandboxEnemyType">敵タイプ</label><select id="sandboxEnemyType" aria-label="召喚する敵タイプ"></select>
+            <label for="sandboxEnemyX">X座標</label><input id="sandboxEnemyX" type="number" step="1" value="480">
+            <label for="sandboxEnemyY">Y座標</label><input id="sandboxEnemyY" type="number" step="1" value="320">
+            <label for="sandboxReviveStacks">復活スタック</label><input id="sandboxReviveStacks" type="number" min="0" max="99" step="1" value="0">
+            <label for="sandboxTrainEdge">列車の出現方向</label>
+            <select id="sandboxTrainEdge" aria-label="列車の出現方向"><option value="0">左から</option><option value="1">右から</option><option value="2">上から</option><option value="3">下から</option></select>
+          </div>
+          <label for="sandboxEnemyState">敵の状態をJSONで上書き (任意)</label>
+          <textarea id="sandboxEnemyState" rows="3" placeholder="{&quot;hp&quot;:1,&quot;reviveStacks&quot;:8}"></textarea>
+          <p class="debug-hint">例: {"hp":1,"laserPhase":2,"laserT":3}。数値・文字列・真偽値の状態項目を指定できます。</p>
+          <div class="screen-actions"><button id="sandboxSpawnEnemy">敵を召喚</button><button id="sandboxRevivePlayer" class="secondary">自機を復帰</button></div>
+          <p id="sandboxStatus" class="screen-status" role="status"></p>
+        </div>
+        <div class="screen-actions"><button id="sandboxClose" class="secondary">ゲームに戻る</button></div>
       </div>
     </section>
     <section id="jobSelectScreen" class="screen-layer" aria-label="ジョブ選択" hidden>
@@ -201,6 +241,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     <div id="roomCodeHud" class="stage-notice" hidden></div>
     <div id="stageBanner" class="stage-banner" hidden role="status"></div>
     <button id="skillListOpen" class="skill-button" hidden>取得済みスキルを見る</button>
+    <button id="sandboxControlsOpen" class="sandbox-open-button" hidden>サンドボックス設定</button>
   </div>
   <div class="hint">
     <span>移動 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 矢印キー</span>
@@ -297,7 +338,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   for (const [type, base] of Object.entries(PURE_BASE_TYPE)) {
     ET[type].r = ET[base].r * 1.38;
     ET[type].color = adjustHexSaturation(ET[base].color, 0);
-    ET[type].fill = ET[base].fill;
+    ET[type].fill = adjustHexSaturation(ET[base].fill, 0);
   }
   const ESQ_CHASE_WARN = 0.55, ESQ_CHASE_DURATION = 4, ESQ_CHASE_COOLDOWN = 2, ESQ_CHASE_SPEED = 450;
   const ESQ_CHASE_STEER = 1.2, ESQ_CHASE_MIN_SPEED = 0.65, ESQ_CHASE_DOT_MAX = 8, ESQ_CHASE_ROTATION_BONUS = 4;
@@ -531,15 +572,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       container.append(button);
     }
   }
-  function buildDebugUpgradeFields() {
-    const container = document.getElementById('debugUpgradeFields');
+  function buildUpgradeFields(containerId, prefix) {
+    const container = document.getElementById(containerId);
     for (const upgrade of UPG) {
       const label = document.createElement('label');
       const name = document.createElement('span');
       const input = document.createElement('input');
       label.className = 'debug-upgrade-field';
       name.textContent = upgrade.name;
-      input.id = 'debugUpgrade-' + upgrade.id;
+      input.id = prefix + upgrade.id;
       input.type = 'number'; input.min = '0'; input.max = String(MAX_DEBUG_UPGRADE_LEVEL);
       input.step = '1'; input.value = '0'; input.inputMode = 'numeric';
       input.setAttribute('aria-label', upgrade.name + ' レベル');
@@ -547,12 +588,25 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       container.append(label);
     }
   }
+  function buildSandboxEnemyTypes() {
+    const select = document.getElementById('sandboxEnemyType');
+    for (const [type, enemy] of Object.entries(ET)) {
+      const option = document.createElement('option');
+      option.value = type; option.textContent = enemy.name || type.toUpperCase();
+      select.append(option);
+    }
+  }
   buildJobButtons();
-  buildDebugUpgradeFields();
+  buildUpgradeFields('debugUpgradeFields', 'debugUpgrade-');
+  buildUpgradeFields('sandboxUpgradeFields', 'sandboxUpgrade-');
+  buildSandboxEnemyTypes();
 
   /* ---------- state ---------- */
   let state = 'title';          // title | jobselect | play | clear | upgrade | dying | over
   let pauseMenuOpen = false;
+  let sandboxPanelOpen = false;
+  let sandboxMode = false;
+  let sandboxInvulnerable = true;
   let waveClearGuard = 0;
   let randomEvent = null;
   let P, enemies, bullets, ebullets, parts, rings, spawns, texts, meteors, items, reviveAnimations, trainRushes;
@@ -627,6 +681,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function showMainMenu() {
     pauseMenuOpen = false;
+    sandboxMode = false; sandboxPanelOpen = false;
+    document.getElementById('sandboxScreen').hidden = true;
+    document.getElementById('sandboxControlsOpen').hidden = true;
     document.getElementById('mainMenu').hidden = false;
     document.getElementById('debugScreen').hidden = true;
     document.getElementById('jobSelectScreen').hidden = true;
@@ -638,6 +695,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     document.getElementById('lateJoinScreen').hidden = true;
   }
   function showDebugScreen() {
+    document.getElementById('sandboxScreen').hidden = true;
     document.getElementById('mainMenu').hidden = true;
     document.getElementById('debugScreen').hidden = false;
     document.getElementById('jobSelectScreen').hidden = true;
@@ -711,6 +769,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     document.getElementById('skillListScreen').hidden = true;
     document.getElementById('gameOverScreen').hidden = true;
     document.getElementById('lateJoinScreen').hidden = true;
+    document.getElementById('sandboxScreen').hidden = true;
+    sandboxPanelOpen = false;
     pauseMenuOpen = false;
   }
   function showPlayerSettings() {
@@ -824,10 +884,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function refreshGameOverScreen() {
     const screen = document.getElementById('gameOverScreen');
+    const retryButton = document.getElementById('gameOverRetry');
+    retryButton.textContent = sandboxMode ? '復活' : 'もう一度遊ぶ';
+    retryButton.disabled = netRole === 'guest' && !sandboxMode;
     screen.hidden = state !== 'over';
     if (state !== 'over') return;
-    document.getElementById('gameOverSummary').textContent = 'WAVE ' + wave + ' 到達　撃破 ' + kills;
-    document.getElementById('gameOverRetry').disabled = netRole === 'guest';
+    document.getElementById('gameOverSummary').textContent = sandboxMode
+      ? 'サンドボックスで自機が倒されました。'
+      : 'WAVE ' + wave + ' 到達　撃破 ' + kills;
     document.getElementById('gameOverReturn').textContent = netRole === 'solo' ? 'メインメニューへ戻る' : netRole === 'host' ? '待機室へ戻る' : '部屋から退出する';
   }
   function renderLateJoinChoices(remaining, indexes, player) {
@@ -895,6 +959,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     renderLobbyRoster();
   }
   function resetRun() {
+    sandboxMode = false; sandboxPanelOpen = false;
     runPlayerCount = Math.max(1, Math.min(MAX_PLAYERS, roomRoster.length));
     const fieldScale = 1 + FIELD_SCALE_PER_PLAYER * (runPlayerCount - 1);
     W = Math.round(BASE_W * fieldScale); H = Math.round(BASE_H * fieldScale);
@@ -929,10 +994,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function createRandomEvent() {
     const kinds = ['horde', 'meteor', 'items', 'size', 'nineLives', 'train'];
     if (wave % BOSS_EVERY === 0) kinds.splice(kinds.indexOf('nineLives'), 1);
-    if (wavePureTypes.size >= HORDE_EVENT_TYPES.length) kinds.splice(kinds.indexOf('horde'), 1);
+    if (wave < 101 && wavePureTypes.size >= HORDE_EVENT_TYPES.length) kinds.splice(kinds.indexOf('horde'), 1);
     const kind = kinds[Math.floor(Math.random() * kinds.length)];
     if (kind === 'horde') {
-      const available = HORDE_EVENT_TYPES.filter((group) => !wavePureTypes.has(group.pure));
+      const available = wave >= 101 ? HORDE_EVENT_TYPES : HORDE_EVENT_TYPES.filter((group) => !wavePureTypes.has(group.pure));
       const group = available[Math.floor(Math.random() * available.length)] || HORDE_EVENT_TYPES[0];
       return { type: kind, pair: group.pair, pure: group.pure, title: group.label + '大量発生！' };
     }
@@ -1011,6 +1076,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (n % BOSS_EVERY === 0) {
       let bossTypes;
       if (n === 25) bossTypes = ['matrix'];
+      else if (n >= 101) {
+        const available = BOSS_ORDER.filter((type) => type !== 'matrix');
+        bossTypes = Array.from({ length: 3 }, () => available[Math.floor(Math.random() * available.length)]);
+      }
       else if (n >= 30) {
         const available = BOSS_ORDER.filter((type) => type !== 'matrix');
         for (let i = available.length - 1; i > 0; i--) {
@@ -1033,7 +1102,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           return { x: edge === 0 ? 0 : edge === 1 ? W : lx, y: edge === 2 ? 0 : edge === 3 ? H : ly, t: 0, delay: 2.6 + index * 0.8, type, edge };
         }
         return {
-          x: bossTypes.length > 1 ? W * (index === 0 ? 0.34 : 0.66) : W / 2,
+          x: bossTypes.length > 1 ? W * (index + 1) / (bossTypes.length + 1) : W / 2,
           y: type === 'matrix' ? H * 0.22 : ET[type].sy || 175,
           t: 0, delay: 1.6 + index * 0.8, type
         };
@@ -1122,12 +1191,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     if (wave >= 26) {
       const pureChance = Math.min(0.4, 0.12 + (wave - 26) * 0.015);
-      const availablePureTypes = PURE_TYPES.filter((type) => !wavePureTypes.has(type));
-      let pure = randomEvent && randomEvent.type === 'horde' ? randomEvent.pure
-        : Math.random() < pureChance && availablePureTypes.length ? availablePureTypes[Math.floor(Math.random() * availablePureTypes.length)] : null;
-      if (pure && !wavePureTypes.has(pure) && list.length) {
-        list[Math.floor(Math.random() * list.length)] = pure;
-        wavePureTypes.add(pure);
+      if (wave >= 101) {
+        if (randomEvent && randomEvent.type === 'horde' && list.length) list[0] = randomEvent.pure;
+        else for (let i = 0; i < list.length; i++) {
+          if (Math.random() < pureChance) list[i] = PURE_TYPES[Math.floor(Math.random() * PURE_TYPES.length)];
+        }
+      } else {
+        const availablePureTypes = PURE_TYPES.filter((type) => !wavePureTypes.has(type));
+        const pure = randomEvent && randomEvent.type === 'horde' ? randomEvent.pure
+          : Math.random() < pureChance && availablePureTypes.length ? availablePureTypes[Math.floor(Math.random() * availablePureTypes.length)] : null;
+        if (pure && !wavePureTypes.has(pure) && list.length) {
+          list[Math.floor(Math.random() * list.length)] = pure;
+          wavePureTypes.add(pure);
+        }
       }
     }
     const cnt = list.length, stagger = cnt ? Math.min(0.2, 3.2 / cnt) : 0;
@@ -1143,9 +1219,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       spawns.push({ x, y, t: 0, delay: 1.1 + i * stagger, type: list[i] });
     }
     if (randomEvent && randomEvent.type === 'nineLives') {
-      const ranks = { tri: 0, etri: 1, ptri: 2, sq: 3, esq: 4, psq: 5, pent: 6, epent: 7, ppent: 8, hex: 9, ehex: 10, phex: 11, quadstar: 12, equadstar: 13, pquadstar: 14, hexstar: 15, ehexstar: 16, phexstar: 17 };
-      const eligible = spawns.filter((spawn) => ranks[spawn.type] !== undefined);
-      eligible.sort((a, b) => ranks[b.type] - ranks[a.type]);
+      const shapeRanks = { tri: 0, sq: 1, pent: 2, hex: 3, quadstar: 4, hexstar: 5 };
+      const eligible = spawns.filter((spawn) => shapeRanks[baseEnemyType(spawn.type)] !== undefined);
+      eligible.sort((a, b) => {
+        const tier = (type) => isPureEnemy(type) ? 2 : isEliteEnemy(type) ? 1 : 0;
+        return tier(b.type) - tier(a.type) || shapeRanks[baseEnemyType(b.type)] - shapeRanks[baseEnemyType(a.type)];
+      });
       if (eligible.length) eligible[0].reviveStacks = 8;
     }
   }
@@ -1227,6 +1306,184 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     status.textContent = '';
     return { startWave, upgradeLevels, job };
   }
+  const SANDBOX_STATE_FIELDS = {
+    hp: 'number', maxHp: 'number', r: 'number', vx: 'number', vy: 'number', ph: 'number', rot: 'number',
+    born: 'number', fireT: 'number', burstLeft: 'number', cd: 'number', atk: 'number', volley: 'number',
+    spin: 'number', dashT: 'number', healT: 'number', chaseT: 'number', inv: 'number', kbx: 'number',
+    kby: 'number', stun: 'number', laserT: 'number', laserPhase: 'number', laserAngle: 'number',
+    laserT0: 'number', laserTurnVelocity: 'number', hexFireT: 'number', teleportT: 'number',
+    reviveStacks: 'number', chargeCooldown: 'number', chargePhase: 'number', chargeT: 'number',
+    chargeAngle: 'number', rushCooldown: 'number', rushPhase: 'number', rushT: 'number', rushAngle: 'number',
+    shootT: 'number', shootIndex: 'number', boost: 'number', trainKbX: 'number', trainKbY: 'number',
+    mxForm: 'number', mode: 'string', chasePhase: 'string', form: 'string',
+    p2: 'boolean', ent: 'boolean', silent: 'boolean'
+  };
+  function parseSandboxEnemyState(raw, status) {
+    if (!raw.trim()) return {};
+    let value;
+    try { value = JSON.parse(raw); }
+    catch (error) { status.textContent = '敵の状態JSONを解析できません: ' + error.message; return null; }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      status.textContent = '敵の状態はJSONオブジェクトで入力してください。';
+      return null;
+    }
+    const overrides = {};
+    for (const [key, fieldValue] of Object.entries(value)) {
+      const expectedType = SANDBOX_STATE_FIELDS[key];
+      if (!expectedType || typeof fieldValue !== expectedType || (expectedType === 'number' && !Number.isFinite(fieldValue))) {
+        status.textContent = '状態項目「' + key + '」またはその値の型は指定できません。';
+        return null;
+      }
+      if (expectedType === 'number' && Math.abs(fieldValue) > 1000000) {
+        status.textContent = '状態項目「' + key + '」は±1000000以内で入力してください。';
+        return null;
+      }
+      overrides[key] = fieldValue;
+    }
+    if (overrides.r !== undefined && overrides.r <= 0) {
+      status.textContent = 'rは0より大きい値にしてください。';
+      return null;
+    }
+    if (overrides.maxHp !== undefined && overrides.maxHp <= 0) {
+      status.textContent = 'maxHpは0より大きい値にしてください。';
+      return null;
+    }
+    if (overrides.hp !== undefined && overrides.hp < 0) {
+      status.textContent = 'hpは0以上の値にしてください。';
+      return null;
+    }
+    if (overrides.laserPhase !== undefined && (!Number.isInteger(overrides.laserPhase) || overrides.laserPhase < 0 || overrides.laserPhase > 3)) {
+      status.textContent = 'laserPhaseは0〜3の整数で入力してください。';
+      return null;
+    }
+    if (overrides.reviveStacks !== undefined && (!Number.isInteger(overrides.reviveStacks) || overrides.reviveStacks < 0 || overrides.reviveStacks > 99)) {
+      status.textContent = 'reviveStacksは0〜99の整数で入力してください。';
+      return null;
+    }
+    return overrides;
+  }
+  function openSandboxPanel() {
+    if (!sandboxMode || netRole !== 'solo') return;
+    sandboxPanelOpen = true;
+    document.getElementById('sandboxScreen').hidden = false;
+    document.getElementById('sandboxJob').value = JOB_BY_ID.has(P.job) ? P.job : 'gunner';
+    document.getElementById('sandboxInvulnerable').checked = sandboxInvulnerable;
+    for (const upgrade of UPG) {
+      document.getElementById('sandboxUpgrade-' + upgrade.id).value = String(P.levels[upgrade.id] || 0);
+    }
+    mouse.down = false;
+    document.getElementById('sandboxClose').focus();
+  }
+  function closeSandboxPanel() {
+    sandboxPanelOpen = false;
+    document.getElementById('sandboxScreen').hidden = true;
+    mouse.down = false;
+    for (const key in keys) keys[key] = false;
+    cv.focus();
+  }
+  function startSandbox() {
+    const status = document.getElementById('debugStatus');
+    const job = document.getElementById('debugJob').value;
+    if (netRole !== 'solo' || !JOB_BY_ID.has(job)) {
+      status.textContent = 'サンドボックスはソロプレイで開始してください。';
+      return;
+    }
+    resetRun();
+    P.job = job;
+    jobSelections.set(1, job);
+    state = 'play'; sandboxMode = true; sandboxInvulnerable = document.getElementById('sandboxInvulnerable').checked;
+    wave = 0; phaseIdx = 0; phaseCount = 1; wavePhases = []; waveClearGuard = 0;
+    randomEvent = null; spawns = [];
+    hideMenuScreens();
+    sandboxMode = true;
+    document.getElementById('sandboxControlsOpen').hidden = false;
+    document.getElementById('sandboxStatus').textContent = '';
+    sfx.start();
+    openSandboxPanel();
+  }
+  function applySandboxUpgrades() {
+    const status = document.getElementById('sandboxStatus');
+    const levels = {};
+    for (const upgrade of UPG) {
+      const field = document.getElementById('sandboxUpgrade-' + upgrade.id);
+      const level = Number(field.value);
+      if (!field.value.trim() || !Number.isSafeInteger(level) || level < 0 || level > MAX_DEBUG_UPGRADE_LEVEL) {
+        status.textContent = upgrade.name + 'のレベルは0〜' + MAX_DEBUG_UPGRADE_LEVEL + 'の整数で入力してください。';
+        field.focus();
+        return;
+      }
+      levels[upgrade.id] = level;
+    }
+    const job = document.getElementById('sandboxJob').value;
+    if (!JOB_BY_ID.has(job)) {
+      status.textContent = 'ジョブを選択してください。';
+      document.getElementById('sandboxJob').focus();
+      return;
+    }
+    P.job = job; jobSelections.set(1, job);
+    P.S = newStats(); P.levels = {}; P.speed = PLAYER_BASE_SPEED;
+    P.maxHp = 500; P.hp = 500; P.cool = 0; P.dashT = 0; P.dashCd = 0;
+    P.armorCd = 0; P.kx = 0; P.ky = 0;
+    for (const upgrade of UPG) {
+      const level = levels[upgrade.id];
+      for (let i = 0; i < level; i++) upgrade.apply(P.S, P);
+      if (level > 0) P.levels[upgrade.id] = level;
+    }
+    P.hp = P.maxHp;
+    sandboxInvulnerable = document.getElementById('sandboxInvulnerable').checked;
+    status.textContent = 'プレイヤーのアップグレードを反映しました。';
+  }
+  function spawnSandboxEnemy() {
+    const status = document.getElementById('sandboxStatus');
+    const type = document.getElementById('sandboxEnemyType').value;
+    const xField = document.getElementById('sandboxEnemyX'), yField = document.getElementById('sandboxEnemyY');
+    const x = Number(xField.value), y = Number(yField.value);
+    const reviveField = document.getElementById('sandboxReviveStacks'), reviveStacks = Number(reviveField.value);
+    if (!Object.prototype.hasOwnProperty.call(ET, type)) {
+      status.textContent = '敵タイプを選択してください。';
+      return;
+    }
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > W || y < 0 || y > H) {
+      status.textContent = '座標はステージ内の値にしてください (X: 0〜' + W + ', Y: 0〜' + H + ')。';
+      return;
+    }
+    if (!reviveField.value.trim() || !Number.isInteger(reviveStacks) || reviveStacks < 0 || reviveStacks > 99) {
+      status.textContent = '復活スタックは0〜99の整数で入力してください。';
+      reviveField.focus();
+      return;
+    }
+    const overrides = parseSandboxEnemyState(document.getElementById('sandboxEnemyState').value, status);
+    if (!overrides) return;
+    if (type === 'train' && (overrides.hp !== undefined || overrides.maxHp !== undefined)) {
+      status.textContent = '列車のHPはチェーン全体で管理されるため、JSONで変更できません。';
+      return;
+    }
+    if (enemies.length >= 500) {
+      status.textContent = '敵数の上限 (500) に達しています。';
+      return;
+    }
+    let enemy;
+    if (type === 'train') {
+      const edge = Number(document.getElementById('sandboxTrainEdge').value);
+      spawnTrain({ edge, x, y });
+      enemy = enemies.find((candidate) => candidate.type === 'train' && candidate.cid === trainCid - 1 && candidate.ci === 0);
+    } else enemy = spawnEnemy(type, x, y, false, false);
+    if (!enemy) {
+      status.textContent = '敵を生成できませんでした。';
+      return;
+    }
+    enemy.reviveStacks = overrides.reviveStacks === undefined ? reviveStacks : overrides.reviveStacks;
+    Object.assign(enemy, overrides);
+    if (overrides.maxHp !== undefined && overrides.hp === undefined) enemy.hp = enemy.maxHp;
+    status.textContent = (ET[type].name || type) + 'を召喚しました。';
+  }
+  function reviveSandboxPlayer() {
+    if (!sandboxMode) return;
+    P.hp = P.maxHp; P.inv = 1; P.x = W / 2; P.y = H / 2; P.prevX = P.x; P.prevY = P.y;
+    P.kx = 0; P.ky = 0; state = 'play'; dyT = 0; overT = 0;
+    document.getElementById('gameOverScreen').hidden = true;
+    document.getElementById('sandboxStatus').textContent = '自機を全回復してステージ中央に戻しました。';
+  }
 
   /* ---------- fx helpers ---------- */
   function burst(x, y, n, color, speed, life, size) {
@@ -1248,7 +1505,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function ring(x, y, maxR, life, color, lw) { if (!trailEnabled && maxR < 80) return; pushEv(['r', r1(x), r1(y), maxR, life, color, lw || 2]); rings.push({ x, y, r: 0, maxR, life, max: life, color, lw: lw || 2 }); if (rings.length > LIMITS.rings) rings.shift(); }
   function floatText(x, y, str, color) { pushEv(['t', r1(x), r1(y), str, color]); texts.push({ x, y, str, color, life: 0.7, max: 0.7 }); if (texts.length > LIMITS.texts) texts.shift(); }
-  const fmtNum = (v) => String(Math.round(v * 10) / 10);
+  const fmtNum = (v) => String(Math.round(v));
   // ダメージポップ(通常=白・小、クリティカル=橙・大)
   function damagePop(x, y, v, crit, color) {
     if (texts.length > 90) return;
@@ -1338,10 +1595,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (enemy.type === 'train') {
       const chain = enemies.filter((segment) => segment.type === 'train' && segment.cid === enemy.cid);
       const head = chain.find((segment) => segment.ci === 0) || enemy;
-      const maxHp = head.chainMaxHp || head.maxHp;
-      const chainHp = maxHp * 0.5;
+      const maxHp = Math.max(1, (head.chainMaxHp || head.maxHp) * 0.75);
+      head.chainMaxHp = maxHp; head.maxTotal = maxHp;
+      const chainHp = maxHp;
       for (const segment of chain) {
         segment.chainHp = chainHp;
+        segment.chainMaxHp = maxHp; segment.maxTotal = maxHp;
         segment.hp = chainHp / chain.length;
         segment.maxHp = maxHp / chain.length;
       }
@@ -1363,8 +1622,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       animation.t += dt;
       if (animation.t < animation.duration) continue;
       const enemy = animation.enemy;
-      enemy.hp = Math.max(1, enemy.maxHp * 0.5);
+      enemy.maxHp = Math.max(1, enemy.maxHp * 0.75);
+      enemy.hp = enemy.maxHp;
       enemy.flash = 0.3; enemy.kbx = 0; enemy.kby = 0; enemy.stun = 0;
+      if (isLaserStar(enemy.type)) {
+        enemy.laserPhase = 0; enemy.laserT = 1.8 + Math.random() * 0.6; enemy.laserT0 = 0;
+        enemy.laserTurnVelocity = 0; enemy.laserCopies = [];
+      }
       enemy.bx = enemy.x; enemy.by = enemy.y;
       enemies.push(enemy);
       ring(enemy.x, enemy.y, enemy.r + 74, 0.55, '#ffd84a', 4);
@@ -1428,7 +1692,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (e.type === 'ehex' && !e.silent) eliteHexShoot(e);
     if (e.type === 'phex' && !e.silent) eliteHexShoot(e, 2);
     if (e.type === 'etri' && !e.silent) splitElite(e);
-    if (e.type === 'ptri' && !e.silent) splitElite(e, 'etri');
+    if (e.type === 'ptri' && !e.silent) splitElite(e, 'etri', 9);
     const lastSeg = !et.seg || !enemies.some((o) => o !== e && o.type === e.type && o.hp > 0);
     if (et.boss && !(et.seg && (!lastSeg || e.silent))) {
       if (et.seg) for (const o of enemies) if (o !== e && o.type === e.type) o.silent = true;
@@ -1554,6 +1818,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function hurtPlayer(amount, fromX, fromY) {
     if (state === 'clear' || P.hp <= 0) return;
+    if (sandboxMode && sandboxInvulnerable) {
+      P.inv = Math.max(P.inv, 0.75); P.kx = 0; P.ky = 0;
+      return;
+    }
     amount *= ENEMY_DAMAGE_MULTIPLIER;
     if (activateArmor(P, P.x, P.y)) amount *= 1 - P.S.armor;
     P.hp -= amount; P.inv = 0.75;
@@ -1659,10 +1927,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     burst(e.x, e.y, 18, col, 260, 0.45, 3.2); ring(e.x, e.y, 90, 0.4, col, 3); sfx.eshoot();
   }
-  function splitElite(e, childType = 'tri') {
+  function splitElite(e, childType = 'tri', count = 3) {
     const a0 = Math.random() * TAU;
-    for (let i = 0; i < 3; i++) {
-      const a = a0 + i * TAU / 3;
+    for (let i = 0; i < count; i++) {
+      const a = a0 + i * TAU / count;
       const child = spawnEnemy(childType, Math.max(30, Math.min(W - 30, e.x + Math.cos(a) * 26)), Math.max(30, Math.min(H - 30, e.y + Math.sin(a) * 26)), true);
       child.kbx = Math.cos(a) * 500; child.kby = Math.sin(a) * 500;
     }
@@ -2823,10 +3091,6 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (isHexEnemy(type)) { const hv = Math.min(150, 70 + wave * 3); enemy.vx = Math.cos(va) * hv; enemy.vy = Math.sin(va) * hv; }
     enemies.push(enemy);
     if (type === 'ptri') {
-      for (let i = 0; i < 9; i++) {
-        const angle = i * TAU / 9;
-        spawnEnemy('etri', Math.max(30, Math.min(W - 30, x + Math.cos(angle) * 34)), Math.max(30, Math.min(H - 30, y + Math.sin(angle) * 34)), true, true);
-      }
       enemy.pureTriSummonT = 4;
     }
     burst(x, y, 12, et.color, 240, 0.4, 3);
@@ -2839,7 +3103,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const TRAIN_LEN = 32, TRAIN_GAP = 34, TRAIN_SPEED = 150, TRAIN_ENTRY = 260;
   const TRAIN_HEAD_RADIUS = 24, TRAIN_BODY_RADIUS = 19, TRAIN_SPLIT_DAMAGE_RATIO = 0.25;
   const TRAIN_PART_SHOT_INTERVAL = 0.35, TRAIN_PART_SHOT_INTERVAL_ENRAGED = 0.28, TRAIN_PART_SHOT_START = 1.2, TRAIN_CHARGE_INTERVAL = 8.2;
-  const TRAIN_CHARGE_WINDUP = 1.05, TRAIN_CHARGE_DASH_DURATION = 0.55, TRAIN_CHARGE_DASH_SPEED = 1050;
+  const TRAIN_CHARGE_WINDUP = 1.05, TRAIN_CHARGE_DASH_DURATION = 0.55, TRAIN_CHARGE_DASH_SPEED = 1050, TRAIN_CHARGE_TURN_SPEED = 1.8;
+  const TRAIN_PASSTHROUGH_INTERVAL = 18;
   const TRAIN_ROTATION_SPEED = 2.2;
   function spawnTrain(sp) {
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1];
@@ -2852,7 +3117,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         chainHp: totalHp, chainMaxHp: totalHp, splitPending: false,
         cid, ci: i, ang: Math.atan2(uy, ux), ent: i === 0, boost: 0, ph: Math.random() * TAU, rot: 0, flash: 0, born: 1,
         chargeCooldown: TRAIN_CHARGE_INTERVAL + Math.random() * 1.2, chargePhase: 0, chargeT: 0, chargeAngle: 0,
-        rushCooldown: 0.8, rushPhase: 0, rushT: 0, rushAngle: 0,
+        rushCooldown: TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3, rushPhase: 0, rushT: 0, rushAngle: 0,
         shootT: i === 0 ? TRAIN_PART_SHOT_START : 0, shootIndex: 0,
         vx: 0, vy: 0, cd: 9, atk: 0, volley: 0, spin: 0, mode: 'drift', dashT: 9, healT: 9, inv: 0
       });
@@ -2874,7 +3139,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     head.ent = false; head.boost = 1.2;
     head.splitPending = false; head.chargePhase = 0; head.chargeT = 0;
     head.chargeCooldown = TRAIN_CHARGE_INTERVAL + Math.random() * 1.2;
-    head.rushCooldown = 3; head.rushPhase = 0; head.rushT = 0;
+    head.rushCooldown = TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3; head.rushPhase = 0; head.rushT = 0;
     head.shootT = 0.5; head.shootIndex = 0;
   }
   function assignTrainChain(chain, cid, hp, maxHp) {
@@ -2888,6 +3153,26 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       segment.r = i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS;
     });
     resetTrainHead(chain[0]);
+  }
+  function trainChainOutsideEdge(chain, edge) {
+    return chain.every((segment) => edge === 0 ? segment.x + segment.r < 0
+      : edge === 1 ? segment.x - segment.r > W
+        : edge === 2 ? segment.y + segment.r < 0
+          : segment.y - segment.r > H);
+  }
+  function placeTrainAtPassEdge(chain, edge, lane) {
+    const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]], direction = directions[edge], head = chain[0];
+    const angle = Math.atan2(direction[1], direction[0]);
+    head.x = edge === 0 ? -TRAIN_HEAD_RADIUS : edge === 1 ? W + TRAIN_HEAD_RADIUS : lane;
+    head.y = edge === 2 ? -TRAIN_HEAD_RADIUS : edge === 3 ? H + TRAIN_HEAD_RADIUS : lane;
+    head.rushAngle = angle;
+    for (let i = 0; i < chain.length; i++) {
+      const segment = chain[i];
+      segment.x = head.x - Math.cos(angle) * TRAIN_GAP * i;
+      segment.y = head.y - Math.sin(angle) * TRAIN_GAP * i;
+      segment.ang = angle;
+    }
+    head.rushDuration = ((edge < 2 ? W : H) + TRAIN_GAP * (chain.length - 1) + TRAIN_HEAD_RADIUS + TRAIN_BODY_RADIUS) / TRAIN_CHARGE_DASH_SPEED;
   }
   function fireTrainSplitVolley(x, y) {
     for (let i = 0; i < 12; i++) {
@@ -2953,35 +3238,68 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         head.ang += Math.max(-turn, Math.min(turn, delta));
         speed = TRAIN_SPEED * (0.65 + surge * 0.8);
         if (head.boost > 0) { head.boost -= dt; speed *= 1.5; }
-        if (chain.length < 4) head.rushPhase = 0;
-        else if (head.rushPhase === 0) {
-          if (!out) head.rushCooldown -= dt;
-          if (!out && head.rushCooldown <= 0) {
-            const edge = Math.floor(Math.random() * 4), direction = [[1, 0], [-1, 0], [0, 1], [0, -1]][edge], horizontal = edge < 2;
-            head.rushAngle = Math.atan2(direction[1], direction[0]);
-            const lane = horizontal ? 90 + Math.random() * (H - 180) : 90 + Math.random() * (W - 180);
-            head.rushTargetX = edge === 0 ? -TRAIN_HEAD_RADIUS : edge === 1 ? W + TRAIN_HEAD_RADIUS : lane;
-            head.rushTargetY = edge === 2 ? -TRAIN_HEAD_RADIUS : edge === 3 ? H + TRAIN_HEAD_RADIUS : lane;
+        if (head.rushPhase === 0 && head.chargePhase === 0 && !out) {
+          if (chain.length >= 4) head.rushCooldown -= dt;
+          head.chargeCooldown -= dt;
+          if (chain.length >= 4 && head.rushCooldown <= 0) {
+            const edge = Math.floor(Math.random() * 4);
+            head.rushExitEdge = edge;
+            head.rushExitAngle = edge === 0 ? Math.PI : edge === 1 ? 0 : edge === 2 ? -Math.PI / 2 : Math.PI / 2;
+            head.rushLane = edge < 2 ? 90 + Math.random() * (H - 180) : 90 + Math.random() * (W - 180);
+            head.rushTargetX = edge === 0 ? TRAIN_HEAD_RADIUS + 12 : edge === 1 ? W - TRAIN_HEAD_RADIUS - 12 : head.rushLane;
+            head.rushTargetY = edge === 2 ? TRAIN_HEAD_RADIUS + 12 : edge === 3 ? H - TRAIN_HEAD_RADIUS - 12 : head.rushLane;
             head.rushPhase = 3;
-            head.rushDuration = ((horizontal ? W : H) + TRAIN_GAP * (chain.length + 2)) / TRAIN_CHARGE_DASH_SPEED;
+          } else if (head.chargeCooldown <= 0) {
+            const target = getAngularTargetPlayer(head.x, head.y, head.ang), pos = playerPosition(target);
+            head.chargeAngle = Math.atan2(pos.y - head.y, pos.x - head.x);
+            head.chargePhase = 1; head.chargeT = TRAIN_CHARGE_WINDUP;
           }
         }
         if (head.rushPhase === 3) {
           const dx = head.rushTargetX - head.x, dy = head.rushTargetY - head.y, distance = Math.hypot(dx, dy);
           const approachAngle = Math.atan2(dy, dx), approachDelta = wrap(approachAngle - head.ang);
           head.ang += Math.max(-turn, Math.min(turn, approachDelta));
-          speed = TRAIN_SPEED * 1.45;
+          speed = TRAIN_SPEED * 1.35;
           if (distance <= speed * dt) {
             head.x = head.rushTargetX; head.y = head.rushTargetY;
-            head.rushPhase = 1; head.rushT = TRAIN_CHARGE_WINDUP; head.chargePhase = 0;
-            head.ang = head.rushAngle; speed = 0;
+            head.rushPhase = 4; head.ang = head.rushExitAngle; speed = 0;
           }
+        } else if (head.rushPhase === 4) {
+          head.ang = head.rushExitAngle; speed = TRAIN_SPEED * 1.35;
         } else if (head.rushPhase === 1) {
           head.rushT -= dt;
           if (head.rushT <= 0) { head.rushPhase = 2; head.rushT = head.rushDuration; }
         } else if (head.rushPhase === 2) {
-          head.rushT -= dt; head.ang = head.rushAngle; speed = TRAIN_CHARGE_DASH_SPEED;
-          if (head.rushT <= 0) { head.rushPhase = 0; head.rushCooldown = TRAIN_CHARGE_INTERVAL + Math.random() * 1.2; }
+          head.rushT -= dt; head.ang = head.rushAngle;
+          if (head.rushT <= 0) { head.rushPhase = 5; head.rushT = 0; speed = TRAIN_SPEED * 1.8; }
+          else speed = TRAIN_CHARGE_DASH_SPEED;
+        } else if (head.rushPhase === 5) {
+          const dx = W / 2 - head.x, dy = H / 2 - head.y, distance = Math.hypot(dx, dy);
+          const returnAngle = Math.atan2(dy, dx), returnDelta = wrap(returnAngle - head.ang);
+          head.ang += Math.max(-4.5 * dt, Math.min(4.5 * dt, returnDelta));
+          speed = TRAIN_SPEED * 1.8;
+          if (distance < 110) {
+            head.rushPhase = 0;
+            head.rushCooldown = TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3;
+            head.chargeCooldown = 3 + Math.random() * 3;
+          }
+        } else if (head.chargePhase === 1) {
+          const target = getAngularTargetPlayer(head.x, head.y, head.chargeAngle), pos = playerPosition(target);
+          const desiredAngle = Math.atan2(pos.y - head.y, pos.x - head.x), angleError = wrap(desiredAngle - head.chargeAngle);
+          head.chargeAngle += Math.max(-TRAIN_CHARGE_TURN_SPEED * dt, Math.min(TRAIN_CHARGE_TURN_SPEED * dt, angleError));
+          head.chargeT -= dt; head.ang = head.chargeAngle; speed = 0;
+          if (head.chargeT <= 0) { head.chargePhase = 2; head.chargeT = TRAIN_CHARGE_DASH_DURATION; }
+        } else if (head.chargePhase === 2) {
+          const target = getAngularTargetPlayer(head.x, head.y, head.chargeAngle), pos = playerPosition(target);
+          const desiredAngle = Math.atan2(pos.y - head.y, pos.x - head.x), angleError = wrap(desiredAngle - head.chargeAngle);
+          head.chargeAngle += Math.max(-TRAIN_CHARGE_TURN_SPEED * dt, Math.min(TRAIN_CHARGE_TURN_SPEED * dt, angleError));
+          head.chargeT -= dt; head.ang = head.chargeAngle;
+          if (head.chargeT <= 0) {
+            head.chargePhase = 0; head.chargeCooldown = TRAIN_CHARGE_INTERVAL + Math.random() * 1.2; speed = 0;
+          } else {
+            const progress = 1 - Math.max(0, Math.min(1, head.chargeT / TRAIN_CHARGE_DASH_DURATION));
+            speed = TRAIN_CHARGE_DASH_SPEED * (1 - progress);
+          }
         }
         if (head.rushPhase === 1) { head.ang = head.rushAngle; speed = 0; }
         else if (head.rushPhase === 2) { head.ang = head.rushAngle; speed = TRAIN_CHARGE_DASH_SPEED; }
@@ -2990,12 +3308,22 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       head.x += (head.trainKbX || 0) * dt; head.y += (head.trainKbY || 0) * dt;
       const knockbackDecay = Math.exp(-5.5 * dt);
       head.trainKbX = (head.trainKbX || 0) * knockbackDecay; head.trainKbY = (head.trainKbY || 0) * knockbackDecay;
+      if (!head.ent && head.rushPhase === 0 && head.chargePhase === 0) {
+        head.x = Math.max(TRAIN_HEAD_RADIUS + 2, Math.min(W - TRAIN_HEAD_RADIUS - 2, head.x));
+        head.y = Math.max(TRAIN_HEAD_RADIUS + 2, Math.min(H - TRAIN_HEAD_RADIUS - 2, head.y));
+      }
       for (let i = 1; i < chain.length; i++) {
         const previous = chain[i - 1], segment = chain[i];
         const angle = Math.atan2(previous.y - segment.y, previous.x - segment.x);
         segment.ang = angle;
         segment.x = previous.x - Math.cos(angle) * TRAIN_GAP;
         segment.y = previous.y - Math.sin(angle) * TRAIN_GAP;
+      }
+      if (head.rushPhase === 4 && trainChainOutsideEdge(chain, head.rushExitEdge)) {
+        const entryEdge = [1, 0, 3, 2][head.rushExitEdge];
+        const lane = entryEdge < 2 ? 90 + Math.random() * (H - 180) : 90 + Math.random() * (W - 180);
+        placeTrainAtPassEdge(chain, entryEdge, lane);
+        head.rushPhase = 1; head.rushT = TRAIN_CHARGE_WINDUP; head.chargePhase = 0;
       }
       if (!head.ent) {
         head.shootT -= dt;
@@ -3367,7 +3695,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           e.pureTriSummonT -= dt;
           if (e.pureTriSummonT <= 0) {
             const angle = Math.random() * TAU;
-            spawnEnemy('tri', Math.max(30, Math.min(W - 30, e.x + Math.cos(angle) * 38)), Math.max(30, Math.min(H - 30, e.y + Math.sin(angle) * 38)), true, true);
+            spawnEnemy('etri', Math.max(30, Math.min(W - 30, e.x + Math.cos(angle) * 38)), Math.max(30, Math.min(H - 30, e.y + Math.sin(angle) * 38)), true, true);
             e.pureTriSummonT = 5.5;
           }
         }
@@ -3486,39 +3814,38 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         }
       }
       if (isLaserStar(e.type) && state !== 'dying' && e.born > 0) {
+        if (e.type === 'phexstar' && e.laserPhase > 0) for (const copy of e.laserCopies || []) {
+          copy.x += copy.vx * dt; copy.y += copy.vy * dt;
+          copy.x = Math.max(24, Math.min(W - 24, copy.x)); copy.y = Math.max(24, Math.min(H - 24, copy.y));
+          const drag = Math.exp(-2.8 * dt);
+          copy.vx *= drag; copy.vy *= drag;
+          if (Math.hypot(copy.vx, copy.vy) < 5) { copy.vx = 0; copy.vy = 0; }
+        }
         if (e.laserPhase === 0) {
           e.laserT -= dt;
           if (e.laserT <= 0) {
             const target = getTargetPlayer(e.x, e.y); e.laserAngle = Math.atan2(target.y - e.y, target.x - e.x);
             e.laserPhase = 1; e.laserT = 1.0; e.laserT0 = 1.0;
             if (e.type === 'phexstar') {
-              const margin = 72;
-              e.laserCopies = [0, 1].map(() => {
-                const targetX = margin + Math.random() * (W - margin * 2);
-                const targetY = margin + Math.random() * (H - margin * 2);
+              e.laserCopies = [-1, 1].map((side) => {
+                const angle = e.laserAngle + side * (Math.PI / 2 + (Math.random() - 0.5) * 0.35);
+                const speed = 300 + Math.random() * 60;
                 return {
-                  x: e.x, y: e.y, originX: e.x, originY: e.y, targetX, targetY,
-                  angle: Math.atan2(targetY - e.y, targetX - e.x), turnVelocity: 0
+                  x: e.x, y: e.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                  angle: Math.atan2(target.y - e.y, target.x - e.x), turnVelocity: 0
                 };
               });
             }
           }
         } else if (e.laserPhase === 1) {
           e.laserT -= dt;
-          if (e.type === 'phexstar') {
-            const progress = Math.max(0, Math.min(1, 1 - e.laserT / e.laserT0));
-            for (const copy of e.laserCopies || []) {
-              copy.x = copy.originX + (copy.targetX - copy.originX) * progress;
-              copy.y = copy.originY + (copy.targetY - copy.originY) * progress;
-            }
-          }
           if (e.laserT <= 0) {
-            e.laserPhase = 2; e.laserT = isEliteEnemy(e.type) ? 3 : 0.38; e.laserT0 = e.laserT;
+            e.laserPhase = 2; e.laserT = isEliteEnemy(e.type) || e.type === 'phexstar' ? 3 : 0.38; e.laserT0 = e.laserT;
             e.laserTurnVelocity = 0;
             for (const copy of e.laserCopies || []) copy.turnVelocity = 0;
           }
         } else if (e.laserPhase === 2) {
-          if (isEliteEnemy(e.type)) {
+          if (isEliteEnemy(e.type) || e.type === 'phexstar') {
             const target = getAngularTargetPlayer(e.x, e.y, e.laserAngle);
             const pos = playerPosition(target);
             const desiredAngle = Math.atan2(pos.y - e.y, pos.x - e.x);
@@ -3537,17 +3864,21 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             }
           }
           e.laserT -= dt;
+          const beams = [{ x: e.x, y: e.y, angle: e.laserAngle }, ...(e.type === 'phexstar' ? e.laserCopies || [] : [])];
           for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0) {
             const pos = playerPosition(pl);
             const beamHalfWidth = (e.type === 'phexstar' ? 11 : 7) * eventSizeScale('enemy');
-            const rx = pos.x - e.x, ry = pos.y - e.y, c = Math.cos(e.laserAngle), s = Math.sin(e.laserAngle);
-            const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
-            if (along > 0 && side < beamHalfWidth + pl.r * eventSizeScale('player') * 0.5) {
-              if (pl === P) hurtPlayer(12, e.x, e.y); else hurtRemotePlayer(pl, 12, e.x, e.y);
-              if (e.type === 'phexstar') {
-                const angle = Math.atan2(pos.y - e.y, pos.x - e.x), forceX = Math.cos(angle) * 260, forceY = Math.sin(angle) * 260;
-                if (pl === P) { P.kx += forceX; P.ky += forceY; }
-                else pushEv(['k', pl.id, r1(forceX), r1(forceY), 0]);
+            for (const beam of beams) {
+              const rx = pos.x - beam.x, ry = pos.y - beam.y, c = Math.cos(beam.angle), s = Math.sin(beam.angle);
+              const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
+              if (along > 0 && side < beamHalfWidth + pl.r * eventSizeScale('player') * 0.5) {
+                if (pl === P) hurtPlayer(12, beam.x, beam.y); else hurtRemotePlayer(pl, 12, beam.x, beam.y);
+                if (e.type === 'phexstar') {
+                  const angle = Math.atan2(pos.y - beam.y, pos.x - beam.x), forceX = Math.cos(angle) * 260, forceY = Math.sin(angle) * 260;
+                  if (pl === P && !(sandboxMode && sandboxInvulnerable)) { P.kx += forceX; P.ky += forceY; }
+                  else pushEv(['k', pl.id, r1(forceX), r1(forceY), 0]);
+                }
+                break;
               }
             }
           }
@@ -3706,11 +4037,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     updateReviveAnimations(dt);
     // wave clear / 次フェーズ
-    if (state === 'play' && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0 && phaseIdx + 1 < phaseCount) {
+    if (!sandboxMode && state === 'play' && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0 && phaseIdx + 1 < phaseCount) {
       phaseIdx++; startPhase(phaseIdx);
       bannerText = 'PHASE ' + (phaseIdx + 1) + ' / ' + phaseCount; bannerT = 1.8;
       ring(P.x, P.y, 300, 0.6, '#ffffff', 2); sfx.wave();
-    } else if (state === 'play' && waveClearGuard <= 0 && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0) {
+    } else if (!sandboxMode && state === 'play' && waveClearGuard <= 0 && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0) {
       state = 'clear'; clearT = 1.2; collectRemainingItems();
       bannerBossTypes = null; bannerText = 'WAVE CLEAR'; bannerT = 1.4;
       showWaveClearFx();
@@ -3874,7 +4205,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const k = ev.key.toLowerCase();
     const active = document.activeElement, menuControlFocused = active && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName);
     if (k === 'escape') {
-      if (pauseMenuOpen) closePauseMenu();
+      if (sandboxPanelOpen) closeSandboxPanel();
+      else if (pauseMenuOpen) closePauseMenu();
       else if (state === 'play' || state === 'clear' || state === 'upgrade') openPauseMenu();
       ev.preventDefault();
       return;
@@ -4159,9 +4491,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
     }
     for (const child of e.mxChildren) {
-      ctx.save(); ctx.globalAlpha = 0.62; ctx.fillStyle = 'rgba(192,117,255,.32)';
-      ctx.strokeStyle = '#d7adff'; ctx.lineWidth = 2 * sc; ctx.shadowColor = '#c075ff'; ctx.shadowBlur = bloomEnabled ? 14 : 0;
-      ctx.beginPath(); ctx.arc(child.x, child.y, MATRIX_CELL * 1.3 * sc, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.globalAlpha = 0.62; ctx.strokeStyle = '#d7adff';
+      ctx.lineWidth = 2 * sc; ctx.shadowColor = '#c075ff'; ctx.shadowBlur = bloomEnabled ? 14 : 0;
       if (child.charge > 0) {
         ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.moveTo(child.x, child.y);
         ctx.lineTo(child.x + Math.cos(child.a) * MATRIX_CELL * 2, child.y + Math.sin(child.a) * MATRIX_CELL * 2); ctx.stroke();
@@ -4302,6 +4633,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.fill();
       ctx.lineWidth = e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 || isPureEnemy(e.type) ? '#ffffff' : et.color;
       ctx.stroke();
+      if (isPureEnemy(e.type)) {
+        const gaugeRadius = e.r * sc * et.vr + 8;
+        ctx.beginPath(); ctx.arc(e.x, e.y, gaugeRadius, 0, TAU);
+        ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.stroke();
+        ctx.beginPath(); ctx.arc(e.x, e.y, gaugeRadius, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, Math.min(1, e.hp / e.maxHp)));
+        ctx.strokeStyle = '#ffffff'; ctx.stroke();
+      }
       if (isSquareChaser(e.type) ? esqDotCharge > 0 : ch > 0) {
         ctx.fillStyle = '#ffffff'; ctx.beginPath();
         ctx.arc(e.x, e.y, isSquareChaser(e.type) ? ESQ_CHASE_DOT_MAX * esqDotCharge : 2 + ch * 6, 0, TAU);
@@ -4682,7 +5020,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function drawHud() {
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'left'; ctx.fillStyle = C.fg; setFont(18, 700); spaced(3);
-    ctx.fillText('WAVE ' + wave, 24, 38);
+    ctx.fillText(sandboxMode ? 'SANDBOX' : 'WAVE ' + wave, 24, 38);
     if (phaseCount > 1) {
       const ww = ctx.measureText('WAVE ' + wave).width;
       spaced(2); ctx.fillStyle = C.muted; setFont(13, 700);
@@ -4752,13 +5090,22 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const slide = (1 - Math.min(1, (1.8 - bannerT) / 0.25)) * 30;
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, a));
-    ctx.textAlign = 'center'; setFont(bannerBossTypes ? 42 : 56, 700); spaced(bannerBossTypes ? 7 : 10);
+    ctx.textAlign = 'center';
+    const bossCount = bannerBossTypes ? bannerBossTypes.length : 0;
+    setFont(bossCount >= 3 ? Math.max(22, 34 - (bossCount - 3) * 3) : bossCount ? 42 : 56, 700);
+    spaced(bossCount >= 3 ? 3 : bossCount ? 7 : 10);
     if (bannerBossTypes) {
-      const lines = [bannerBossTypes[0], null, bannerBossTypes[1]];
+      const lines = [];
+      for (let i = 0; i < bannerBossTypes.length; i++) {
+        if (i) lines.push(null);
+        lines.push(bannerBossTypes[i]);
+      }
+      const lineHeight = bossCount === 2 ? 52 : Math.max(24, Math.min(36, 144 / Math.max(1, lines.length - 1)));
+      const firstY = bossCount === 2 ? 95 : H * 0.25 - (lines.length - 1) * lineHeight / 2;
       for (let i = 0; i < lines.length; i++) {
         ctx.fillStyle = lines[i] ? ET[lines[i]].color : '#ffffff';
         ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 24;
-        ctx.fillText(lines[i] ? ET[lines[i]].name : '&', W / 2 + 5, 95 + i * 52 - slide);
+        ctx.fillText(lines[i] ? ET[lines[i]].name : '&', W / 2 + 5, firstY + i * lineHeight - slide);
       }
     } else {
       ctx.fillStyle = bannerText === 'WAVE CLEAR' ? C.accent : bannerText.indexOf('BOSS') === 0 ? bannerCol : '#ffffff';
@@ -5633,6 +5980,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (!config) return;
     initAudio();     startGame(config.startWave, config.upgradeLevels, config.job);
   });
+  document.getElementById('sandboxStart').addEventListener('click', () => { initAudio(); startSandbox(); });
+  document.getElementById('sandboxControlsOpen').addEventListener('click', openSandboxPanel);
+  document.getElementById('sandboxClose').addEventListener('click', closeSandboxPanel);
+  document.getElementById('sandboxApplyUpgrades').addEventListener('click', applySandboxUpgrades);
+  document.getElementById('sandboxSpawnEnemy').addEventListener('click', spawnSandboxEnemy);
+  document.getElementById('sandboxRevivePlayer').addEventListener('click', reviveSandboxPlayer);
+  document.getElementById('sandboxInvulnerable').addEventListener('change', (event) => {
+    sandboxInvulnerable = event.target.checked;
+  });
   for (const id of ['dashModeSelect', 'pauseDashModeSelect']) {
     document.getElementById(id).addEventListener('change', (event) => { dashMode = event.target.value === 'move' ? 'move' : 'mouse'; syncSettingsControls(); });
   }
@@ -5681,7 +6037,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     renderSkillList(); document.getElementById('skillListScreen').hidden = false;
   });
   document.getElementById('skillListClose').addEventListener('click', () => { document.getElementById('skillListScreen').hidden = true; });
-  document.getElementById('gameOverRetry').addEventListener('click', () => { if (netRole !== 'guest') retryGame(); });
+  document.getElementById('gameOverRetry').addEventListener('click', () => {
+    if (sandboxMode) reviveSandboxPlayer();
+    else if (netRole !== 'guest') retryGame();
+  });
   document.getElementById('gameOverReturn').addEventListener('click', () => {
     if (netRole === 'guest') { leaveRoom('部屋から退出しました'); return; }
     if (netRole === 'host') {
@@ -5707,7 +6066,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   let last = performance.now();
   function frame(now) {
     let dt = Math.min(0.05, (now - last) / 1000); last = now;
-    const soloPaused = pauseMenuOpen && netRole === 'solo';
+    const soloPaused = (pauseMenuOpen || sandboxPanelOpen) && netRole === 'solo';
 
     // update
     if (netRole === 'guest') {
@@ -5739,7 +6098,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (!soloPaused) bannerT = Math.max(0, bannerT - dt);
     refreshGameOverScreen();
     const skillButton = document.getElementById('skillListOpen');
-    skillButton.hidden = state !== 'upgrade';
+    skillButton.hidden = state !== 'upgrade' || sandboxMode;
+    document.getElementById('sandboxControlsOpen').hidden = !sandboxMode;
     const roomCodeHud = document.getElementById('roomCodeHud');
     roomCodeHud.hidden = !showRoomCode || !coop() || !netRoom;
     roomCodeHud.textContent = netRoom ? 'ROOM ' + netRoom : '';
