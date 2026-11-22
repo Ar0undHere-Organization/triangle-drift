@@ -296,7 +296,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   for (const [type, base] of Object.entries(PURE_BASE_TYPE)) {
     ET[type].r = ET[base].r * 1.38;
-    ET[type].color = adjustHexSaturation(ET[base].color, 0.5);
+    ET[type].color = adjustHexSaturation(ET[base].color, 0);
     ET[type].fill = ET[base].fill;
   }
   const ESQ_CHASE_WARN = 0.55, ESQ_CHASE_DURATION = 4, ESQ_CHASE_COOLDOWN = 2, ESQ_CHASE_SPEED = 450;
@@ -390,6 +390,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     meteor() { tone(1500, 0.3, 'sine', 0.025, 300); },
     impact() { tone(150, 0.2, 'triangle', 0.06, 50); },
     heal() { tone(520, 0.18, 'sine', 0.04, 880); },
+    revive() { tone(620, 0.28, 'sine', 0.045, 1240); tone(930, 0.2, 'triangle', 0.025, 1560, 0.08); },
     dash() { tone(260, 0.16, 'sawtooth', 0.04, 1000); }
   };
   // ホスト: 効果音はゲストの画面でも鳴らすため演出イベントとして転送する(UI専用の音は除外)
@@ -949,10 +950,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       (randomEvent.sizeGroup === group || randomEvent.sizeGroup === 'all') ? randomEvent.size : 1;
   }
   function updateRandomEvent(dt) {
-    if (state !== 'play' || !randomEvent || randomEvent.type !== 'meteor') return;
+    if ((state !== 'play' && state !== 'clear') || !randomEvent) return;
+    randomEvent.bannerT = Math.max(0, (randomEvent.bannerT || 0) - dt);
+    if (state !== 'play' || randomEvent.type !== 'meteor') return;
     randomEvent.meteorTimer -= dt;
     if (randomEvent.meteorTimer > 0) return;
-    quadStarFall({ x: W / 2, y: H / 2, type: 'quadstar' }, false, 1, 0.34);
+    const radius = QUADSTAR_METEOR_RADIUS;
+    meteors.push({
+      x: radius + Math.random() * (W - radius * 2),
+      y: radius + Math.random() * (H - radius * 2),
+      t: 0, warn: 0.8, fall: 0.28, r: radius, fell: false, color: ET.quadstar.color
+    });
     randomEvent.meteorTimer += 0.34;
   }
   function startTrainEvent(dt) {
@@ -972,7 +980,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       x: spawn.edge === 0 ? -TRAIN_HEAD_RADIUS : spawn.edge === 1 ? W + TRAIN_HEAD_RADIUS : spawn.x,
       y: spawn.edge === 2 ? -TRAIN_HEAD_RADIUS : spawn.edge === 3 ? H + TRAIN_HEAD_RADIUS : spawn.y,
       angle: Math.atan2(direction[1], direction[0]), t: 0, speed: TRAIN_CHARGE_DASH_SPEED,
-      length: 8, duration: ((horizontal ? W : H) + TRAIN_GAP * 9) / TRAIN_CHARGE_DASH_SPEED
+      length: TRAIN_LEN, duration: ((horizontal ? W : H) + TRAIN_GAP * (TRAIN_LEN + 1)) / TRAIN_CHARGE_DASH_SPEED
     });
   }
   function updateTrainRushes(dt) {
@@ -1013,7 +1021,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       } else {
         bossTypes = [BOSS_ORDER[Math.floor(n / BOSS_EVERY) - 1]];
       }
-      randomEvent = n >= 26 && Math.random() < RANDOM_EVENT_CHANCE ? createRandomEvent() : null;
+      randomEvent = null;
       bannerBossTypes = bossTypes.length > 1 ? bossTypes : null;
       bannerText = bannerBossTypes ? '' : 'BOSS  ' + ET[bossTypes[0]].name;
       bannerCol = ET[bossTypes[0]].color;
@@ -1103,7 +1111,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const list = wavePhases[idx].slice();
     randomEvent = wave >= 26 && Math.random() < RANDOM_EVENT_CHANCE ? createRandomEvent() : null;
     if (randomEvent) {
-      bannerText = randomEvent.title; bannerCol = C.accent; bannerT = 2.4; bannerBossTypes = null;
+      randomEvent.bannerT = 2.4;
       if (randomEvent.type === 'horde') {
         const hordeCount = Math.max(4, Math.ceil(list.length * 0.38));
         for (let i = 0; i < hordeCount; i++) {
@@ -1293,6 +1301,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
   function fire() { fireFrom(P, mouse.x, mouse.y); }
+  function playerBulletColor(ownerId) {
+    const owner = visiblePlayers().find((player) => (player.id || 1) === (ownerId || 1));
+    return owner && owner.color || C.bullet;
+  }
   function fireFrom(shooter, aimX, aimY) {
     const S = shooter.S;                              // 強化はプレイヤーごと
     let a = Math.atan2(aimY - shooter.y, aimX - shooter.x);
@@ -1306,6 +1318,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         x: shooter.x + c * (shooter.r + 6), y: shooter.y + s * (shooter.r + 6),
         vx: c * bulletSpeed, vy: s * bulletSpeed,
         r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
+        color: shooter.color || C.bullet,
         homing: !!S.missileHoming, owner: shooter.id || 1,
         crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, guide: S.guideLevel,
         burstKb: S.burstKb, burstRange: S.burstRange,
@@ -1313,7 +1326,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       });
     }
     const c = Math.cos(a), s = Math.sin(a);
-    burst(shooter.x + c * (shooter.r + 8), shooter.y + s * (shooter.r + 8), 3, C.bullet, 160, 0.14, 2.2);
+    burst(shooter.x + c * (shooter.r + 8), shooter.y + s * (shooter.r + 8), 3, shooter.color || C.bullet, 160, 0.14, 2.2);
     if (shooter === P) { shooter.kx -= c * 26; shooter.ky -= s * 26; }   // 反動(ゲスト機の位置はゲスト側が持つ)
     shake = Math.max(shake, 1.2);
     sfx.shoot();
@@ -1337,11 +1350,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ring(enemy.x, enemy.y, enemy.r + 74, 0.55, '#ffd84a', 4);
       burst(enemy.x, enemy.y, 24, '#ffd84a', 300, 0.55, 3.4);
       floatText(enemy.x, enemy.y - enemy.r - 8, 'REVIVE', '#ffd84a');
-      sfx.heal();
+      sfx.revive();
       return true;
     }
     reviveAnimations.push({ enemy, t: 0, duration: 0.65, x: enemy.x, y: enemy.y });
-    sfx.heal();
+    sfx.revive();
     return true;
   }
   function updateReviveAnimations(dt) {
@@ -1362,8 +1375,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   function killEnemy(e) {
-    if (!e.silent && reviveEnemy(e)) return e.type === 'train' ? false : true;
-    if (e.type !== 'tridrone') kills++;
+    const revived = !e.silent && reviveEnemy(e);
+    if (revived && e.type === 'train') return false;
+    if (!revived && e.type !== 'tridrone') kills++;
     const et = ET[e.type];
     const sm = e.type === 'tri';
     burst(e.x, e.y, sm ? 18 : 26, et.color, 320, 0.6, 3.4);
@@ -1377,7 +1391,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     sfx.kill();
     if (ET[e.type].cross && !e.silent) crossHealOnDeath(e);
     const itemDropChance = ITEM_DROP + (randomEvent && randomEvent.type === 'items' ? ITEM_BONUS_DROP : 0);
-    if (e.type !== 'tridrone' && !e.silent && (ET[e.type].cross || Math.random() < itemDropChance)) items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false });
+    if (!revived && e.type !== 'tridrone' && !e.silent && (ET[e.type].cross || Math.random() < itemDropChance)) items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false });
     if (ET[e.type].cross && isEliteEnemy(e.type) && !e.silent) {
       let granted = 0;
       const trainChains = new Set();
@@ -1396,7 +1410,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
       if (granted) sfx.heal();
     }
-    if (!e.silent && e.type !== 'tridrone') {
+    if (!revived && !e.silent && e.type !== 'tridrone') {
       const killer = partyPlayers().find((pl) => pl.id === e.lastHitPlayerId);
       if (killer && killer.hp > 0) {
         const heal = Math.min(killer.maxHp - killer.hp, lifeStealHeal(killer.S.lifeSteal));
@@ -1456,12 +1470,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (!enemy) return;
     if (enemy.type === 'train') {
       const head = enemies.find((segment) => segment.type === 'train' && segment.cid === enemy.cid && segment.ci === 0);
-      if (head) { head.trainKbX = (head.trainKbX || 0) + x * 0.05; head.trainKbY = (head.trainKbY || 0) + y * 0.05; }
+      if (head) { head.trainKbX = (head.trainKbX || 0) + x * 0.01; head.trainKbY = (head.trainKbY || 0) + y * 0.01; }
       return;
     }
-    const resistance = ET[enemy.type].boss ? 0.05 : 1;
-    enemy.kbx = (enemy.kbx || 0) + x * resistance;
-    enemy.kby = (enemy.kby || 0) + y * resistance;
+    const knockbackScale = ET[enemy.type].boss ? 0.01 : isPureEnemy(enemy.type) ? 0.1 : isEliteEnemy(enemy.type) ? 0.25 : 1;
+    enemy.kbx = (enemy.kbx || 0) + x * knockbackScale;
+    enemy.kby = (enemy.kby || 0) + y * knockbackScale;
   }
   function applyEnemyDamage(enemy, amount, sourcePlayerId, hitX, hitY, hitRadius) {
     if (enemy.type === 'matrix') {
@@ -2782,9 +2796,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       : baseType === 'sq' ? bh * 2 + 1
       : baseType === 'pent' || baseType === 'quadstar' ? (isEliteEnemy(type) ? bh * 3 + 4 : bh * 2 + 1)
       : baseType === 'trap' ? bh + 3 : baseType === 'hex' ? bh * 2 + 1
-      : baseType === 'hexstar' || baseType === 'tri' ? bh * 3 + 4
+      : baseType === 'hexstar' ? bh * 3 + 4
+      : baseType === 'tri' ? Math.round((bh * 2 + 1) * 0.9)
       : baseType === 'cross' ? bh * 2 + 4 : bh + 1;
-    const hp = type === 'tri' && wave === 1 ? DMG_BASE * 2 : Math.round(HP_SCALE * baseHp * (isPureEnemy(type) ? 3 : 1));
+    const hp = Math.round(HP_SCALE * baseHp * (isPureEnemy(type) ? 3 : 1));
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
     const enemy = {
       type, x, y, bx: x, by: y, r: et.r, hp, maxHp: hp, vx: Math.cos(va) * vs, vy: Math.sin(va) * vs,
@@ -2940,22 +2955,31 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (head.boost > 0) { head.boost -= dt; speed *= 1.5; }
         if (chain.length < 4) head.rushPhase = 0;
         else if (head.rushPhase === 0) {
-          head.rushCooldown -= dt;
-          if (head.rushCooldown <= 0) {
-            const edge = Math.floor(Math.random() * 4), directions = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-            const direction = directions[edge], horizontal = edge < 2;
+          if (!out) head.rushCooldown -= dt;
+          if (!out && head.rushCooldown <= 0) {
+            const edge = Math.floor(Math.random() * 4), direction = [[1, 0], [-1, 0], [0, 1], [0, -1]][edge], horizontal = edge < 2;
             head.rushAngle = Math.atan2(direction[1], direction[0]);
-            if (edge === 0) { head.x = -TRAIN_HEAD_RADIUS; head.y = 90 + Math.random() * (H - 180); }
-            else if (edge === 1) { head.x = W + TRAIN_HEAD_RADIUS; head.y = 90 + Math.random() * (H - 180); }
-            else if (edge === 2) { head.x = 90 + Math.random() * (W - 180); head.y = -TRAIN_HEAD_RADIUS; }
-            else { head.x = 90 + Math.random() * (W - 180); head.y = H + TRAIN_HEAD_RADIUS; }
-            head.rushPhase = 1; head.rushT = TRAIN_CHARGE_WINDUP; head.chargePhase = 0;
+            const lane = horizontal ? 90 + Math.random() * (H - 180) : 90 + Math.random() * (W - 180);
+            head.rushTargetX = edge === 0 ? -TRAIN_HEAD_RADIUS : edge === 1 ? W + TRAIN_HEAD_RADIUS : lane;
+            head.rushTargetY = edge === 2 ? -TRAIN_HEAD_RADIUS : edge === 3 ? H + TRAIN_HEAD_RADIUS : lane;
+            head.rushPhase = 3;
             head.rushDuration = ((horizontal ? W : H) + TRAIN_GAP * (chain.length + 2)) / TRAIN_CHARGE_DASH_SPEED;
+          }
+        }
+        if (head.rushPhase === 3) {
+          const dx = head.rushTargetX - head.x, dy = head.rushTargetY - head.y, distance = Math.hypot(dx, dy);
+          const approachAngle = Math.atan2(dy, dx), approachDelta = wrap(approachAngle - head.ang);
+          head.ang += Math.max(-turn, Math.min(turn, approachDelta));
+          speed = TRAIN_SPEED * 1.45;
+          if (distance <= speed * dt) {
+            head.x = head.rushTargetX; head.y = head.rushTargetY;
+            head.rushPhase = 1; head.rushT = TRAIN_CHARGE_WINDUP; head.chargePhase = 0;
+            head.ang = head.rushAngle; speed = 0;
           }
         } else if (head.rushPhase === 1) {
           head.rushT -= dt;
           if (head.rushT <= 0) { head.rushPhase = 2; head.rushT = head.rushDuration; }
-        } else {
+        } else if (head.rushPhase === 2) {
           head.rushT -= dt; head.ang = head.rushAngle; speed = TRAIN_CHARGE_DASH_SPEED;
           if (head.rushT <= 0) { head.rushPhase = 0; head.rushCooldown = TRAIN_CHARGE_INTERVAL + Math.random() * 1.2; }
         }
@@ -3468,18 +3492,30 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             const target = getTargetPlayer(e.x, e.y); e.laserAngle = Math.atan2(target.y - e.y, target.x - e.x);
             e.laserPhase = 1; e.laserT = 1.0; e.laserT0 = 1.0;
             if (e.type === 'phexstar') {
-              const side = e.laserAngle + Math.PI / 2;
-              e.laserCopies = [-1, 1].map((offset) => {
-                const x = e.x + Math.cos(side) * 90 * offset, y = e.y + Math.sin(side) * 90 * offset;
-                return { x, y, angle: Math.atan2(target.y - y, target.x - x) };
+              const margin = 72;
+              e.laserCopies = [0, 1].map(() => {
+                const targetX = margin + Math.random() * (W - margin * 2);
+                const targetY = margin + Math.random() * (H - margin * 2);
+                return {
+                  x: e.x, y: e.y, originX: e.x, originY: e.y, targetX, targetY,
+                  angle: Math.atan2(targetY - e.y, targetX - e.x), turnVelocity: 0
+                };
               });
             }
           }
         } else if (e.laserPhase === 1) {
           e.laserT -= dt;
+          if (e.type === 'phexstar') {
+            const progress = Math.max(0, Math.min(1, 1 - e.laserT / e.laserT0));
+            for (const copy of e.laserCopies || []) {
+              copy.x = copy.originX + (copy.targetX - copy.originX) * progress;
+              copy.y = copy.originY + (copy.targetY - copy.originY) * progress;
+            }
+          }
           if (e.laserT <= 0) {
             e.laserPhase = 2; e.laserT = isEliteEnemy(e.type) ? 3 : 0.38; e.laserT0 = e.laserT;
             e.laserTurnVelocity = 0;
+            for (const copy of e.laserCopies || []) copy.turnVelocity = 0;
           }
         } else if (e.laserPhase === 2) {
           if (isEliteEnemy(e.type)) {
@@ -3490,23 +3526,28 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             const desiredTurnVelocity = Math.sign(angleError) * Math.min(EHEXSTAR_LASER_TURN_SPEED, Math.sqrt(2 * EHEXSTAR_LASER_TURN_ACCEL * Math.abs(angleError)));
             e.laserTurnVelocity += Math.max(-EHEXSTAR_LASER_TURN_ACCEL * dt, Math.min(EHEXSTAR_LASER_TURN_ACCEL * dt, desiredTurnVelocity - e.laserTurnVelocity));
             e.laserAngle += e.laserTurnVelocity * dt;
+            for (const copy of e.laserCopies || []) {
+              const copyTarget = getAngularTargetPlayer(copy.x, copy.y, copy.angle);
+              const copyPos = playerPosition(copyTarget);
+              const copyDesired = Math.atan2(copyPos.y - copy.y, copyPos.x - copy.x);
+              const copyError = angDiff(copyDesired, copy.angle);
+              const copyTurn = Math.sign(copyError) * Math.min(EHEXSTAR_LASER_TURN_SPEED, Math.sqrt(2 * EHEXSTAR_LASER_TURN_ACCEL * Math.abs(copyError)));
+              copy.turnVelocity += Math.max(-EHEXSTAR_LASER_TURN_ACCEL * dt, Math.min(EHEXSTAR_LASER_TURN_ACCEL * dt, copyTurn - copy.turnVelocity));
+              copy.angle += copy.turnVelocity * dt;
+            }
           }
           e.laserT -= dt;
           for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0) {
             const pos = playerPosition(pl);
             const beamHalfWidth = (e.type === 'phexstar' ? 11 : 7) * eventSizeScale('enemy');
-            const sources = [{ x: e.x, y: e.y, angle: e.laserAngle }, ...(e.laserCopies || [])];
-            for (const source of sources) {
-              const rx = pos.x - source.x, ry = pos.y - source.y, c = Math.cos(source.angle), s = Math.sin(source.angle);
-              const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
-              if (along > 0 && side < beamHalfWidth + pl.r * eventSizeScale('player') * 0.5) {
-                if (pl === P) hurtPlayer(12, source.x, source.y); else hurtRemotePlayer(pl, 12, source.x, source.y);
-                if (e.type === 'phexstar') {
-                  const angle = Math.atan2(pos.y - source.y, pos.x - source.x), forceX = Math.cos(angle) * 260, forceY = Math.sin(angle) * 260;
-                  if (pl === P) { P.kx += forceX; P.ky += forceY; }
-                  else pushEv(['k', pl.id, r1(forceX), r1(forceY), 0]);
-                }
-                break;
+            const rx = pos.x - e.x, ry = pos.y - e.y, c = Math.cos(e.laserAngle), s = Math.sin(e.laserAngle);
+            const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
+            if (along > 0 && side < beamHalfWidth + pl.r * eventSizeScale('player') * 0.5) {
+              if (pl === P) hurtPlayer(12, e.x, e.y); else hurtRemotePlayer(pl, 12, e.x, e.y);
+              if (e.type === 'phexstar') {
+                const angle = Math.atan2(pos.y - e.y, pos.x - e.x), forceX = Math.cos(angle) * 260, forceY = Math.sin(angle) * 260;
+                if (pl === P) { P.kx += forceX; P.ky += forceY; }
+                else pushEv(['k', pl.id, r1(forceX), r1(forceY), 0]);
               }
             }
           }
@@ -3930,7 +3971,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.save();
       ctx.globalAlpha = (0.35 + 0.55 * p) * blink;
       const et = ET[s.type];
-      ctx.strokeStyle = et.color; ctx.lineWidth = 2;
+      ctx.strokeStyle = isPureEnemy(s.type) ? '#ffffff' : et.color; ctx.lineWidth = 2;
       ctx.setLineDash([6, 6]); ctx.lineDashOffset = -s.t * 30;
       ctx.beginPath(); ctx.arc(s.x, s.y, (et.boss ? et.r * 1.35 : 20) + 30 * (1 - p), 0, TAU); ctx.stroke();
       ctx.setLineDash([]);
@@ -3943,7 +3984,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else drawPoly(s.x, s.y, et.r * et.vr * (0.6 + 0.4 * p), s.type === 'sq' ? Math.PI / 4 : -Math.PI / 2, et.sides);
       ctx.fill();
       ctx.globalAlpha = ga;
-      ctx.strokeStyle = et.color; ctx.stroke();
+      ctx.strokeStyle = isPureEnemy(s.type) ? '#ffffff' : et.color; ctx.stroke();
       ctx.restore();
     }
   }
@@ -4231,7 +4272,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (e.type === 'phexstar') for (const copy of e.laserCopies || []) {
         ctx.save(); ctx.globalAlpha = 0.34; ctx.shadowColor = et.color; ctx.shadowBlur = bloomEnabled ? 12 : 0;
         drawSixStar(copy.x, copy.y, e.r * sc * et.vr, e.rot);
-        ctx.fillStyle = et.fill; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = et.color; ctx.stroke(); ctx.restore();
+        ctx.fillStyle = et.fill; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke(); ctx.restore();
       }
       if (e.type === 'train') { drawTrainSeg(e); ctx.restore(); continue; }
       if (e.type === 'fortless') { drawFortless(e, sc); ctx.restore(); continue; }
@@ -4259,7 +4300,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else drawPoly(e.x, e.y, e.r * sc * et.vr, e.rot, et.sides);
       ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill;
       ctx.fill();
-      ctx.lineWidth = e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : et.color;
+      ctx.lineWidth = e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 || isPureEnemy(e.type) ? '#ffffff' : et.color;
       ctx.stroke();
       if (isSquareChaser(e.type) ? esqDotCharge > 0 : ch > 0) {
         ctx.fillStyle = '#ffffff'; ctx.beginPath();
@@ -4437,25 +4478,31 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function drawBullets() {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.38;
     const size = eventSizeScale('player');
-    const trails = new Map();
+    const trails = new Map(), shots = new Map();
+    const playerColors = new Map(visiblePlayers().map((player) => [player.id || 1, player.color || C.bullet]));
     for (const b of bullets) {
+      const color = b.color || playerColors.get(b.owner || 1) || C.bullet;
       const width = b.r * size * 1.6;
-      let trail = trails.get(width);
-      if (!trail) trails.set(width, trail = new Path2D());
-      trail.moveTo(b.px - b.vx * 0.012, b.py - b.vy * 0.012);
-      trail.lineTo(b.x, b.y);
+      const trailKey = color + ':' + width;
+      let trail = trails.get(trailKey);
+      if (!trail) trails.set(trailKey, trail = { color, width, path: new Path2D() });
+      trail.path.moveTo(b.px - b.vx * 0.012, b.py - b.vy * 0.012);
+      trail.path.lineTo(b.x, b.y);
+      let shot = shots.get(color);
+      if (!shot) shots.set(color, shot = new Path2D());
+      shot.moveTo(b.x + b.r * size, b.y);
+      shot.arc(b.x, b.y, b.r * size, 0, TAU);
     }
-    ctx.strokeStyle = 'rgba(255,215,106,.45)'; ctx.lineCap = 'round';
-    for (const [width, trail] of trails) { ctx.lineWidth = width; ctx.stroke(trail); }
-    ctx.fillStyle = C.bullet; ctx.shadowColor = C.bullet; ctx.shadowBlur = 10;
-    ctx.beginPath();
-    for (const b of bullets) {
-      ctx.moveTo(b.x + b.r * size, b.y);
-      ctx.arc(b.x, b.y, b.r * size, 0, TAU);
+    ctx.globalAlpha = 0.38; ctx.lineCap = 'round';
+    for (const trail of trails.values()) {
+      ctx.strokeStyle = trail.color; ctx.lineWidth = trail.width; ctx.stroke(trail.path);
     }
-    ctx.fill();
+    ctx.globalAlpha = 1; ctx.shadowBlur = 10;
+    for (const [color, shot] of shots) {
+      ctx.fillStyle = color; ctx.shadowColor = color;
+      ctx.fill(shot);
+    }
     ctx.restore();
   }
 
@@ -4718,6 +4765,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 24;
       ctx.fillText(bannerText, W / 2 + 5, 150 - slide);
     }
+    ctx.restore(); spaced(0);
+  }
+  function drawEventBanner() {
+    const timer = randomEvent && randomEvent.bannerT || 0;
+    if (timer <= 0 || state !== 'play') return;
+    const progress = 1 - timer / 2.4;
+    const alpha = Math.max(0, Math.min(1, progress / 0.12, timer / 0.35));
+    ctx.save(); ctx.globalAlpha = alpha; ctx.textAlign = 'center'; setFont(28, 700); spaced(3);
+    ctx.fillStyle = C.accent; ctx.shadowColor = C.accent; ctx.shadowBlur = 18;
+    ctx.fillText(randomEvent.title, W / 2, 218 - (1 - Math.min(1, progress / 0.2)) * 18);
     ctx.restore(); spaced(0);
   }
   function drawRandomEventIndicator() {
@@ -5707,6 +5764,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
     if (state !== 'title' && state !== 'jobselect') drawHud();
     drawBanner();
+    drawEventBanner();
     drawRandomEventIndicator();
     if (state === 'upgrade') drawUpgrade();
     if (state === 'over') drawOver();
