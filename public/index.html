@@ -312,10 +312,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     hexstar: { star: true, sides: 6, r: 23, vr: 1.05, color: '#ff66c4', fill: '#351026', hk: 0.9 },
     ehexstar: { star: true, sides: 6, r: 25, vr: 1.05, color: '#ff83d0', fill: '#351026', hk: 0.9, mass: 2, elite: true },
     phexstar: { star: true, sides: 6, r: 28, vr: 1.05, color: '#ffffff', fill: '#ffffff', hk: 0.9, mass: 2, elite: true, pure: true },
+    psept: { sides: 7, r: 31, vr: 1.08, color: '#ffffff', fill: '#ffffff', mass: 3, elite: true, pure: true, hpHigh: true },
+    sept: { sides: 7, r: 27, vr: 1.08, color: '#a9b8cf', fill: '#171d2b', mass: 3 },
     tridrone: { sides: 3, r: 11, vr: 1, color: '#ff5cf0', fill: '#2a0f29', mass: 1 }
   };
   const ELITE_BASE_TYPE = { esq: 'sq', equadstar: 'quadstar', ehex: 'hex', etri: 'tri', epent: 'pent', ecross: 'cross', ehexstar: 'hexstar' };
-  const PURE_BASE_TYPE = { ptri: 'tri', psq: 'sq', ppent: 'pent', phex: 'hex', pcross: 'cross', pquadstar: 'quadstar', phexstar: 'hexstar' };
+  const PURE_BASE_TYPE = { ptri: 'tri', psq: 'sq', ppent: 'pent', phex: 'hex', pcross: 'cross', pquadstar: 'quadstar', phexstar: 'hexstar', psept: 'sept' };
   const BASE_ENEMY_TYPE = Object.assign({}, ELITE_BASE_TYPE, PURE_BASE_TYPE);
   const baseEnemyType = (type) => BASE_ENEMY_TYPE[type] || type;
   const isPureEnemy = (type) => !!PURE_BASE_TYPE[type];
@@ -444,6 +446,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     bossCall() { tone(520, 0.22, 'sawtooth', 0.03, 260); },
     meteor() { tone(1500, 0.3, 'sine', 0.025, 300); },
     impact() { tone(150, 0.2, 'triangle', 0.06, 50); },
+    memberJoin() { tone(660, 0.14, 'sine', 0.05, 880); tone(880, 0.16, 'triangle', 0.04, 1320, 0.09); },
+    memberLeave() { tone(440, 0.16, 'sine', 0.04, 220); tone(220, 0.22, 'triangle', 0.035, 110, 0.08); },
     heal() { tone(520, 0.18, 'sine', 0.04, 880); },
     revive() { tone(620, 0.28, 'sine', 0.045, 1240); tone(930, 0.2, 'triangle', 0.025, 1560, 0.08); },
     dash() { tone(260, 0.16, 'sawtooth', 0.04, 1000); }
@@ -465,7 +469,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   const ITEM_ATTRACT_RADIUS = 160, ITEM_ATTRACT_INITIAL_SPEED = 55, ITEM_ATTRACT_ACCELERATION = 150, ITEM_ATTRACT_MAX_SPEED = 400;
   const LIFE_STEAL_BASE = 2, LIFE_STEAL_STEP = 1;
   const TRIDRONE_BASE_HP = 3, TRIDRONE_HP_PER_WAVE = 0.04;
-  const PURE_TYPES = ['ptri', 'psq', 'ppent', 'phex', 'pcross', 'pquadstar', 'phexstar'];
+  const PURE_TYPES = ['ptri', 'psq', 'ppent', 'phex', 'pcross', 'pquadstar', 'phexstar', 'psept'];
   function lifeStealHeal(level) {
     return level > 0 ? LIFE_STEAL_BASE + (level - 1) * LIFE_STEAL_STEP : 0;
   }
@@ -1000,7 +1004,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   // プレイヤーごとに独立した強化状態(S)・取得レベル・アップグレード選択肢を持つ
   function newPlayer(x, y, color) {
-    return { x, y, prevX: x, prevY: y, r: 14, hp: 500, maxHp: 500, speed: PLAYER_BASE_SPEED, kx: 0, ky: 0, inv: 0, armorCd: 0, cool: 0, dashT: 0, dashCd: 0, dashJustEnded: false, dashHits: null, contactReportT: new Map(), dvx: 0, dvy: 0, lx: 0, ly: 0, color, name: 'P1', job: null, S: newStats(), levels: {}, choices: [], picked: null };
+    return { x, y, prevX: x, prevY: y, r: 14, hp: 500, maxHp: 500, speed: PLAYER_BASE_SPEED, kx: 0, ky: 0, inv: 0, armorCd: 0, cool: 0, dashT: 0, dashCd: 0, dashJustEnded: false, dashHits: null, contactReportT: new Map(), dvx: 0, dvy: 0, lx: 0, ly: 0, color, name: 'P1', job: null, rerolls: 0, S: newStats(), levels: {}, choices: [], picked: null };
   }
   function getRemotePlayer(id) {
     let pl = remotePlayers.get(id);
@@ -1746,8 +1750,17 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     shake = Math.max(shake, sm ? 5 : 8);
     sfx.kill();
     if (ET[e.type].cross && !e.silent) crossHealOnDeath(e);
+    if (e.type === 'psept' && !e.silent && e.pseptAction === 6) {
+      for (let i = 0; i < 7; i++) {
+        const angle = i * TAU / 7;
+        spawnEnemy('hex', e.x + Math.cos(angle) * 42, e.y + Math.sin(angle) * 42, true, true);
+      }
+    }
     const itemDropChance = ITEM_DROP + (randomEvent && randomEvent.type === 'items' ? ITEM_BONUS_DROP : 0);
     if (!revived && e.type !== 'tridrone' && !e.silent && (ET[e.type].cross || Math.random() < itemDropChance)) items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false });
+    if (isPureEnemy(e.type) && !e.silent && Math.random() < 0.12) {
+      items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false, type: 'reroll' });
+    }
     if (ET[e.type].cross && isEliteEnemy(e.type) && !e.silent) {
       let granted = 0;
       const trainChains = new Set();
@@ -1916,6 +1929,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     amount *= enemyDamageMultiplier();
     if (activateArmor(P, P.x, P.y)) amount *= 1 - P.S.armor;
+    amount = Math.ceil(amount);
     P.hp -= amount; P.inv = 0.75;
     const a = Math.atan2(P.y - fromY, P.x - fromX);
     P.kx += Math.cos(a) * 380; P.ky += Math.sin(a) * 380;
@@ -1941,6 +1955,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     amount *= enemyDamageMultiplier();
     const pos = hitPosition || playerPosition(rp);
     if (activateArmor(rp, pos.x, pos.y)) amount *= 1 - rp.S.armor;
+    amount = Math.ceil(amount);
 
     rp.hp -= amount; rp.inv = 0.75;
     const a = Math.atan2(pos.y - fromY, pos.x - fromX);
@@ -3149,6 +3164,106 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       e.bx = Math.max(m, Math.min(W - m, e.bx)); e.by = Math.max(m, Math.min(H - m, e.by));
     }
   }
+  const PSEPT_COLORS = ['#ff465e', '#ffd84a', '#ff66c4', '#ff963d', '#b784ff', '#57d8ff', '#4c83ff'];
+  function startPseptAction(e) {
+    const available = [1, 2, 3, 4, 5, 6, 7].filter((action) => !(e.pseptUsed || []).includes(action));
+    e.pseptAction = available.length ? available[Math.floor(Math.random() * available.length)] : 1;
+    if (!available.length) e.pseptUsed = [];
+    e.pseptUsed.push(e.pseptAction);
+    e.pseptPhase = 'warning';
+    e.pseptPhaseT = 1.05;
+    e.pseptColor = PSEPT_COLORS[e.pseptAction - 1];
+  }
+  function executePseptAction(e) {
+    e.pseptPhase = 'active';
+    e.pseptPhaseT = 3;
+    if (e.pseptAction === 1) {
+      const target = getTargetPlayer(e.x, e.y);
+      const base = Math.atan2(target.y - e.y, target.x - e.x);
+      for (let i = 0; i < 21; i++) {
+        const angle = base - 1.05 + i * (2.1 / 20);
+        ebullets.push({ x: e.x + Math.cos(angle) * e.r, y: e.y + Math.sin(angle) * e.r, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, r: 6, life: 6, star: true, rot: angle, color: PSEPT_COLORS[0], dmg: 10 });
+      }
+      e.pseptPhaseT = 0.8;
+    } else if (e.pseptAction === 2) {
+      quadStarFall(e, true, 9, 0.05);
+      e.pseptPhaseT = 1.5;
+    } else if (e.pseptAction === 3) {
+      const target = getTargetPlayer(e.x, e.y);
+      e.laserAngle = Math.atan2(target.y - e.y, target.x - e.x);
+      e.pseptLaserAngles = [e.laserAngle];
+    } else if (e.pseptAction === 4) {
+      const target = getTargetPlayer(e.x, e.y), angle = Math.random() * TAU, distance = 90 + Math.random() * 45;
+      e.bx = Math.max(e.r + 10, Math.min(W - e.r - 10, target.x + Math.cos(angle) * distance));
+      e.by = Math.max(e.r + 10, Math.min(H - e.r - 10, target.y + Math.sin(angle) * distance));
+      e.x = e.bx; e.y = e.by;
+      ring(e.x, e.y, 80, 0.4, PSEPT_COLORS[3], 3);
+    } else if (e.pseptAction === 5) {
+      e.pseptPentVolley = 5;
+      e.pseptPentT = 0;
+    } else if (e.pseptAction === 6) {
+      e.pseptChaseT = 4;
+    } else if (e.pseptAction === 7) {
+      e.pseptLaserAngles = Array.from({ length: 7 }, (_, i) => e.rot + i * TAU / 7);
+    }
+  }
+  function updatePsept(e, dt) {
+    if (e.pseptPhase === 'cooldown') {
+      e.pseptPhaseT -= dt;
+      if (e.pseptPhaseT <= 0) startPseptAction(e);
+      return;
+    }
+    if (e.pseptPhase === 'warning') {
+      e.pseptPhaseT -= dt;
+      if (e.pseptPhaseT <= 0) executePseptAction(e);
+      return;
+    }
+    e.pseptPhaseT -= dt;
+    if (e.pseptAction === 4) {
+      const target = getTargetPlayer(e.bx, e.by), dx = target.x - e.bx, dy = target.y - e.by, d = Math.hypot(dx, dy) || 1;
+      const sp = 620;
+      e.vx += (dx / d * sp - e.vx) * Math.min(1, dt * 2.4);
+      e.vy += (dy / d * sp - e.vy) * Math.min(1, dt * 2.4);
+      e.bx += e.vx * dt; e.by += e.vy * dt;
+      const m = e.r + 8;
+      e.bx = Math.max(m, Math.min(W - m, e.bx)); e.by = Math.max(m, Math.min(H - m, e.by));
+    }
+    if (e.pseptAction === 5) {
+      e.pseptPentT -= dt;
+      if (e.pseptPentVolley > 0 && e.pseptPentT <= 0) {
+        const target = getTargetPlayer(e.x, e.y), base = Math.atan2(target.y - e.y, target.x - e.x);
+        for (let k = -2; k <= 2; k++) {
+          const angle = base + k * 0.22;
+          ebullets.push({ x: e.x + Math.cos(angle) * e.r, y: e.y + Math.sin(angle) * e.r, vx: Math.cos(angle) * 225, vy: Math.sin(angle) * 225, r: 5.5, life: 5.5, bounce: 1, star: true, rot: angle, color: PSEPT_COLORS[4] });
+        }
+        e.pseptPentVolley--; e.pseptPentT = 0.28;
+      }
+    }
+    if (e.pseptAction === 6) {
+      e.pseptChaseT -= dt;
+      const target = getTargetPlayer(e.bx, e.by), dx = target.x - e.bx, dy = target.y - e.by, d = Math.hypot(dx, dy) || 1;
+      e.vx += (dx / d * 450 - e.vx) * Math.min(1, dt * 1.8);
+      e.vy += (dy / d * 450 - e.vy) * Math.min(1, dt * 1.8);
+      e.bx += e.vx * dt; e.by += e.vy * dt;
+      const m = e.r + 8;
+      e.bx = Math.max(m, Math.min(W - m, e.bx)); e.by = Math.max(m, Math.min(H - m, e.by));
+    }
+    if (e.pseptAction === 3 || e.pseptAction === 7) {
+      for (const angle of e.pseptLaserAngles || []) {
+        for (const pl of partyPlayers()) {
+          if (pl.hp <= 0 || pl.inv > 0) continue;
+          const pos = playerPosition(pl), rx = pos.x - e.x, ry = pos.y - e.y, c = Math.cos(angle), s = Math.sin(angle);
+          const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
+          if (along > 0 && side < 11 + pl.r * 0.5) {
+            if (pl === P) hurtPlayer(12, e.x, e.y); else hurtRemotePlayer(pl, 12, e.x, e.y);
+          }
+        }
+      }
+    }
+    if (e.pseptPhaseT <= 0) {
+      e.pseptPhase = 'cooldown'; e.pseptPhaseT = 1.8; e.pseptAction = 0; e.pseptColor = '#ffffff'; e.pseptLaserAngles = [];
+    }
+  }
   function spawnEnemy(type, x, y, quiet, summoned) {
     const et = ET[type], bh = 2 + Math.floor((wave - 1) / 1.8);
     const baseType = baseEnemyType(type);
@@ -3159,7 +3274,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       : baseType === 'hexstar' ? bh * 3 + 4
       : baseType === 'tri' ? Math.round((bh * 2 + 1) * 0.9)
       : baseType === 'cross' ? bh * 2 + 4 : bh + 1;
-    const hp = Math.round(HP_SCALE * baseHp * (isPureEnemy(type) ? 3 : 1));
+    const pureHpScale = type === 'psept' ? 5 : isPureEnemy(type) ? 3 : 1;
+    const hp = Math.round(HP_SCALE * baseHp * pureHpScale);
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
     const enemy = {
       type, x, y, bx: x, by: y, r: et.r, hp, maxHp: hp, vx: Math.cos(va) * vs, vy: Math.sin(va) * vs,
@@ -3175,7 +3291,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       kbx: 0, kby: 0, stun: 0,
       laserT: 0, laserPhase: 0, laserAngle: 0, laserT0: 0,
       hexFireT: type === 'phex' ? 2.4 + Math.random() * 0.6 : 0,
-      teleportT: 0
+      teleportT: 0,
+      pseptUsed: type === 'psept' ? [] : undefined,
+      pseptAction: type === 'psept' ? 0 : undefined,
+      pseptPhase: type === 'psept' ? 'cooldown' : undefined,
+      pseptPhaseT: type === 'psept' ? 1.5 : 0,
+      pseptColor: '#ffffff',
+      pseptLaserT: 0,
+      pseptLaserAngles: []
     };
     if (type === 'trinity') { enemy.sy0 = y; initTrinity(enemy); }
     if (type === 'fortless') initFortless(enemy);
@@ -3269,7 +3392,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function fireTrainSplitVolley(x, y) {
     for (let i = 0; i < 12; i++) {
       const angle = i * TAU / 12, c = Math.cos(angle), s = Math.sin(angle);
-      ebullets.push({ x, y, vx: c * 190, vy: s * 190, r: 5.5, life: 5.5, color: ET.train.color });
+      ebullets.push({ x, y, vx: c * 220, vy: s * 220, r: 5.5, life: 5.5, color: ET.train.color });
     }
     if (ebullets.length > LIMITS.ebullets) ebullets.splice(0, ebullets.length - LIMITS.ebullets);
     ring(x, y, 72, 0.3, ET.train.color, 3); sfx.eshoot();
@@ -3305,6 +3428,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (didSplit) {
       segs.sort((a, b) => a.cid - b.cid || a.ci - b.ci);
       chains = collectTrainChains(segs);
+    }
+    for (let a = 0; a < chains.length; a++) {
+      for (let b = a + 1; b < chains.length; b++) {
+        for (const left of chains[a]) {
+          for (const right of chains[b]) {
+            const dx = right.x - left.x, dy = right.y - left.y, d = Math.hypot(dx, dy) || 1;
+            if (d >= TRAIN_GAP * 1.45) continue;
+            const push = (TRAIN_GAP * 1.45 - d) * 0.018;
+            const px = dx / d * push, py = dy / d * push;
+            left.x -= px; left.y -= py; right.x += px; right.y += py;
+          }
+        }
+      }
     }
     const remainingHp = chains.reduce((sum, chain) => sum + (chain[0].chainHp || 0), 0);
     const maxTotalHp = chains.length ? chains[0][0].maxTotal : 0;
@@ -3420,9 +3556,19 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (!head.ent) {
         head.shootT -= dt;
         if (head.shootT <= 0) {
+          if (chain.length === 1) {
+            for (let i = 0; i < 12; i++) {
+              const angle = i * TAU / 12;
+              ebullets.push({ x: head.x + Math.cos(angle) * head.r, y: head.y + Math.sin(angle) * head.r, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: 5.5, color: col });
+            }
+            head.shootIndex = (head.shootIndex + 1) % chain.length;
+            head.shootT = 0.28;
+            sfx.eshoot();
+            continue;
+          }
           const shooter = chain[head.shootIndex % chain.length], target = getTargetPlayer(shooter.x, shooter.y);
           const angle = Math.atan2(target.y - shooter.y, target.x - shooter.x), c = Math.cos(angle), s = Math.sin(angle);
-          ebullets.push({ x: shooter.x + c * shooter.r, y: shooter.y + s * shooter.r, vx: c * 190, vy: s * 190, r: 5.5, life: 5.5, color: col });
+          ebullets.push({ x: shooter.x + c * shooter.r, y: shooter.y + s * shooter.r, vx: c * 220, vy: s * 220, r: 5.5, life: 5.5, color: col });
           shooter.flash = 0.08;
           head.shootIndex = (head.shootIndex + 1) % chain.length;
           head.shootT = head.p2 ? TRAIN_PART_SHOT_INTERVAL_ENRAGED : TRAIN_PART_SHOT_INTERVAL; sfx.eshoot();
@@ -3553,6 +3699,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   function collectHealingItem(it, player, pos) {
+    if (it.type === 'reroll') {
+      player.rerolls = (player.rerolls || 0) + 1;
+      floatText(pos.x, pos.y - 34, 'リロール +1', '#ffd84a');
+      ring(pos.x, pos.y, 50, 0.3, '#ffd84a', 2); burst(it.x, it.y, 10, '#ffd84a', 180, 0.35, 2.5);
+      sfx.pick();
+      return;
+    }
     const heal = Math.min(player.maxHp - player.hp, ITEM_HEAL);
     player.hp += heal;
     floatText(pos.x, pos.y - 34, '+' + Math.round(heal), '#7df0a8');
@@ -3562,7 +3715,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   function collectRemainingItems() {
     const players = partyPlayers().filter((player) => player.hp > 0);
     if (!items.length || !players.length) return;
-    let remainingHeal = items.length * ITEM_HEAL;
+    const rerolls = items.filter((it) => it.type === 'reroll');
+    const healItems = items.filter((it) => it.type !== 'reroll');
+    let remainingHeal = healItems.length * ITEM_HEAL;
     const allocations = players
       .map((player) => ({ player, missing: Math.max(0, player.maxHp - player.hp) }))
       .sort((a, b) => b.missing - a.missing);
@@ -3577,7 +3732,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ring(pos.x, pos.y, 50, 0.3, '#7df0a8', 2);
       burst(pos.x, pos.y, 10, '#7df0a8', 180, 0.35, 2.5);
     }
-    sfx.heal();
+    if (rerolls.length) {
+      rerolls.forEach((it, index) => {
+        const player = players[index % players.length];
+        player.rerolls = (player.rerolls || 0) + 1;
+        const pos = playerPosition(player);
+        floatText(pos.x, pos.y - 34, 'リロール +1', '#ffd84a');
+      });
+    }
+    if (healItems.length) sfx.heal();
     items.length = 0;
   }
   function showWaveClearFx() {
@@ -3797,6 +3960,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             e.pureTriSummonT = 5.5;
           }
         }
+        if (e.type === 'psept' && state !== 'dying' && e.born > 0.4) updatePsept(e, dt);
         if (isTri(e.type) && state !== 'dying' && e.born > 0.4) {      // 三角形: 回転しつつゆっくり追尾
           const target = getTargetPlayer(e.bx, e.by);
           const a = Math.atan2(target.y - e.by, target.x - e.bx), sp = Math.min(62, 30 + wave * 2);
@@ -4180,6 +4344,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       pl.choices.push(weightedUpgrade(pool, pl));
     }
   }
+  function rerollUpgradeChoices(pl) {
+    if (state !== 'upgrade' || pl.picked !== null || (pl.rerolls || 0) <= 0) return false;
+    pl.rerolls--;
+    rollChoices(pl, upgradeEpicOnly);
+    sfx.pick();
+    if (hosting()) sendSnapshot();
+    return true;
+  }
   const participants = () => partyPlayers();
   function startUpgrade() {                                 // ホスト側: 全員分の選択肢を用意
     hoverIdx = -1; myPickIdx = -1;
@@ -4280,6 +4452,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (state === 'title') { if (netRole !== 'guest') { startGame(); mouse.down = true; } return; }
     if (state === 'upgrade') {
       hoverCheck();
+      if (mouse.y >= 578 && mouse.y <= 604 && Math.abs(mouse.x - W / 2) <= 100) {
+        if (netRole === 'guest') {
+          if ((remotePlayer.rerolls || 0) > 0 && netSocket && netSocket.connected) netSocket.emit('upgrade-reroll', {});
+        } else rerollUpgradeChoices(P);
+        return;
+      }
       if (upT > 0.6 && hoverIdx >= 0) pick(hoverIdx);
       return;
     }
@@ -4313,6 +4491,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k) && active === cv) ev.preventDefault();
     keys[k] = true;
     if (state === 'upgrade' && upT > 0.6 && ['1', '2', '3'].includes(k)) { initAudio(); pick(Number(k) - 1); }
+    if (state === 'upgrade' && upT > 0.6 && k === 'r') {
+      initAudio();
+      if (netRole === 'guest') {
+        if ((remotePlayer.rerolls || 0) > 0 && netSocket && netSocket.connected) netSocket.emit('upgrade-reroll', {});
+      } else rerollUpgradeChoices(P);
+    }
     if (state === 'over' && overT > 0.7 && (k === 'r' || k === 'enter') && netRole !== 'guest') { initAudio(); retryGame(); }
     if (state === 'title' && document.getElementById('debugScreen').hidden && !menuControlFocused && (k === 'enter' || k === ' ') && netRole !== 'guest') { initAudio(); startGame(); }
   });
@@ -4730,7 +4914,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, 0.36);
       else if (et.cross) drawCross(e.x, e.y, e.r * sc * et.vr, e.rot);
       else drawPoly(e.x, e.y, e.r * sc * et.vr, e.rot, et.sides);
-      ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill;
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active') ? e.pseptColor : et.fill);
       ctx.fill();
       ctx.lineWidth = e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 || isPureEnemy(e.type) ? '#ffffff' : et.color;
       ctx.stroke();
@@ -4740,6 +4924,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.stroke();
         ctx.beginPath(); ctx.arc(e.x, e.y, gaugeRadius, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, Math.min(1, e.hp / e.maxHp)));
         ctx.strokeStyle = '#ffffff'; ctx.stroke();
+      }
+      if (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active')) {
+        ctx.fillStyle = e.pseptColor; ctx.beginPath();
+        ctx.arc(e.x, e.y, 7 + 4 * Math.sin(time * 12), 0, TAU); ctx.fill();
       }
       if (isSquareChaser(e.type) ? esqDotCharge > 0 : ch > 0) {
         ctx.fillStyle = '#ffffff'; ctx.beginPath();
@@ -4771,6 +4959,15 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function drawLasers() {                                   // Trinity と六芳星のレーザー(予告線→照射)
     for (const e of enemies) {
+      if (e.type === 'psept' && e.pseptAction && (e.pseptAction === 3 || e.pseptAction === 7) && e.pseptPhase === 'active') {
+        for (const angle of e.pseptLaserAngles || []) {
+          const ex = e.x + Math.cos(angle) * 1300, ey = e.y + Math.sin(angle) * 1300;
+          ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(ex, ey); ctx.lineCap = 'round';
+          ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = PSEPT_COLORS[e.pseptAction - 1]; ctx.shadowBlur = 20;
+          ctx.strokeStyle = PSEPT_COLORS[e.pseptAction - 1]; ctx.lineWidth = 18; ctx.globalAlpha = 0.35; ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.globalAlpha = 0.9; ctx.stroke(); ctx.restore();
+        }
+      }
       if (isLaserStar(e.type) && e.laserPhase > 0) {
         const ex = e.x + Math.cos(e.laserAngle) * 1300, ey = e.y + Math.sin(e.laserAngle) * 1300;
         const size = eventSizeScale('enemy') * (e.type === 'phexstar' ? 1.6 : 1);
@@ -4868,8 +5065,14 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     for (const it of items) {
       const bob = Math.sin(time * 4 + it.ph) * 2;
       ctx.save(); ctx.shadowColor = '#7df0a8'; ctx.shadowBlur = 14;
-      drawCross(it.x, it.y + bob, 9, 0);
+      if (it.type === 'reroll') {
+        ctx.shadowColor = '#ffd84a';
+        drawStar(it.x, it.y + bob, 11, time * 1.8, 0.55);
+        ctx.fillStyle = '#2a2408'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffd84a'; ctx.stroke();
+      } else {
+        drawCross(it.x, it.y + bob, 9, 0);
       ctx.fillStyle = '#0e2a18'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#7df0a8'; ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -5299,6 +5502,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.fillText(msg, W / 2, 540);
     const ps = partnerPickText();
     if (ps) { ctx.fillStyle = C.accent; setFont(13, 700); ctx.fillText(ps, W / 2, 566); }
+    if (!done && (pl.rerolls || 0) > 0) {
+      ctx.fillStyle = '#ffd84a'; setFont(14, 700); ctx.fillText('R  リロール残り ' + pl.rerolls, W / 2, 592);
+    }
     ctx.globalAlpha = 1;
   }
   function drawUpgradeIcon(target, id, x, y, radius, color) {
@@ -5501,7 +5707,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       if (netRole === 'host') setNetStatus('待機中: ' + roomRoster.length + ' / ' + MAX_PLAYERS + ' 人');
     });
     netSocket.on('peer-joined', d => {
-      if (netRole !== 'host' || !d || !Number.isInteger(d.playerId)) return;
+      if (!d || !Number.isInteger(d.playerId)) return;
+      initAudio(); sfx.memberJoin();
+      if (netRole !== 'host') { renderLobbyRoster(); return; }
       const pl = getRemotePlayer(d.playerId);
       pl.name = d.name || pl.name || 'P' + d.playerId;
       if (state === 'upgrade' || state === 'play' || state === 'clear') {
@@ -5515,6 +5723,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       renderLobbyRoster(); sendSnapshot();
     });
     netSocket.on('peer-left', d => {
+      initAudio(); sfx.memberLeave();
       if (d && Number.isInteger(d.playerId)) {
         roomRoster = roomRoster.filter((entry) => entry.playerId !== d.playerId);
         remoteInputs.delete(d.playerId); remoteCursors.delete(d.playerId); delete retryConfig.jobs[d.playerId];
@@ -5608,6 +5817,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const pl = remotePlayers.get(d.playerId);
       if (pl && applyPick(pl, d.index)) { checkUpgradeDone(); if (hosting()) sendSnapshot(); }
     });
+    netSocket.on('upgrade-reroll', d => {
+      if (netRole !== 'host' || !d || !Number.isInteger(d.playerId)) return;
+      const pl = remotePlayers.get(d.playerId);
+      if (pl && rerollUpgradeChoices(pl) && hosting()) sendSnapshot();
+    });
     netSocket.on('late-upgrade-pick', d => {
       if (netRole !== 'host' || !d || !Number.isInteger(d.playerId) || !Number.isInteger(d.index)) return;
       const pl = remotePlayers.get(d.playerId), upgrade = pl && pl.choices[d.index];
@@ -5646,7 +5860,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
 
   /* ----- host: snapshot (位置・状態のみ。粒子や文字は含めない) ----- */
-  const pSer = (p) => [r1(p.x), r1(p.y), r1(p.hp), p.maxHp, r2(p.inv), r2(p.dashT), r2(p.dashCd), p.speed, p.S.armor, r2(p.armorCd || 0), p.S.armorCd, p.S.dashDamage, p.S.dashCooldown, { ...p.S }];
+  const pSer = (p) => [r1(p.x), r1(p.y), r1(p.hp), p.maxHp, r2(p.inv), r2(p.dashT), r2(p.dashCd), p.speed, p.S.armor, r2(p.armorCd || 0), p.S.armorCd, p.S.dashDamage, p.S.dashCooldown, { ...p.S }, p.rerolls || 0];
   function serEnemy(e) {
     if (!e.id) e.id = ++uid;
     const ft = (isPentEnemy(e.type) || isQuadStarEnemy(e.type)) ? e.fireT : e.type === 'stardust' ? e.cd : ET[e.type].cross ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : isSquareChaser(e.type) ? e.chaseT : 9;
@@ -5661,6 +5875,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       o.tp = [r1(e.teleportX || e.x), r1(e.teleportY || e.y), r2(e.teleportT || 0)];
     }
     if (e.type === 'phex') o.hf = r2(e.hexFireT || 0);
+    if (e.type === 'psept') o.ps = [e.pseptAction || 0, e.pseptPhase || 'cooldown', e.pseptColor || '#ffffff', r2(e.pseptPhaseT || 0), (e.pseptLaserAngles || []).map((angle) => r2(angle))];
     if (e.mode && e.mode !== 'drift') o.m = e.mode;
     if (e.type === 'train') {
       o.cid = e.cid; o.rc = e.rootCid || e.cid; o.ci = e.ci; o.an = r2(e.ang); o.mt = e.maxTotal;
@@ -5716,7 +5931,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       sp: spawns.map((s) => [r1(s.x), r1(s.y), r2(s.t), r2(s.delay), s.type, s.edge === undefined ? -1 : s.edge, s.reviveStacks || 0]),
       me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r, m.color || 0, m.trinity ? 1 : 0]),
       tr: trainRushes.map((rush) => [r1(rush.x), r1(rush.y), r2(rush.angle), r2(rush.t), rush.length, rush.duration]),
-      it: items.map((it) => { if (!it.id) it.id = ++uid; return [it.id, r1(it.x), r1(it.y), r1(it.life), r2(it.ph)]; }),
+      it: items.map((it) => { if (!it.id) it.id = ++uid; return [it.id, r1(it.x), r1(it.y), r1(it.life), r2(it.ph), it.type || 'heal']; }),
       bn: [r2(bannerT), bannerText, bannerCol, bannerBossTypes], re: randomEvent ? Object.assign({}, randomEvent) : null, sk: r1(shake), ev
     };
     if (state === 'upgrade') d.up = { id: upgradeId, players: partyPlayers().map((pl) => [pl.id || 1, pickCode(pl), pl.choices.map((u) => UPG.indexOf(u)), pl.levels]) };
@@ -5765,6 +5980,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       e.teleportT = o.tp ? o.tp[2] : 0;
     }
     if (o.ty === 'phex') e.hexFireT = o.hf || 0;
+    if (o.ty === 'psept' && o.ps) {
+      e.pseptAction = o.ps[0]; e.pseptPhase = o.ps[1]; e.pseptColor = o.ps[2]; e.pseptPhaseT = o.ps[3]; e.pseptLaserAngles = o.ps[4] || [];
+    }
     if (isLaserStar(o.ty)) {
       e.laserPhase = o.hsp || 0;
       e.laserAngle = p && Number.isFinite(p.hsa) ? angLerp(p.hsa, o.hsa, al) : o.hsa || 0;
@@ -5922,6 +6140,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
       pl.hp = values[2]; pl.maxHp = values[3]; pl.inv = Math.max(0, values[4] - dtc); pl.speed = values[7];
       if (values[13] && typeof values[13] === 'object') Object.assign(pl.S, values[13]);
+      pl.rerolls = values[14] || 0;
       pl.armorCd = Math.max(0, (values[9] || 0) - dtc);
       pl.name = current[4] || 'P' + id;
       pl.color = current[5] || playerColor(id);
@@ -5954,7 +6173,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       return { id: q[0], x, y, vx: q[3], vy: q[4], r: q[5], color: q[6] || undefined, star: !!q[7], triangle: !!q[10], rot: time * 6, dmg: q[8] || 10, delay: q[9] || 0 };
     });
     const IA = new Map(); for (const q of a.it) IA.set(q[0], q);
-    items = b.it.map((q) => { const p = IA.get(q[0]); return { x: p ? lerp(p[1], q[1], alpha) : q[1], y: p ? lerp(p[2], q[2], alpha) : q[2], life: q[3], ph: q[4] }; });
+    items = b.it.map((q) => { const p = IA.get(q[0]); return { x: p ? lerp(p[1], q[1], alpha) : q[1], y: p ? lerp(p[2], q[2], alpha) : q[2], life: q[3], ph: q[4], type: q[5] || 'heal' }; });
     const ds = (rt - b.t) / 1000;                              // 予告・隕石はタイマーだけ進める(位置は固定)
     spawns = b.sp.map((s) => ({ x: s[0], y: s[1], t: Math.max(0, s[2] + ds), delay: s[3], type: s[4], edge: s[5], reviveStacks: s[6] || 0 }));
     meteors = b.me.map((m) => ({ x: m[0], y: m[1], t: m[2] + ds, warn: m[3], fall: m[4], r: m[5], color: m[6] || undefined, trinity: !!m[7] }));
@@ -6024,7 +6243,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         if (b.remove) { ebullets.splice(i, 1); continue; }
         if (Math.hypot(b.x - g.x, b.y - g.y) < b.r * eventSizeScale('enemy') + g.r * eventSizeScale('player') && g.inv <= 0) {
           const baseDamage = (b.dmg || 10) * enemyDamageMultiplier();
-          const damage = activateArmor(g, g.x, g.y) ? baseDamage * (1 - g.S.armor) : baseDamage;
+          const damage = Math.ceil(activateArmor(g, g.x, g.y) ? baseDamage * (1 - g.S.armor) : baseDamage);
           if (Number.isSafeInteger(b.id) && netSocket && netSocket.connected) netSocket.emit('enemy-bullet-hit', { bulletId: b.id, x: r1(g.x), y: r1(g.y), fromX: r1(b.x - b.vx * 0.1), fromY: r1(b.y - b.vy * 0.1) });
           g.hp = Math.max(0, g.hp - damage); g.inv = 0.75;
           burst(g.x, g.y, 10, '#ff7a86', 220, 0.35, 2.5); ebullets.splice(i, 1);
