@@ -1750,7 +1750,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     shake = Math.max(shake, sm ? 5 : 8);
     sfx.kill();
     if (ET[e.type].cross && !e.silent) crossHealOnDeath(e);
-    if (e.type === 'psept' && !e.silent && e.pseptAction === 6) {
+    if (e.type === 'psept' && !e.silent && e.pseptDroneDeath) {
       for (let i = 0; i < 7; i++) {
         const angle = i * TAU / 7;
         spawnEnemy('hex', e.x + Math.cos(angle) * 42, e.y + Math.sin(angle) * 42, true, true);
@@ -2113,7 +2113,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     sfx.bossCall();
   }
   function quadStarFall(e, elite, countOverride, spacing) {
-    const count = countOverride || (elite ? 9 : 3), radius = e.type === 'pquadstar' ? QUADSTAR_METEOR_RADIUS * 1.4 : QUADSTAR_METEOR_RADIUS;
+    const count = countOverride || (elite ? 9 : 3), radius = e.type === 'pquadstar' || (e.type === 'psept' && e.pseptAction === 2) ? QUADSTAR_METEOR_RADIUS * 1.4 : QUADSTAR_METEOR_RADIUS;
     for (let i = 0; i < count; i++) {
       const x = radius + Math.random() * (W - radius * 2);
       const y = radius + Math.random() * (H - radius * 2);
@@ -3165,6 +3165,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
   }
   const PSEPT_COLORS = ['#ff465e', '#ffd84a', '#ff66c4', '#ff963d', '#b784ff', '#57d8ff', '#4c83ff'];
+  function adjustHexBrightness(hex, scale) {
+    const channels = [1, 3, 5].map((offset) => Math.max(0, Math.min(255, Math.round(parseInt(hex.slice(offset, offset + 2), 16) * scale))));
+    return '#' + channels.map((channel) => channel.toString(16).padStart(2, '0')).join('');
+  }
   function startPseptAction(e) {
     const available = [1, 2, 3, 4, 5, 6, 7].filter((action) => !(e.pseptUsed || []).includes(action));
     e.pseptAction = available.length ? available[Math.floor(Math.random() * available.length)] : 1;
@@ -3176,35 +3180,32 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
   }
   function executePseptAction(e) {
     e.pseptPhase = 'active';
-    e.pseptPhaseT = 3;
     if (e.pseptAction === 1) {
-      const target = getTargetPlayer(e.x, e.y);
-      const base = Math.atan2(target.y - e.y, target.x - e.x);
-      for (let i = 0; i < 21; i++) {
-        const angle = base - 1.05 + i * (2.1 / 20);
-        ebullets.push({ x: e.x + Math.cos(angle) * e.r, y: e.y + Math.sin(angle) * e.r, vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, r: 6, life: 6, star: true, rot: angle, color: PSEPT_COLORS[0], dmg: 10 });
-      }
-      e.pseptPhaseT = 0.8;
+      e.pseptShotCount = 0; e.pseptShotT = 0; e.pseptPhaseT = 1.65;
     } else if (e.pseptAction === 2) {
-      quadStarFall(e, true, 9, 0.05);
+      quadStarFall(e, true);
       e.pseptPhaseT = 1.5;
     } else if (e.pseptAction === 3) {
       const target = getTargetPlayer(e.x, e.y);
       e.laserAngle = Math.atan2(target.y - e.y, target.x - e.x);
-      e.pseptLaserAngles = [e.laserAngle];
+      e.laserCopies = [-1, 1].map((side) => {
+        const angle = e.laserAngle + side * (Math.PI / 2 + (Math.random() - 0.5) * 0.35);
+        const speed = 300 + Math.random() * 60;
+        return { x: e.x, y: e.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          angle: e.laserAngle, turnVelocity: 0 };
+      });
+      e.laserPhase = 1; e.laserT = 1; e.laserT0 = 1; e.pseptPhaseT = 4.2;
     } else if (e.pseptAction === 4) {
-      const target = getTargetPlayer(e.x, e.y), angle = Math.random() * TAU, distance = 90 + Math.random() * 45;
-      e.bx = Math.max(e.r + 10, Math.min(W - e.r - 10, target.x + Math.cos(angle) * distance));
-      e.by = Math.max(e.r + 10, Math.min(H - e.r - 10, target.y + Math.sin(angle) * distance));
-      e.x = e.bx; e.y = e.by;
-      ring(e.x, e.y, 80, 0.4, PSEPT_COLORS[3], 3);
+      e.pseptChasePhase = 'warning'; e.pseptChaseT = ESQ_CHASE_WARN;
+      e.pseptPhaseT = ESQ_CHASE_WARN + 0.65 + ESQ_CHASE_DURATION; e.vx = 0; e.vy = 0;
     } else if (e.pseptAction === 5) {
-      e.pseptPentVolley = 5;
-      e.pseptPentT = 0;
+      e.pseptPentVolley = 5; e.pseptPentT = 0; e.pseptPhaseT = 1.6;
     } else if (e.pseptAction === 6) {
-      e.pseptChaseT = 4;
+      e.pseptChasePhase = 'warning'; e.pseptChaseT = ESQ_CHASE_WARN;
+      e.pseptPhaseT = ESQ_CHASE_WARN + ESQ_CHASE_DURATION + ESQ_CHASE_COOLDOWN;
+      e.pseptDroneDeath = true;
     } else if (e.pseptAction === 7) {
-      e.pseptLaserAngles = Array.from({ length: 7 }, (_, i) => e.rot + i * TAU / 7);
+      e.pseptLaserPhase = 1; e.pseptLaserT = 1; e.pseptPhaseT = 4.2;
     }
   }
   function updatePsept(e, dt) {
@@ -3219,14 +3220,56 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       return;
     }
     e.pseptPhaseT -= dt;
-    if (e.pseptAction === 4) {
-      const target = getTargetPlayer(e.bx, e.by), dx = target.x - e.bx, dy = target.y - e.by, d = Math.hypot(dx, dy) || 1;
-      const sp = 620;
-      e.vx += (dx / d * sp - e.vx) * Math.min(1, dt * 2.4);
-      e.vy += (dy / d * sp - e.vy) * Math.min(1, dt * 2.4);
-      e.bx += e.vx * dt; e.by += e.vy * dt;
-      const m = e.r + 8;
-      e.bx = Math.max(m, Math.min(W - m, e.bx)); e.by = Math.max(m, Math.min(H - m, e.by));
+    if (e.pseptAction === 1) {
+      e.pseptShotT -= dt;
+      if (e.pseptShotCount < 21 && e.pseptShotT <= 0) {
+        const target = getTargetPlayer(e.x, e.y);
+        const angle = Math.atan2(target.y - e.y, target.x - e.x) + (Math.random() - 0.5) * 0.28;
+        ebullets.push({ x: e.x + Math.cos(angle) * e.r, y: e.y + Math.sin(angle) * e.r,
+          vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, r: 6, life: 6, drop: true,
+          rot: angle + Math.PI / 2, color: PSEPT_COLORS[0], dmg: 10 });
+        e.pseptShotCount++; e.pseptShotT = 0.075;
+      }
+    } else if (e.pseptAction === 4 || e.pseptAction === 6) {
+      e.pseptChaseT -= dt;
+      if (e.pseptChasePhase === 'warning' && e.pseptChaseT <= 0) {
+        if (e.pseptAction === 4) {
+          const target = getTargetPlayer(e.bx, e.by), angle = Math.random() * TAU, distance = 90 + Math.random() * 45;
+          e.teleportX = Math.max(e.r + 10, Math.min(W - e.r - 10, target.x + Math.cos(angle) * distance));
+          e.teleportY = Math.max(e.r + 10, Math.min(H - e.r - 10, target.y + Math.sin(angle) * distance));
+          e.pseptChasePhase = 'teleportWarning'; e.teleportT = 0.65;
+        } else {
+          e.pseptChasePhase = 'chase'; e.pseptChaseT = ESQ_CHASE_DURATION;
+        }
+      } else if (e.pseptChasePhase === 'teleportWarning') {
+        e.teleportT = Math.max(0, e.teleportT - dt);
+        if (e.teleportT <= 0) {
+          e.bx = e.teleportX; e.by = e.teleportY; e.x = e.bx; e.y = e.by;
+          e.vx = 0; e.vy = 0; e.pseptChasePhase = 'chase'; e.pseptChaseT = ESQ_CHASE_DURATION;
+          burst(e.x, e.y, 14, ET.psq.color, 220, 0.32, 3); ring(e.x, e.y, 70, 0.32, ET.psq.color, 3);
+        }
+      }
+      if (e.pseptChasePhase === 'chase') {
+        if (e.pseptChaseT <= 0) {
+          e.pseptChasePhase = 'cooldown';
+          e.pseptChaseT = e.pseptAction === 6 ? ESQ_CHASE_COOLDOWN : 0;
+        }
+      }
+      if (e.pseptChasePhase === 'chase') {
+        const target = getTargetPlayer(e.bx, e.by), dx = target.x - e.bx, dy = target.y - e.by, d = Math.hypot(dx, dy) || 1;
+        const ratio = Math.max(ESQ_CHASE_MIN_SPEED, e.pseptChaseT / ESQ_CHASE_DURATION);
+        const speed = (e.pseptAction === 4 ? 600 : ESQ_CHASE_SPEED) * ratio;
+        const steering = e.pseptAction === 4 ? 2.4 : ESQ_CHASE_STEER;
+        e.vx += (dx / d * speed - e.vx) * Math.min(1, dt * steering);
+        e.vy += (dy / d * speed - e.vy) * Math.min(1, dt * steering);
+        e.bx += e.vx * dt; e.by += e.vy * dt;
+        const margin = e.r + 8;
+        e.bx = Math.max(margin, Math.min(W - margin, e.bx)); e.by = Math.max(margin, Math.min(H - margin, e.by));
+      } else if (e.pseptChasePhase === 'teleportWarning') {
+        e.vx = 0; e.vy = 0;
+      }
+      e.chasePhase = e.pseptChasePhase;
+      e.chaseT = e.pseptChaseT;
     }
     if (e.pseptAction === 5) {
       e.pseptPentT -= dt;
@@ -3239,17 +3282,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         e.pseptPentVolley--; e.pseptPentT = 0.28;
       }
     }
-    if (e.pseptAction === 6) {
-      e.pseptChaseT -= dt;
-      const target = getTargetPlayer(e.bx, e.by), dx = target.x - e.bx, dy = target.y - e.by, d = Math.hypot(dx, dy) || 1;
-      e.vx += (dx / d * 450 - e.vx) * Math.min(1, dt * 1.8);
-      e.vy += (dy / d * 450 - e.vy) * Math.min(1, dt * 1.8);
-      e.bx += e.vx * dt; e.by += e.vy * dt;
-      const m = e.r + 8;
-      e.bx = Math.max(m, Math.min(W - m, e.bx)); e.by = Math.max(m, Math.min(H - m, e.by));
-    }
-    if (e.pseptAction === 3 || e.pseptAction === 7) {
-      for (const angle of e.pseptLaserAngles || []) {
+    if (e.pseptAction === 7) {
+      e.pseptLaserAngles = Array.from({ length: 7 }, (_, i) => e.rot + i * TAU / 7);
+      if (e.pseptLaserPhase === 1) {
+        e.pseptLaserT -= dt;
+        if (e.pseptLaserT <= 0) { e.pseptLaserPhase = 2; e.pseptLaserT = 3; }
+      } else if (e.pseptLaserPhase === 2) {
+        e.pseptLaserT -= dt;
+        if (e.pseptLaserT <= 0) { e.pseptLaserPhase = 3; e.pseptLaserT = 0.2; }
+      } else if (e.pseptLaserPhase === 3) {
+        e.pseptLaserT -= dt;
+      }
+      for (const angle of e.pseptLaserPhase === 2 ? e.pseptLaserAngles : []) {
         for (const pl of partyPlayers()) {
           if (pl.hp <= 0 || pl.inv > 0) continue;
           const pos = playerPosition(pl), rx = pos.x - e.x, ry = pos.y - e.y, c = Math.cos(angle), s = Math.sin(angle);
@@ -3261,7 +3305,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }
     }
     if (e.pseptPhaseT <= 0) {
-      e.pseptPhase = 'cooldown'; e.pseptPhaseT = 1.8; e.pseptAction = 0; e.pseptColor = '#ffffff'; e.pseptLaserAngles = [];
+      e.pseptPhase = 'cooldown'; e.pseptPhaseT = 1.8;
+      if (e.pseptAction === 7) { e.pseptLaserPhase = 0; e.pseptLaserAngles = []; }
+      e.pseptAction = 0; e.pseptColor = '#ffffff';
     }
   }
   function spawnEnemy(type, x, y, quiet, summoned) {
@@ -3938,7 +3984,9 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         e.x = e.bx; e.y = e.by;
       }
       e.born += dt; e.flash = Math.max(0, e.flash - dt);
-      e.rot += dt * (isTri(e.type) || e.type === 'tridrone' ? e.spin : isSquareChaser(e.type) ? (e.chasePhase === 'chase' ? 7 : 5.8) + esqChargeRatio(e) * ESQ_CHASE_ROTATION_BONUS : e.type === 'trap' || e.type === 'fortless' ? 0 : e.type === 'stardust' ? 0.45 : ET[e.type].cross ? 1.4 : 0.7);
+      const pseptChasing = e.type === 'psept' && e.pseptAction !== 0 && (e.pseptAction === 4 || e.pseptAction === 6) && e.pseptChasePhase === 'chase';
+      const pseptChaser = e.type === 'psept' && e.pseptAction !== 0 && (e.pseptAction === 4 || e.pseptAction === 6);
+      e.rot += dt * (isTri(e.type) || e.type === 'tridrone' ? e.spin : isSquareChaser(e.type) || pseptChaser ? ((isSquareChaser(e.type) ? e.chasePhase === 'chase' : pseptChasing) ? 7 : 5.8) + (isSquareChaser(e.type) ? esqChargeRatio(e) : 0) * ESQ_CHASE_ROTATION_BONUS : e.type === 'trap' || e.type === 'fortless' ? 0 : e.type === 'stardust' ? 0.45 : ET[e.type].cross ? 1.4 : 0.7);
       if (e.stun > 0) {
         const decay = Math.exp(-8 * dt);
         e.kbx = (e.kbx || 0) * decay; e.kby = (e.kby || 0) * decay;
@@ -4075,8 +4123,10 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           e.fireT = (elite ? EQUADSTAR_ATTACK_INTERVAL : QUADSTAR_ATTACK_INTERVAL) + Math.random() * 0.4;
         }
       }
-      if (isLaserStar(e.type) && state !== 'dying' && e.born > 0) {
-        if (e.type === 'phexstar' && e.laserPhase > 0) for (const copy of e.laserCopies || []) {
+      const pseptCopies = e.type === 'psept' && e.pseptAction === 3;
+      const phexstarLaser = e.type === 'phexstar' || pseptCopies;
+      if ((isLaserStar(e.type) || pseptCopies) && state !== 'dying' && e.born > 0) {
+        if (phexstarLaser && e.laserPhase > 0) for (const copy of e.laserCopies || []) {
           copy.x += copy.vx * dt; copy.y += copy.vy * dt;
           copy.x = Math.max(24, Math.min(W - 24, copy.x)); copy.y = Math.max(24, Math.min(H - 24, copy.y));
           const drag = Math.exp(-2.8 * dt);
@@ -4088,7 +4138,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           if (e.laserT <= 0) {
             const target = getTargetPlayer(e.x, e.y); e.laserAngle = Math.atan2(target.y - e.y, target.x - e.x);
             e.laserPhase = 1; e.laserT = 1.0; e.laserT0 = 1.0;
-            if (e.type === 'phexstar') {
+            if (phexstarLaser) {
               e.laserCopies = [-1, 1].map((side) => {
                 const angle = e.laserAngle + side * (Math.PI / 2 + (Math.random() - 0.5) * 0.35);
                 const speed = 300 + Math.random() * 60;
@@ -4102,12 +4152,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         } else if (e.laserPhase === 1) {
           e.laserT -= dt;
           if (e.laserT <= 0) {
-            e.laserPhase = 2; e.laserT = isEliteEnemy(e.type) || e.type === 'phexstar' ? 3 : 0.38; e.laserT0 = e.laserT;
+            e.laserPhase = 2; e.laserT = isEliteEnemy(e.type) || phexstarLaser ? 3 : 0.38; e.laserT0 = e.laserT;
             e.laserTurnVelocity = 0;
             for (const copy of e.laserCopies || []) copy.turnVelocity = 0;
           }
         } else if (e.laserPhase === 2) {
-          if (isEliteEnemy(e.type) || e.type === 'phexstar') {
+          if (isEliteEnemy(e.type) || phexstarLaser) {
             const target = getAngularTargetPlayer(e.x, e.y, e.laserAngle);
             const pos = playerPosition(target);
             const desiredAngle = Math.atan2(pos.y - e.y, pos.x - e.x);
@@ -4126,16 +4176,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
             }
           }
           e.laserT -= dt;
-          const beams = [{ x: e.x, y: e.y, angle: e.laserAngle }, ...(e.type === 'phexstar' ? e.laserCopies || [] : [])];
+          const beams = [{ x: e.x, y: e.y, angle: e.laserAngle }, ...(phexstarLaser ? e.laserCopies || [] : [])];
           for (const pl of partyPlayers()) if (pl.hp > 0 && pl.inv <= 0) {
             const pos = playerPosition(pl);
-            const beamHalfWidth = (e.type === 'phexstar' ? 11 : 7) * eventSizeScale('enemy');
+            const beamHalfWidth = (phexstarLaser ? 11 : 7) * eventSizeScale('enemy');
             for (const beam of beams) {
               const rx = pos.x - beam.x, ry = pos.y - beam.y, c = Math.cos(beam.angle), s = Math.sin(beam.angle);
               const along = rx * c + ry * s, side = Math.abs(rx * s - ry * c);
               if (along > 0 && side < beamHalfWidth + pl.r * eventSizeScale('player') * 0.5) {
                 if (pl === P) hurtPlayer(12, beam.x, beam.y); else hurtRemotePlayer(pl, 12, beam.x, beam.y);
-                if (e.type === 'phexstar') {
+                if (phexstarLaser) {
                   const angle = Math.atan2(pos.y - beam.y, pos.x - beam.x), forceX = Math.cos(angle) * 260, forceY = Math.sin(angle) * 260;
                   if (pl === P && !(sandboxMode && sandboxInvulnerable)) { P.kx += forceX; P.ky += forceY; }
                   else pushEv(['k', pl.id, r1(forceX), r1(forceY), 0]);
@@ -4162,7 +4212,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         }
         const collided = bodyHit(e, pos.x, pos.y, radius);
         if (!collided || pl.inv > 0) continue;
-        if (isSquareChaser(e.type)) pl.inv = 0.375;
+        if (isSquareChaser(e.type) || (e.type === 'psept' && pseptChasing)) pl.inv = 0.375;
         if (pl === P) hurtPlayer(hitDamage, e.x, e.y); else hurtRemotePlayer(pl, hitDamage, e.x, e.y);
       }
     }
@@ -4877,15 +4927,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.save();
       const et = ET[e.type];
       const ft = (isPentEnemy(e.type) || isQuadStarEnemy(e.type)) ? e.fireT : e.type === 'stardust' ? e.cd : et.cross ? e.healT : e.type === 'sq' && e.mode === 'wind' ? e.dashT : 9;
-      const esqWarning = isSquareChaser(e.type) && e.born > 0.4 && e.chasePhase === 'warning';
-      const esqChasing = isSquareChaser(e.type) && e.born > 0.4 && e.chasePhase === 'chase';
+      const pseptChaser = e.type === 'psept' && (e.pseptAction === 4 || e.pseptAction === 6);
+      const esqWarning = (isSquareChaser(e.type) || pseptChaser) && e.born > 0.4 && e.chasePhase === 'warning';
+      const esqChasing = (isSquareChaser(e.type) || pseptChaser) && e.born > 0.4 && e.chasePhase === 'chase';
       const esqDotCharge = esqWarning || esqChasing ? esqChargeRatio(e) : 0;
       const ch = esqWarning || esqChasing ? esqDotCharge : ft < 0.45 ? 1 - ft / 0.45 : 0;
       if (et.cross) {                                   // 回復範囲の目安
         ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = et.color;
         ctx.beginPath(); ctx.arc(e.x, e.y, CROSS_R * (e.type === 'pcross' ? 1.5 : 1) * sc, 0, TAU); ctx.fill(); ctx.restore();
       }
-      if (e.type === 'phexstar') for (const copy of e.laserCopies || []) {
+      if (e.type === 'phexstar' || (e.type === 'psept' && e.pseptAction === 3)) for (const copy of e.laserCopies || []) {
         ctx.save(); ctx.globalAlpha = 0.34; ctx.shadowColor = et.color; ctx.shadowBlur = bloomEnabled ? 12 : 0;
         drawSixStar(copy.x, copy.y, e.r * sc * et.vr, e.rot);
         ctx.fillStyle = et.fill; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke(); ctx.restore();
@@ -4914,7 +4965,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       else if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, 0.36);
       else if (et.cross) drawCross(e.x, e.y, e.r * sc * et.vr, e.rot);
       else drawPoly(e.x, e.y, e.r * sc * et.vr, e.rot, et.sides);
-      ctx.fillStyle = e.flash > 0 ? '#ffffff' : (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active') ? e.pseptColor : et.fill);
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active') ? adjustHexBrightness(e.pseptColor, 0.55) : et.fill);
       ctx.fill();
       ctx.lineWidth = e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 || isPureEnemy(e.type) ? '#ffffff' : et.color;
       ctx.stroke();
@@ -4925,13 +4976,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         ctx.beginPath(); ctx.arc(e.x, e.y, gaugeRadius, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, Math.min(1, e.hp / e.maxHp)));
         ctx.strokeStyle = '#ffffff'; ctx.stroke();
       }
-      if (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active')) {
-        ctx.fillStyle = e.pseptColor; ctx.beginPath();
+      if (e.type === 'psept' && !pseptChaser && (e.pseptPhase === 'warning' || e.pseptPhase === 'active')) {
+        ctx.fillStyle = '#ffffff'; ctx.beginPath();
         ctx.arc(e.x, e.y, 7 + 4 * Math.sin(time * 12), 0, TAU); ctx.fill();
       }
-      if (isSquareChaser(e.type) ? esqDotCharge > 0 : ch > 0) {
+      if (isSquareChaser(e.type) || pseptChaser ? esqDotCharge > 0 : ch > 0) {
         ctx.fillStyle = '#ffffff'; ctx.beginPath();
-        ctx.arc(e.x, e.y, isSquareChaser(e.type) ? ESQ_CHASE_DOT_MAX * esqDotCharge : 2 + ch * 6, 0, TAU);
+        ctx.arc(e.x, e.y, isSquareChaser(e.type) || pseptChaser ? ESQ_CHASE_DOT_MAX * esqDotCharge : 2 + ch * 6, 0, TAU);
         ctx.fill();
       }
       if (isEliteEnemy(e.type) && isLaserStar(e.type) && e.laserPhase === 2 && e.laserT0 > 0) {
@@ -4941,7 +4992,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
         ctx.arc(dotX, dotY, ESQ_CHASE_DOT_MAX * Math.max(0, e.laserT / e.laserT0), 0, TAU);
         ctx.fill();
       }
-      if (e.type === 'psq' && e.chasePhase === 'teleportWarning') {
+      if ((e.type === 'psq' && e.chasePhase === 'teleportWarning') || (e.type === 'psept' && e.pseptAction === 4 && e.pseptChasePhase === 'teleportWarning')) {
         ctx.save(); ctx.globalAlpha = 0.4 + 0.4 * Math.sin(time * 24);
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(e.teleportX, e.teleportY, 24 + 14 * Math.sin(time * 18), 0, TAU); ctx.stroke();
@@ -4959,18 +5010,27 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 
   function drawLasers() {                                   // Trinity と六芳星のレーザー(予告線→照射)
     for (const e of enemies) {
-      if (e.type === 'psept' && e.pseptAction && (e.pseptAction === 3 || e.pseptAction === 7) && e.pseptPhase === 'active') {
+      if (e.type === 'psept' && e.pseptAction === 7 && (e.pseptLaserPhase === 1 || e.pseptLaserPhase === 2 || e.pseptLaserPhase === 3)) {
         for (const angle of e.pseptLaserAngles || []) {
           const ex = e.x + Math.cos(angle) * 1300, ey = e.y + Math.sin(angle) * 1300;
           ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(ex, ey); ctx.lineCap = 'round';
-          ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = PSEPT_COLORS[e.pseptAction - 1]; ctx.shadowBlur = 20;
-          ctx.strokeStyle = PSEPT_COLORS[e.pseptAction - 1]; ctx.lineWidth = 18; ctx.globalAlpha = 0.35; ctx.stroke();
-          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.globalAlpha = 0.9; ctx.stroke(); ctx.restore();
+          if (e.pseptLaserPhase === 1) {
+            ctx.strokeStyle = ET.psept.color; ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.45 + 0.35 * (Math.sin(time * 20) + 1) * 0.5; ctx.stroke();
+          } else {
+            const fade = e.pseptLaserPhase === 3 ? Math.max(0, e.pseptLaserT / 0.2) : 1;
+            ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = PSEPT_COLORS[6]; ctx.shadowBlur = 20;
+            ctx.strokeStyle = PSEPT_COLORS[6]; ctx.lineWidth = 20 * fade; ctx.globalAlpha = 0.35 * fade; ctx.stroke();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * fade; ctx.globalAlpha = 0.9 * fade; ctx.stroke();
+          }
+          ctx.restore();
         }
       }
-      if (isLaserStar(e.type) && e.laserPhase > 0) {
+      if ((isLaserStar(e.type) || (e.type === 'psept' && e.pseptAction === 3)) && e.laserPhase > 0) {
         const ex = e.x + Math.cos(e.laserAngle) * 1300, ey = e.y + Math.sin(e.laserAngle) * 1300;
-        const size = eventSizeScale('enemy') * (e.type === 'phexstar' ? 1.6 : 1);
+        const pseptCopies = e.type === 'psept' && e.pseptAction === 3;
+        const hasCopies = e.type === 'phexstar' || pseptCopies;
+        const size = eventSizeScale('enemy') * (hasCopies ? 1.6 : 1);
         ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(ex, ey);
         ctx.lineCap = 'round';
         if (e.laserPhase === 1) { ctx.strokeStyle = ET[e.type].color; ctx.lineWidth = 2 * size; ctx.setLineDash([]); ctx.globalAlpha = 0.45 + 0.35 * (Math.sin(time * 20) + 1) * 0.5; ctx.stroke(); }
@@ -4981,7 +5041,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
           ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * size * fade; ctx.globalAlpha = 0.9 * fade; ctx.stroke();
         } else { ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = ET[e.type].color; ctx.shadowBlur = 20 * size; ctx.strokeStyle = ET[e.type].color; ctx.lineWidth = 20 * size; ctx.globalAlpha = 0.35; ctx.setLineDash([]); ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * size; ctx.globalAlpha = 0.9; ctx.stroke(); }
         ctx.restore();
-        for (const copy of e.laserCopies || []) {
+        for (const copy of hasCopies ? e.laserCopies || [] : []) {
           const cx = copy.x + Math.cos(copy.angle) * 1300, cy = copy.y + Math.sin(copy.angle) * 1300;
           ctx.save(); ctx.beginPath(); ctx.moveTo(copy.x, copy.y); ctx.lineTo(cx, cy); ctx.lineCap = 'round';
           if (e.laserPhase === 1) {
@@ -5152,10 +5212,11 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const size = eventSizeScale('enemy');
-    const groups = new Map(), stars = new Map(), triangles = new Map();
+    const groups = new Map(), stars = new Map(), triangles = new Map(), drops = [];
     for (const b of ebullets) {
       if (b.remove) continue;
       const col = b.color || ET.pent.color;
+      if (b.drop) { drops.push(b); continue; }
       if (b.triangle) {
         let group = triangles.get(col);
         if (!group) triangles.set(col, group = []);
@@ -5198,6 +5259,16 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       ctx.shadowBlur = 0; ctx.fillStyle = '#ffffff'; ctx.beginPath();
       for (const b of group) appendTrianglePath(b.x, b.y, b.r * size * 0.7, b.rot);
       ctx.fill();
+    }
+    for (const b of drops) {
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.rot || 0); ctx.scale(size, size);
+      ctx.shadowColor = bloomEnabled ? b.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 12 : 0;
+      ctx.fillStyle = b.color; ctx.beginPath();
+      ctx.moveTo(0, -b.r * 1.65); ctx.quadraticCurveTo(b.r * 1.05, -b.r * 0.2, 0, b.r);
+      ctx.quadraticCurveTo(-b.r * 1.05, -b.r * 0.2, 0, -b.r * 1.65); ctx.fill();
+      ctx.shadowBlur = 0; ctx.fillStyle = '#ffffff'; ctx.beginPath();
+      ctx.ellipse(0, -b.r * 0.12, b.r * 0.28, b.r * 0.62, 0, 0, TAU); ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -5866,7 +5937,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     const ft = (isPentEnemy(e.type) || isQuadStarEnemy(e.type)) ? e.fireT : e.type === 'stardust' ? e.cd : ET[e.type].cross ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : isSquareChaser(e.type) ? e.chaseT : 9;
     const o = { i: e.id, ty: e.type, x: r1(e.x), y: r1(e.y), rt: r2(e.rot), r: e.r, hp: r1(e.hp), mh: Math.round(e.maxHp), b: r2(Math.min(e.born, 1)), f: e.flash > 0 ? 1 : 0, ft: r2(isSquareChaser(e.type) ? ft : Math.min(ft, 1)) };
     if (e.reviveStacks > 0) o.rv = e.reviveStacks;
-    if (isLaserStar(e.type)) {
+    if (isLaserStar(e.type) || (e.type === 'psept' && e.pseptAction === 3)) {
       o.hsp = e.laserPhase; o.hsa = r2(e.laserAngle); o.hst = r2(e.laserT); o.hst0 = r2(e.laserT0);
       if (e.laserCopies) o.hsc = e.laserCopies.map((copy) => [r1(copy.x), r1(copy.y), r2(copy.angle)]);
     }
@@ -5875,7 +5946,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       o.tp = [r1(e.teleportX || e.x), r1(e.teleportY || e.y), r2(e.teleportT || 0)];
     }
     if (e.type === 'phex') o.hf = r2(e.hexFireT || 0);
-    if (e.type === 'psept') o.ps = [e.pseptAction || 0, e.pseptPhase || 'cooldown', e.pseptColor || '#ffffff', r2(e.pseptPhaseT || 0), (e.pseptLaserAngles || []).map((angle) => r2(angle))];
+    if (e.type === 'psept') o.ps = [e.pseptAction || 0, e.pseptPhase || 'cooldown', e.pseptColor || '#ffffff', r2(e.pseptPhaseT || 0), (e.pseptLaserAngles || []).map((angle) => r2(angle)), e.pseptLaserPhase || 0, r2(e.pseptLaserT || 0), e.pseptDroneDeath ? 1 : 0, e.pseptChasePhase || '', r2(e.pseptChaseT || 0), r1(e.teleportX || e.x), r1(e.teleportY || e.y), r2(e.teleportT || 0)];
     if (e.mode && e.mode !== 'drift') o.m = e.mode;
     if (e.type === 'train') {
       o.cid = e.cid; o.rc = e.rootCid || e.cid; o.ci = e.ci; o.an = r2(e.ang); o.mt = e.maxTotal;
@@ -5927,7 +5998,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       }),
       en: enemies.map(serEnemy),
       bu: bullets.map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), r1(b.r), b.owner || 1]; }),
-      eb: ebullets.filter((b) => !b.remove).map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0, b.dmg || 10, r2(b.delay || 0), b.triangle ? 1 : 0]; }),
+      eb: ebullets.filter((b) => !b.remove).map((b) => { if (!b.id) b.id = ++uid; return [b.id, r1(b.x), r1(b.y), Math.round(b.vx), Math.round(b.vy), b.r, b.color || 0, b.star ? 1 : 0, b.dmg || 10, r2(b.delay || 0), b.triangle ? 1 : 0, b.drop ? 1 : 0]; }),
       sp: spawns.map((s) => [r1(s.x), r1(s.y), r2(s.t), r2(s.delay), s.type, s.edge === undefined ? -1 : s.edge, s.reviveStacks || 0]),
       me: meteors.map((m) => [r1(m.x), r1(m.y), r2(m.t), m.warn, m.fall, m.r, m.color || 0, m.trinity ? 1 : 0]),
       tr: trainRushes.map((rush) => [r1(rush.x), r1(rush.y), r2(rush.angle), r2(rush.t), rush.length, rush.duration]),
@@ -5981,14 +6052,18 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
     }
     if (o.ty === 'phex') e.hexFireT = o.hf || 0;
     if (o.ty === 'psept' && o.ps) {
-      e.pseptAction = o.ps[0]; e.pseptPhase = o.ps[1]; e.pseptColor = o.ps[2]; e.pseptPhaseT = o.ps[3]; e.pseptLaserAngles = o.ps[4] || [];
+      e.pseptAction = o.ps[0]; e.pseptPhase = o.ps[1]; e.pseptColor = o.ps[2]; e.pseptPhaseT = o.ps[3];
+      e.pseptLaserAngles = o.ps[4] || []; e.pseptLaserPhase = o.ps[5] || 0; e.pseptLaserT = o.ps[6] || 0; e.pseptDroneDeath = !!o.ps[7];
+      e.pseptChasePhase = o.ps[8] || ''; e.pseptChaseT = o.ps[9] || 0;
+      e.chasePhase = e.pseptChasePhase; e.chaseT = e.pseptChaseT;
+      e.teleportX = o.ps[10]; e.teleportY = o.ps[11]; e.teleportT = o.ps[12];
     }
-    if (isLaserStar(o.ty)) {
+    if (isLaserStar(o.ty) || (o.ty === 'psept' && o.ps && o.ps[0] === 3)) {
       e.laserPhase = o.hsp || 0;
       e.laserAngle = p && Number.isFinite(p.hsa) ? angLerp(p.hsa, o.hsa, al) : o.hsa || 0;
       e.laserT = p && p.hsp === o.hsp ? lerp(p.hst, o.hst, al) : o.hst || 0;
       e.laserT0 = o.hst0 || 0;
-      if (Array.isArray(o.hsc)) e.laserCopies = o.hsc.map((copy) => ({ x: copy[0], y: copy[1], angle: copy[2] }));
+      if (Array.isArray(o.hsc)) e.laserCopies = o.hsc.map((copy) => ({ x: copy[0], y: copy[1], angle: copy[2], vx: 0, vy: 0, turnVelocity: 0 }));
     }
     if (o.ty === 'train') {
       e.cid = o.cid; e.rootCid = o.rc === undefined ? o.cid : o.rc; e.ci = o.ci; e.ang = p ? angLerp(p.an, o.an, al) : o.an; e.maxTotal = o.mt;
@@ -6170,7 +6245,7 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
       const p = EBA.get(q[0]); let x, y;
       if (p) { x = lerp(p[1], q[1], alpha); y = lerp(p[2], q[2], alpha); }
       else { const back = (rt - b.t) / 1000; x = q[1] + q[3] * back; y = q[2] + q[4] * back; }
-      return { id: q[0], x, y, vx: q[3], vy: q[4], r: q[5], color: q[6] || undefined, star: !!q[7], triangle: !!q[10], rot: time * 6, dmg: q[8] || 10, delay: q[9] || 0 };
+      return { id: q[0], x, y, vx: q[3], vy: q[4], r: q[5], color: q[6] || undefined, star: !!q[7], triangle: !!q[10], drop: !!q[11], rot: q[11] ? Math.atan2(q[4], q[3]) + Math.PI / 2 : time * 6, dmg: q[8] || 10, delay: q[9] || 0 };
     });
     const IA = new Map(); for (const q of a.it) IA.set(q[0], q);
     items = b.it.map((q) => { const p = IA.get(q[0]); return { x: p ? lerp(p[1], q[1], alpha) : q[1], y: p ? lerp(p[2], q[2], alpha) : q[2], life: q[3], ph: q[4], type: q[5] || 'heal' }; });
