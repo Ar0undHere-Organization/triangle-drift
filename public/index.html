@@ -1365,7 +1365,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   resetRun();
 
-  const RANDOM_EVENT_CHANCE = 0.35;
+  const RANDOM_EVENT_CHANCE = 0.35, RANDOM_EVENT_START_WAVE = 6;
+  const PARTY_EVENT_KINDS = ['bomb', 'king', 'gather', 'bond'];
   const HORDE_EVENT_TYPES = [
     { pair: ['tri', 'etri'], pure: 'ptri', label: '三角形' },
     { pair: ['sq', 'esq'], pure: 'psq', label: '四角形' },
@@ -1384,9 +1385,20 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     return true;
   };
   function createRandomEvent() {
-    const kinds = ['horde', 'meteor', 'items', 'size', 'nineLives', 'train'];
+    const kinds = ['horde', 'meteor', 'items', 'size', 'nineLives', 'train', 'sweep'];
     if (wave % BOSS_EVERY === 0) kinds.splice(kinds.indexOf('nineLives'), 1);
+    // 複数人前提のパーティーイベントは、CPUを含めて生存者が2人以上のときだけ抽選に入る
+    const alive = alivePartyPlayers();
+    if (alive.length >= 2) kinds.push(...PARTY_EVENT_KINDS);
     const kind = kinds[Math.floor(Math.random() * kinds.length)];
+    if (kind === 'sweep') return { type: kind, title: 'レーザー横断注意！', sweepTimer: 1.6, lasers: [] };
+    if (kind === 'bomb') return { type: kind, title: '爆弾リレー！', bomb: null, bombDelay: 2.4, flash: 0 };
+    if (kind === 'king') {
+      const king = alive[Math.floor(Math.random() * alive.length)];
+      return { type: kind, title: '王様を守れ！', kingId: king.id || 1, kingAlive: true, rewarded: false };
+    }
+    if (kind === 'gather') return { type: kind, title: 'みんなで集合！', circle: null, gatherCd: 1.4, hold: 0, inside: 0, total: alive.length, flash: 0 };
+    if (kind === 'bond') return { type: kind, title: '絆レーザー！', bondTick: 0.4 };
     if (kind === 'horde') {
       const group = HORDE_EVENT_TYPES[Math.floor(Math.random() * HORDE_EVENT_TYPES.length)];
       return { type: kind, pair: group.pair, pure: group.pure, title: group.label + '大量発生！' };
@@ -1459,6 +1471,299 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       if (rush.t >= rush.duration) trainRushes.splice(i, 1);
     }
+  }
+
+  /* ---------- パーティーイベント（爆弾リレー / 王様 / 集合 / 絆レーザー）と横断レーザー ---------- */
+  const SWEEP_LASER_WARN = 1.3, SWEEP_LASER_CROSS_TIME = 11, SWEEP_LASER_INTERVAL = 5.2;
+  const SWEEP_LASER_HALF = 9, SWEEP_LASER_DAMAGE = 30, SWEEP_LASER_COLOR = '#ff4d6d';
+  const BOMB_FUSE = 8, BOMB_RADIUS = 210, BOMB_SELF_DAMAGE = 12, BOMB_PASS_COOLDOWN = 0.45, BOMB_RESPAWN = 2.5, BOMB_POWER = 9;
+  const KING_DAMAGE_BOOST = 2.5, KING_BULLET_SIZE = 1.5, KING_REWARD_HEAL = 0.35, KING_REWARD_ITEMS = 5, KING_COLOR = '#ffd84a';
+  const GATHER_HOLD = 0.9, GATHER_COOLDOWN = 11, GATHER_POWER = 10, GATHER_SPEED = 38, GATHER_COLOR = '#ffe36e';
+  const BOND_TICK = 0.2, BOND_HALF_WIDTH = 10, BOND_TICK_POWER = 0.4;
+  const alivePartyPlayers = () => partyPlayers().filter((player) => player.hp > 0 && !player.spectator);
+  const eventPower = () => HP_SCALE * (2 + Math.floor((Math.max(1, wave) - 1) / 1.8));   // 通常敵HPと同じ伸び方
+  const eventPlayerById = (players, id) => players.find((player) => (player.id || 1) === id) || null;
+  function hurtAnyPlayer(player, amount, fromX, fromY) {
+    if (player === P) hurtPlayer(amount, fromX, fromY); else hurtRemotePlayer(player, amount, fromX, fromY);
+  }
+  function healAnyPlayer(player, amount) {
+    const healed = Math.min(player.maxHp - player.hp, Math.round(amount));
+    if (healed <= 0) return;
+    player.hp += healed;
+    const pos = playerPosition(player);
+    floatText(pos.x, pos.y - 34, '+' + healed, '#7df0a8');
+  }
+  const eventDamageable = (enemy) => enemy.hp > 0 && !ET[enemy.type].boss;
+  function damageEnemiesInRadius(x, y, radius, damage, ownerId, color, knockback) {
+    for (const enemy of enemies) {
+      if (!eventDamageable(enemy)) continue;
+      if (radius !== Infinity && !bodyHit(enemy, x, y, radius + enemy.r * 0.8)) continue;
+      const dealt = applyEnemyDamage(enemy, damage, ownerId, x, y, radius === Infinity ? 0 : radius);
+      if (dealt > 0) damagePop(enemy.x, enemy.y - enemy.r - 6, dealt, false, color);
+      if (knockback) {
+        const length = Math.hypot(enemy.x - x, enemy.y - y) || 1;
+        applyEnemyKnockback(enemy, (enemy.x - x) / length * knockback, (enemy.y - y) / length * knockback);
+      }
+    }
+  }
+  function pointSegmentDistance(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, lengthSq = dx * dx + dy * dy;
+    const t = lengthSq ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq)) : 0;
+    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  }
+  // 絆レーザーは生存プレイヤーをID順に一筆書きでつなぐ（ホストとゲストで同じ並びになる）
+  function bondChain(players) {
+    return players.filter((player) => player.hp > 0 && !player.spectator)
+      .sort((a, b) => (a.id || 1) - (b.id || 1));
+  }
+  // 王様イベント中は、敵は王様を最優先で狙う
+  function eventKing() {
+    if (!randomEvent || randomEvent.type !== 'king' || !randomEvent.kingAlive) return null;
+    const king = eventPlayerById(partyPlayers(), randomEvent.kingId);
+    return king && king.hp > 0 ? king : null;
+  }
+  function isEventKing(player) {
+    return !!(randomEvent && randomEvent.type === 'king' && randomEvent.kingAlive && player && (player.id || 1) === randomEvent.kingId);
+  }
+
+  function updatePartyEvents(dt) {
+    if (state !== 'play' || !randomEvent) return;
+    const ev = randomEvent;
+    if (ev.flash) ev.flash = Math.max(0, ev.flash - dt * 1.6);
+    if (ev.type === 'sweep') updateSweepLasers(ev, dt);
+    else if (ev.type === 'bomb') updateBombRelay(ev, dt);
+    else if (ev.type === 'king') updateKingEvent(ev);
+    else if (ev.type === 'gather') updateGatherEvent(ev, dt);
+    else if (ev.type === 'bond') updateBondLaser(ev, dt);
+  }
+
+  // 横断レーザー: ステージ端から端までの線がゆっくり横断。ダッシュ(無敵)で抜けないと大ダメージ
+  function updateSweepLasers(ev, dt) {
+    ev.sweepTimer -= dt;
+    if (ev.sweepTimer <= 0) {
+      ev.sweepTimer += SWEEP_LASER_INTERVAL;
+      const axis = Math.random() < 0.5 ? 'x' : 'y', dir = Math.random() < 0.5 ? 1 : -1;
+      const span = axis === 'x' ? W : H;
+      ev.lasers.push({ axis, dir, pos: dir > 0 ? 0 : span, t: 0, speed: span / SWEEP_LASER_CROSS_TIME, hit: [], fired: 0 });
+      sfx.bossCall();
+    }
+    for (let i = ev.lasers.length - 1; i >= 0; i--) {
+      const laser = ev.lasers[i];
+      laser.t += dt;
+      if (laser.t < SWEEP_LASER_WARN) continue;
+      if (!laser.fired) { laser.fired = 1; sfx.meteor(); shake = Math.max(shake, 6); }
+      laser.pos += laser.dir * laser.speed * dt;
+      const span = laser.axis === 'x' ? W : H;
+      if (laser.pos < -20 || laser.pos > span + 20) { ev.lasers.splice(i, 1); continue; }
+      for (const player of alivePartyPlayers()) {
+        const id = player.id || 1;
+        if (player.inv > 0 || laser.hit.includes(id)) continue;
+        const pos = playerPosition(player), coord = laser.axis === 'x' ? pos.x : pos.y;
+        if (Math.abs(coord - laser.pos) >= SWEEP_LASER_HALF + player.r) continue;
+        laser.hit.push(id);
+        // レーザーの進行方向側から押し返し、線の向こう側へ抜けさせる
+        const fromX = laser.axis === 'x' ? laser.pos + laser.dir * 40 : pos.x;
+        const fromY = laser.axis === 'x' ? pos.y : laser.pos + laser.dir * 40;
+        hurtAnyPlayer(player, SWEEP_LASER_DAMAGE, fromX, fromY);
+        burst(pos.x, pos.y, 18, SWEEP_LASER_COLOR, 320, 0.4, 3);
+      }
+    }
+  }
+
+  // 爆弾リレー: ダッシュで味方に体当たりすると爆弾を渡せる。時間切れで持ち主の周囲が大爆発
+  function updateBombRelay(ev, dt) {
+    const alive = alivePartyPlayers();
+    if (!ev.bomb) {
+      ev.bombDelay -= dt;
+      if (ev.bombDelay > 0 || !alive.length) return;
+      const holder = alive[Math.floor(Math.random() * alive.length)], pos = playerPosition(holder);
+      ev.bomb = { holder: holder.id || 1, fuse: BOMB_FUSE, max: BOMB_FUSE, passCd: 0.6 };
+      floatText(pos.x, pos.y - 44, 'BOMB!', '#ff9f43');
+      ring(pos.x, pos.y, 90, 0.4, '#ff9f43', 3);
+      sfx.bossCall();
+      return;
+    }
+    const bomb = ev.bomb;
+    let holder = eventPlayerById(alive, bomb.holder);
+    if (!holder) {                                        // 持ち主が倒れたら、生存者の誰かへ移る
+      if (!alive.length) { ev.bomb = null; ev.bombDelay = BOMB_RESPAWN; return; }
+      holder = alive[Math.floor(Math.random() * alive.length)];
+      bomb.holder = holder.id || 1; bomb.passCd = 0.6;
+    }
+    bomb.fuse -= dt; bomb.passCd = Math.max(0, bomb.passCd - dt);
+    const holderPos = playerPosition(holder);
+    if (bomb.passCd <= 0 && (holder.dashT > 0 || holder.dashJustEnded)) {
+      for (const other of alive) {
+        if (other === holder) continue;
+        const otherPos = playerPosition(other);
+        if (Math.hypot(otherPos.x - holderPos.x, otherPos.y - holderPos.y) >= holder.r + other.r + 18) continue;
+        bomb.holder = other.id || 1; bomb.passCd = BOMB_PASS_COOLDOWN;
+        floatText(otherPos.x, otherPos.y - 44, 'PASS!', KING_COLOR);
+        ring(otherPos.x, otherPos.y, 64, 0.3, KING_COLOR, 3);
+        burst(otherPos.x, otherPos.y, 12, '#ff9f43', 260, 0.35, 2.6);
+        sfx.heal();
+        if (other.cpu) sendPlayerEmoji(other, chosenEmojis[3]);
+        return;
+      }
+    }
+    if (bomb.fuse <= 0) explodeEventBomb(ev, holder);
+  }
+  function explodeEventBomb(ev, holder) {
+    const pos = playerPosition(holder);
+    damageEnemiesInRadius(pos.x, pos.y, BOMB_RADIUS, eventPower() * BOMB_POWER, holder.id || 1, '#ff9f43', 320);
+    clearEnemyBulletsNear(pos.x, pos.y, BOMB_RADIUS);
+    if (holder.inv <= 0) hurtAnyPlayer(holder, BOMB_SELF_DAMAGE, pos.x - 1, pos.y + 1);
+    ring(pos.x, pos.y, BOMB_RADIUS, 0.45, '#ffffff', 6);
+    ring(pos.x, pos.y, BOMB_RADIUS * 1.25, 0.65, '#ff9f43', 5);
+    ring(pos.x, pos.y, BOMB_RADIUS * 0.6, 0.35, '#ff5d6a', 4);
+    burst(pos.x, pos.y, 70, '#ff9f43', 620, 0.9, 4.5);
+    burst(pos.x, pos.y, 40, '#ffffff', 480, 0.6, 3.5);
+    floatText(pos.x, pos.y - 56, 'BOOM!!', '#ff9f43');
+    shake = Math.max(shake, 26);
+    sfx.impact(); sfx.boss();
+    ev.bomb = null; ev.bombDelay = BOMB_RESPAWN; ev.flash = 0.55;
+  }
+
+  // 王様を守れ: 王様が倒れたら失敗。フェーズ終了まで生き残ると全員回復＋アイテム
+  function updateKingEvent(ev) {
+    if (!ev.kingAlive || ev.rewarded) return;
+    if (eventKing()) return;
+    ev.kingAlive = false;
+    ev.title = '王様が倒れた…';
+    ev.bannerT = 2.4;
+    const king = eventPlayerById(partyPlayers(), ev.kingId);
+    if (king) floatText(king.deathX || king.x, (king.deathY || king.y) - 44, 'KING DOWN', '#ff7a86');
+    sfx.memberLeave();
+  }
+  // フェーズ（またはウェーブ）終了時に呼ぶ
+  function finishPartyEvent() {
+    const ev = randomEvent;
+    if (!ev || ev.type !== 'king' || !ev.kingAlive || ev.rewarded) return;
+    const king = eventKing();
+    if (!king) return;
+    ev.rewarded = true;
+    ev.title = '王様を守りきった！';
+    ev.bannerT = 2.4;
+    for (const player of alivePartyPlayers()) healAnyPlayer(player, player.maxHp * KING_REWARD_HEAL);
+    const pos = playerPosition(king);
+    for (let i = 0; i < KING_REWARD_ITEMS; i++) {
+      const angle = i / KING_REWARD_ITEMS * TAU;
+      items.push({ x: Math.max(30, Math.min(W - 30, pos.x + Math.cos(angle) * 70)), y: Math.max(30, Math.min(H - 30, pos.y + Math.sin(angle) * 70)), life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false });
+    }
+    ring(pos.x, pos.y, 260, 0.8, KING_COLOR, 5);
+    burst(pos.x, pos.y, 50, KING_COLOR, 420, 0.9, 3.5);
+    floatText(pos.x, pos.y - 56, 'KING SURVIVED!', KING_COLOR);
+    sfx.revive();
+  }
+
+  // みんなで集合: 生存者全員が同時に円の中へ入ると、画面全体に衝撃波
+  function makeGatherCircle(count) {
+    const r = Math.min(Math.min(W, H) * 0.3, 70 + count * 12);
+    const angle = Math.random() * TAU;
+    return { x: r + 40 + Math.random() * (W - r * 2 - 80), y: r + 40 + Math.random() * (H - r * 2 - 80), r, vx: Math.cos(angle) * GATHER_SPEED, vy: Math.sin(angle) * GATHER_SPEED };
+  }
+  function updateGatherEvent(ev, dt) {
+    const alive = alivePartyPlayers();
+    ev.total = alive.length;
+    if (ev.gatherCd > 0) {
+      ev.gatherCd -= dt;
+      if (ev.gatherCd <= 0) {
+        ev.gatherCd = 0; ev.hold = 0; ev.circle = makeGatherCircle(alive.length);
+        ring(ev.circle.x, ev.circle.y, ev.circle.r * 1.4, 0.5, GATHER_COLOR, 4);
+        sfx.bossCall();
+      }
+      return;
+    }
+    const c = ev.circle;
+    if (!c) return;
+    c.x += c.vx * dt; c.y += c.vy * dt;
+    if (c.x < c.r + 20 || c.x > W - c.r - 20) { c.vx *= -1; c.x = Math.max(c.r + 20, Math.min(W - c.r - 20, c.x)); }
+    if (c.y < c.r + 20 || c.y > H - c.r - 20) { c.vy *= -1; c.y = Math.max(c.r + 20, Math.min(H - c.r - 20, c.y)); }
+    let inside = 0;
+    for (const player of alive) {
+      const pos = playerPosition(player);
+      if (Math.hypot(pos.x - c.x, pos.y - c.y) < c.r + player.r * 0.5) inside++;   // 体が半分入っていればOK
+    }
+    ev.inside = inside;
+    if (alive.length && inside === alive.length) ev.hold += dt;
+    else ev.hold = Math.max(0, ev.hold - dt);
+    if (ev.hold < GATHER_HOLD) return;
+    damageEnemiesInRadius(c.x, c.y, Infinity, eventPower() * GATHER_POWER, undefined, GATHER_COLOR, 260);
+    for (const bullet of ebullets) bullet.remove = true;
+    const reach = Math.hypot(W, H);
+    ring(c.x, c.y, reach, 0.9, GATHER_COLOR, 7);
+    ring(c.x, c.y, reach * 0.7, 0.7, '#ffffff', 5);
+    ring(c.x, c.y, c.r * 1.6, 0.4, '#ffffff', 4);
+    burst(c.x, c.y, 80, GATHER_COLOR, 700, 1.0, 4.5);
+    floatText(c.x, c.y - c.r - 18, 'TEAM BLAST!!', GATHER_COLOR);
+    shake = Math.max(shake, 28);
+    sfx.clear(); sfx.impact();
+    ev.circle = null; ev.hold = 0; ev.gatherCd = GATHER_COOLDOWN; ev.flash = 1;
+    for (const cpu of cpuPlayers) if (cpu.hp > 0) sendPlayerEmoji(cpu, chosenEmojis[0]);
+  }
+
+  // 絆レーザー: プレイヤー間をつなぐ線に触れた敵へ継続ダメージ
+  function updateBondLaser(ev, dt) {
+    ev.bondTick -= dt;
+    if (ev.bondTick > 0) return;
+    ev.bondTick += BOND_TICK;
+    const chain = bondChain(partyPlayers()).map(playerPosition);
+    if (chain.length < 2) return;
+    const damage = eventPower() * BOND_TICK_POWER;
+    for (const enemy of enemies) {
+      if (!eventDamageable(enemy)) continue;
+      const reach = BOND_HALF_WIDTH + enemy.r * 0.85 * eventSizeScale('enemy');
+      for (let i = 1; i < chain.length; i++) {
+        if (pointSegmentDistance(enemy.x, enemy.y, chain[i - 1].x, chain[i - 1].y, chain[i].x, chain[i].y) >= reach) continue;
+        const dealt = applyEnemyDamage(enemy, damage, undefined, enemy.x, enemy.y, 0);
+        if (dealt > 0) damagePop(enemy.x, enemy.y - enemy.r - 6, dealt, false, '#a0e7ff');
+        break;
+      }
+    }
+  }
+
+  // CPU向け: イベント中の動き（爆弾を渡しに行く、円に集まる、レーザーをダッシュで抜ける など）
+  function cpuEventSteer(pl) {
+    const ev = randomEvent;
+    if (!ev || state !== 'play') return null;
+    const out = { x: 0, y: 0, dash: null, holdDash: false };
+    const id = pl.id || 1;
+    if (ev.type === 'sweep') {
+      for (const laser of ev.lasers || []) {
+        if (laser.hit.includes(id)) continue;
+        const coord = laser.axis === 'x' ? pl.x : pl.y, ahead = (coord - laser.pos) * laser.dir;
+        if (ahead < -SWEEP_LASER_HALF - pl.r) continue;                  // すでに通過済み
+        const ux = laser.axis === 'x' ? laser.dir : 0, uy = laser.axis === 'x' ? 0 : laser.dir;
+        if (ahead < 260) out.holdDash = true;                            // レーザー用にダッシュを温存する
+        if (laser.t >= SWEEP_LASER_WARN && ahead < 62 + pl.r && pl.dashCd <= 0) out.dash = { x: -ux, y: -uy };
+        else if (ahead < 170 && pl.dashCd > 0) { out.x += ux * 2.4; out.y += uy * 2.4; }   // ダッシュ待ちの間は逃げる
+      }
+    } else if (ev.type === 'bomb' && ev.bomb && ev.bomb.holder === id) {
+      let target = null, distance = Infinity;
+      for (const other of alivePartyPlayers()) {
+        if (other === pl) continue;
+        const pos = playerPosition(other), d = Math.hypot(pos.x - pl.x, pos.y - pl.y);
+        if (d < distance) { distance = d; target = pos; }
+      }
+      if (target) {
+        const dx = (target.x - pl.x) / (distance || 1), dy = (target.y - pl.y) / (distance || 1);
+        out.x += dx * 1.8; out.y += dy * 1.8;
+        if (distance < 150 && ev.bomb.passCd <= 0) out.dash = { x: dx, y: dy };
+      }
+    } else if (ev.type === 'gather' && ev.circle && ev.gatherCd <= 0) {
+      // 円の中心へ強く引き寄せる（敵よけより優先し、円の中にとどまる）
+      const c = ev.circle, dx = c.x - pl.x, dy = c.y - pl.y, distance = Math.hypot(dx, dy) || 1;
+      const pull = distance > c.r * 0.55 ? 6 : 6 * distance / (c.r * 0.55);
+      out.x += dx / distance * pull; out.y += dy / distance * pull;
+      out.holdDash = distance < c.r;
+    } else if (ev.type === 'king' && !isEventKing(pl)) {
+      const king = eventKing();
+      if (king) {
+        const dx = king.x - pl.x, dy = king.y - pl.y, distance = Math.hypot(dx, dy) || 1;
+        if (distance > 140) { out.x += dx / distance * 0.6; out.y += dy / distance * 0.6; }
+      }
+    }
+    return out;
   }
 
   function beginWave(n) {
@@ -1575,7 +1880,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function startPhase(idx) {
     phasePureCount = 0;
     const list = wavePhases[idx].slice();
-    randomEvent = wave >= 26 && Math.random() < RANDOM_EVENT_CHANCE ? createRandomEvent() : null;
+    randomEvent = wave >= RANDOM_EVENT_START_WAVE && Math.random() < RANDOM_EVENT_CHANCE ? createRandomEvent() : null;
     if (randomEvent) {
       randomEvent.bannerT = 2.4;
       if (randomEvent.type === 'horde') {
@@ -2129,14 +2434,16 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     let a = Math.atan2(aimY - shooter.y, aimX - shooter.x);
     const n = Math.max(1, Math.floor(S.shots));
     const bulletSpeed = S.bspeed;
-    const shotDamage = S.dmg / Math.sqrt(n);
+    const kingShot = isEventKing(shooter);                  // 王様の弾は強力で大きい
+    const shotDamage = S.dmg / Math.sqrt(n) * (kingShot ? KING_DAMAGE_BOOST : 1);
+    const shotRadius = S.bsize * (kingShot ? KING_BULLET_SIZE : 1);
     for (let i = 0; i < n; i++) {
       const ang = a + (i - (n - 1) / 2) * S.spread;
       const c = Math.cos(ang), s = Math.sin(ang);
       bullets.push({
         x: shooter.x + c * (shooter.r + 6), y: shooter.y + s * (shooter.r + 6),
         vx: c * bulletSpeed, vy: s * bulletSpeed,
-        r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: projectileLifetime(bulletSpeed, 1.4), hit: new Set(), px: shooter.x, py: shooter.y,
+        r: shotRadius, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: projectileLifetime(bulletSpeed, 1.4), hit: new Set(), px: shooter.x, py: shooter.y,
         color: shooter.color || C.bullet,
         homing: !!S.missileHoming, owner: shooter.id || 1,
         crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, burstDmg: S.burstDmg, guide: S.guideLevel,
@@ -2278,6 +2585,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         repelPoint(x, y, i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS);
       }
     }
+    const eventSteer = cpuEventSteer(pl);
+    if (eventSteer) { moveX += eventSteer.x; moveY += eventSteer.y; }
     if (pl.x < 90) moveX += (90 - pl.x) / 90;
     else if (pl.x > W - 90) moveX -= (pl.x - W + 90) / 90;
     if (pl.y < 90) moveY += (90 - pl.y) / 90;
@@ -2295,8 +2604,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       dx: moveX, dy: moveY,
       aimX: targetPoint ? targetPoint.x + Math.sin(time * 1.7 + pl.id) * aimError : pl.x + 1,
       aimY: targetPoint ? targetPoint.y + Math.cos(time * 1.3 + pl.id) * aimError : pl.y,
-      fire: !!target, dash: pl.dashCd <= 0 && pl.dashT <= 0 && (!!evadeBullet || evadeSpecial || !!dashAtEnemy),
-      dashX, dashY
+      fire: !!target, dash: pl.dashCd <= 0 && pl.dashT <= 0 && (eventSteer && eventSteer.dash ? true
+        : !(eventSteer && eventSteer.holdDash) && (!!evadeBullet || evadeSpecial || !!dashAtEnemy)),
+      dashX: eventSteer && eventSteer.dash ? eventSteer.dash.x : dashX,
+      dashY: eventSteer && eventSteer.dash ? eventSteer.dash.y : dashY
     };
   }
 
@@ -2619,6 +2930,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
 
   function getTargetPlayer(x, y) {
+    const king = eventKing();
+    if (king) return king;
     const candidates = partyPlayers();
     const alive = candidates.filter(p => p.hp > 0);
     return alive.sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] || P;
@@ -5083,7 +5396,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     ebullets.length = ebulletWrite;
     updateMeteors(dt);
     updateItems(dt);
-    updateRandomEvent(dt); startTrainEvent(dt);
+    updateRandomEvent(dt); startTrainEvent(dt); updatePartyEvents(frameDt);
     // bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
@@ -5184,10 +5497,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       randomEvent = null;
     }
     if (!sandboxMode && state === 'play' && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0 && phaseIdx + 1 < phaseCount) {
+      finishPartyEvent();
       phaseIdx++; startPhase(phaseIdx);
       bannerText = 'PHASE ' + (phaseIdx + 1) + ' / ' + phaseCount; bannerT = 1.8;
       ring(P.x, P.y, 300, 0.6, '#ffffff', 2); sfx.wave();
     } else if (!sandboxMode && state === 'play' && waveClearGuard <= 0 && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0) {
+      finishPartyEvent();
       state = 'clear'; clearT = 1.2; collectRemainingItems();
       sendCpuEmojis(0);
       bannerBossTypes = null; bannerText = 'WAVE CLEAR'; bannerT = 1.4;
@@ -6517,6 +6832,174 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     ctx.fillStyle = C.accent; ctx.shadowColor = C.accent; ctx.shadowBlur = 12;
     ctx.fillText(randomEvent.title, W / 2, 67); spaced(0); ctx.restore();
   }
+  const partyEventActive = () => !!randomEvent && (state === 'play' || state === 'clear');
+  const localPlayerId = () => netRole === 'guest' ? playerId : 1;
+  function drawChevron(x, y, angle, size) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+    ctx.beginPath(); ctx.moveTo(-size, -size); ctx.lineTo(0, 0); ctx.lineTo(-size, size); ctx.stroke();
+    ctx.restore();
+  }
+  // プレイヤーより下に描くもの: 横断レーザー / 集合サークル / 絆レーザー
+  function drawPartyEventsUnder() {
+    if (!partyEventActive()) return;
+    const ev = randomEvent, now = performance.now() / 1000;
+    if (ev.type === 'sweep' && state === 'play') {
+      for (const laser of ev.lasers || []) {
+        const vertical = laser.axis === 'x', span = vertical ? W : H;
+        const pos = laser.t < SWEEP_LASER_WARN ? Math.max(4, Math.min(span - 4, laser.pos)) : laser.pos;
+        const x1 = vertical ? pos : 0, y1 = vertical ? 0 : pos, x2 = vertical ? pos : W, y2 = vertical ? H : pos;
+        const angle = vertical ? (laser.dir > 0 ? 0 : Math.PI) : (laser.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+        const length = vertical ? H : W;
+        ctx.save(); ctx.lineCap = 'round';
+        if (laser.t < SWEEP_LASER_WARN) {
+          ctx.globalAlpha = Math.floor(laser.t * 10) % 2 ? 0.95 : 0.35;
+          ctx.strokeStyle = SWEEP_LASER_COLOR; ctx.lineWidth = 3; ctx.setLineDash([16, 12]);
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.setLineDash([]); ctx.lineWidth = 3;
+          for (let d = 60; d < length; d += 120) {
+            for (let k = 0; k < 3; k++) {
+              const off = 18 + k * 14;
+              drawChevron(vertical ? pos + Math.cos(angle) * off : d, vertical ? d : pos + Math.sin(angle) * off, angle, 7);
+            }
+          }
+        } else {
+          const pulse = 1 + Math.sin(now * 24) * 0.15;
+          ctx.shadowColor = SWEEP_LASER_COLOR; ctx.shadowBlur = bloomEnabled ? 30 : 0;
+          ctx.strokeStyle = 'rgba(255,77,109,.35)'; ctx.lineWidth = (SWEEP_LASER_HALF * 2 + 14) * pulse;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.strokeStyle = SWEEP_LASER_COLOR; ctx.lineWidth = SWEEP_LASER_HALF * 2 * 0.75;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.shadowBlur = 0;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.globalAlpha = 0.8; ctx.strokeStyle = SWEEP_LASER_COLOR; ctx.lineWidth = 3;
+          const scroll = (now * 140) % 120;
+          for (let d = scroll; d < length; d += 120) {
+            drawChevron(vertical ? pos + Math.cos(angle) * 26 : d, vertical ? d : pos + Math.sin(angle) * 26, angle, 8);
+          }
+        }
+        ctx.restore();
+      }
+    }
+    if (ev.type === 'gather' && ev.circle && !(ev.gatherCd > 0) && state === 'play') {
+      const c = ev.circle, progress = Math.min(1, (ev.hold || 0) / GATHER_HOLD);
+      const pulse = 1 + Math.sin(now * 5) * 0.03;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,227,110,' + (0.07 + progress * 0.18) + ')';
+      ctx.beginPath(); ctx.arc(c.x, c.y, c.r * pulse, 0, TAU); ctx.fill();
+      ctx.shadowColor = GATHER_COLOR; ctx.shadowBlur = bloomEnabled ? 22 : 0;
+      ctx.strokeStyle = GATHER_COLOR; ctx.lineWidth = 4; ctx.setLineDash([18, 12]); ctx.lineDashOffset = -now * 40;
+      ctx.beginPath(); ctx.arc(c.x, c.y, c.r * pulse, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      if (progress > 0) {
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r * pulse + 8, -Math.PI / 2, -Math.PI / 2 + TAU * progress); ctx.stroke();
+      }
+      ctx.shadowBlur = 0; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = GATHER_COLOR; setFont(20, 700); spaced(2);
+      ctx.fillText('集合！ ' + (ev.inside || 0) + ' / ' + (ev.total || 0), c.x, c.y);
+      spaced(0);
+      // 自分が円の外にいるときは、円の方向を矢印で示す
+      const me = myPlayer();
+      if (me && me.hp > 0) {
+        const pos = playerPosition(me), dx = c.x - pos.x, dy = c.y - pos.y, distance = Math.hypot(dx, dy);
+        if (distance > c.r) {
+          const a = Math.atan2(dy, dx);
+          ctx.strokeStyle = GATHER_COLOR; ctx.lineWidth = 3; ctx.globalAlpha = 0.6 + Math.sin(now * 8) * 0.3;
+          drawChevron(pos.x + Math.cos(a) * 40, pos.y + Math.sin(a) * 40, a, 8);
+          drawChevron(pos.x + Math.cos(a) * 52, pos.y + Math.sin(a) * 52, a, 8);
+        }
+      }
+      ctx.restore();
+    }
+    if (ev.type === 'bond' && state === 'play') {
+      const chain = bondChain(visiblePlayers()).map((player) => ({ pos: playerPosition(player), color: player.color || playerColor(player.id || 1) }));
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 1; i < chain.length; i++) {
+        const a = chain[i - 1].pos, b = chain[i].pos, dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy) || 1;
+        const nx = -dy / length, ny = dx / length;
+        const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+        gradient.addColorStop(0, chain[i - 1].color); gradient.addColorStop(1, chain[i].color);
+        ctx.shadowColor = '#a0e7ff'; ctx.shadowBlur = bloomEnabled ? 20 : 0;
+        ctx.globalAlpha = 0.45; ctx.strokeStyle = gradient; ctx.lineWidth = BOND_HALF_WIDTH * 2 * (1 + Math.sin(now * 18 + i) * 0.12);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.shadowBlur = bloomEnabled ? 10 : 0; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        const steps = Math.max(4, Math.floor(length / 26));
+        ctx.beginPath(); ctx.moveTo(a.x, a.y);
+        for (let k = 1; k < steps; k++) {
+          const t = k / steps, jitter = Math.sin(now * 37 + k * 2.3 + i * 5.1) * 6;
+          ctx.lineTo(a.x + dx * t + nx * jitter, a.y + dy * t + ny * jitter);
+        }
+        ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  // プレイヤーより上に描くもの: 王冠 / 爆弾
+  function drawPartyEventsOver() {
+    if (!partyEventActive()) return;
+    const ev = randomEvent, now = performance.now() / 1000, players = visiblePlayers();
+    if (ev.type === 'king' && (ev.kingAlive || ev.rewarded)) {
+      const king = eventPlayerById(players, ev.kingId);
+      if (king && king.hp > 0) {
+        const pos = playerPosition(king), size = eventSizeScale('player');
+        const top = pos.y - king.r * size - 40 + Math.sin(now * 4) * 2.5;
+        ctx.save();
+        ctx.globalAlpha = 0.5 + Math.sin(now * 6) * 0.2; ctx.strokeStyle = KING_COLOR; ctx.lineWidth = 3;
+        ctx.shadowColor = KING_COLOR; ctx.shadowBlur = bloomEnabled ? 18 : 0;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, king.r * size + 16 + Math.sin(now * 6) * 3, 0, TAU); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.fillStyle = KING_COLOR; ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(pos.x - 14, top + 9); ctx.lineTo(pos.x - 14, top - 5); ctx.lineTo(pos.x - 7, top + 2);
+        ctx.lineTo(pos.x, top - 10); ctx.lineTo(pos.x + 7, top + 2); ctx.lineTo(pos.x + 14, top - 5); ctx.lineTo(pos.x + 14, top + 9);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ff5d6a'; ctx.beginPath(); ctx.arc(pos.x, top + 3, 2.5, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+    }
+    if (ev.type === 'bomb' && ev.bomb && state === 'play') {
+      const holder = eventPlayerById(players, ev.bomb.holder);
+      if (holder && holder.hp > 0) {
+        const pos = playerPosition(holder), size = eventSizeScale('player');
+        const fuse = Math.max(0, ev.bomb.fuse), danger = fuse < 2.5;
+        const bx = pos.x, by = pos.y - holder.r * size - 42 + Math.sin(now * (danger ? 20 : 6)) * 2;
+        ctx.save();
+        if (danger) {
+          ctx.globalAlpha = 0.25 + (Math.floor(now * 8) % 2) * 0.25; ctx.strokeStyle = '#ff5d6a'; ctx.lineWidth = 2; ctx.setLineDash([10, 8]);
+          ctx.beginPath(); ctx.arc(pos.x, pos.y, BOMB_RADIUS, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+        }
+        ctx.strokeStyle = '#c9b48a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(bx + 6, by - 9); ctx.quadraticCurveTo(bx + 12, by - 18, bx + 16, by - 16); ctx.stroke();
+        ctx.fillStyle = Math.floor(now * 20) % 2 ? '#ffe36e' : '#ff9f43';
+        ctx.shadowColor = '#ff9f43'; ctx.shadowBlur = bloomEnabled ? 16 : 0;
+        ctx.beginPath(); ctx.arc(bx + 16, by - 16, 3.5 + Math.random() * 1.5, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#1b1f2a'; ctx.strokeStyle = danger && Math.floor(now * 8) % 2 ? '#ff5d6a' : '#ff9f43'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(bx, by, 13, 0, TAU); ctx.fill(); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; setFont(13, 700);
+        ctx.fillText(String(Math.ceil(fuse)), bx, by + 1);
+        ctx.restore();
+      }
+    }
+  }
+  function drawPartyEventFlash() {
+    if (!partyEventActive() || !(randomEvent.flash > 0)) return;
+    ctx.save();
+    ctx.fillStyle = randomEvent.type === 'gather' ? 'rgba(255,240,170,' + 0.45 * randomEvent.flash + ')' : 'rgba(255,170,90,' + 0.35 * randomEvent.flash + ')';
+    ctx.fillRect(0, 0, W, H); ctx.restore();
+  }
+  // 自分に関係するときだけ出す補足テキスト
+  function drawPartyEventHint() {
+    if (!randomEvent || state !== 'play') return;
+    const ev = randomEvent, id = localPlayerId();
+    let text = '';
+    if (ev.type === 'bomb' && ev.bomb && ev.bomb.holder === id) text = '爆弾を持っている！ダッシュで味方に押し付けろ！';
+    else if (ev.type === 'king' && ev.kingAlive && ev.kingId === id) text = 'あなたが王様！敵に狙われるが弾が超強力！';
+    else if (ev.type === 'sweep') text = 'ダッシュ中は無敵！レーザーはダッシュで抜けよう';
+    if (!text) return;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; setFont(13, 700); spaced(1);
+    ctx.globalAlpha = 0.85 + Math.sin(performance.now() / 160) * 0.15;
+    ctx.fillStyle = ev.type === 'bomb' ? '#ff9f43' : ev.type === 'king' ? KING_COLOR : SWEEP_LASER_COLOR;
+    ctx.fillText(text, W / 2, 96); spaced(0); ctx.restore();
+  }
   function drawDebuffCutin() {
     const debuff = DEBUFFS.find((entry) => entry.id === debuffCutinId);
     if (!debuff) return;
@@ -7674,9 +8157,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (shake > 0.2) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
     drawSpawns();
     for (const enemy of enemies) if (enemy.type === 'train' && enemy.ci === 0 && enemy.rushWarning) drawTrainWarn(enemy.rushWarning);
-    drawMeteors(); drawEnemies(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer();
+    drawMeteors(); drawPartyEventsUnder(); drawEnemies(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer();
+    drawPartyEventsOver();
     drawFx();
     ctx.restore();
+    drawPartyEventFlash();
 
     if (hurtFlash > 0) {
       const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.85);
@@ -7689,6 +8174,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     drawBanner();
     drawEventBanner();
     drawRandomEventIndicator();
+    drawPartyEventHint();
     if (state === 'debuff') drawDebuffCutin();
     if (state === 'upgrade') drawUpgrade();
     if (state === 'over') drawOver();
