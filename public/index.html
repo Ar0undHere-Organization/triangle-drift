@@ -43,7 +43,8 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .stage { position: relative; }
 .screen-layer { position: absolute; inset: 0; z-index: 2; display: grid; place-items: start center; padding: 14px 18px; overflow: auto; background: rgba(5, 8, 15, .78); }
 .screen-layer[hidden] { display: none; }
-.screen-panel { width: min(460px, 100%); max-height: calc(100% - 8px); margin-top: 4px; text-align: left; overflow: auto; border: 1px solid #37405b; border-radius: 4px; padding: 18px 22px; background: rgba(13, 18, 30, .96); box-shadow: 0 18px 60px rgba(0,0,0,.4); }
+.screen-panel { width: min(460px, 100%); max-height: calc(100% - 8px); margin-top: 4px; text-align: left; overflow: auto; border: 1px solid #37405b; border-radius: 4px; padding: 18px 22px; background: rgba(13, 18, 30, .96); box-shadow: 0 18px 60px rgba(0,0,0,.4); animation: screen-enter .28s ease both; }
+@keyframes screen-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .screen-kicker { color: var(--accent); font: 700 11px var(--font-display); letter-spacing: .14em; }
 .screen-panel h2 { margin: 8px 0 6px; font: 700 27px var(--font-display); }
 .screen-copy { margin: 2px 0 12px; color: var(--muted); font-size: 13px; }
@@ -54,6 +55,12 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .screen-actions .secondary { border-color: #394157; background: #171d2b; color: var(--fg); }
 .screen-fields { display: grid; gap: 7px; margin-top: 8px; }
 .screen-fields input, .screen-fields select { min-width: 0; width: 100%; border: 1px solid #30384f; border-radius: 3px; padding: 10px; background: #090d17; color: var(--fg); font: inherit; }
+.emoji-settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.emoji-settings-grid label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+.emoji-settings-grid input { text-align: center; font-size: 20px; }
+.volume-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) 42px; align-items: center; gap: 8px; }
+.screen-fields input[type="range"] { padding: 0; accent-color: var(--accent); }
+.volume-row output { color: var(--muted); font-size: 12px; text-align: right; }
 .screen-fields textarea { min-width: 0; width: 100%; box-sizing: border-box; border: 1px solid #30384f; border-radius: 3px; padding: 10px; background: #090d17; color: var(--fg); font: 12px/1.5 monospace; resize: vertical; }
 .switch-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
 .switch-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
@@ -120,15 +127,21 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         <h2>メインメニュー</h2>
         <p class="screen-copy">プレイ人数 1 - 8 人</p>
         <div class="screen-fields"><label for="dashModeSelect">ダッシュ方向</label><select id="dashModeSelect" aria-label="ダッシュ方向"><option value="mouse">マウス方向</option><option value="move">移動方向</option></select></div>
+        <div class="screen-fields" aria-label="音量設定">
+          <label class="volume-row"><span>BGM音量</span><input id="menuBgmVolume" type="range" min="0" max="100" step="1" value="70" aria-label="BGM音量"><output id="menuBgmVolumeValue">70%</output></label>
+          <label class="volume-row"><span>効果音音量</span><input id="menuSfxVolume" type="range" min="0" max="100" step="1" value="80" aria-label="効果音音量"><output id="menuSfxVolumeValue">80%</output></label>
+        </div>
         <div class="screen-fields"><label class="switch-row"><span>ブルーム</span><input id="bloomToggle" class="switch-input" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span></label><label class="switch-row"><span>軌道表示</span><input id="trailToggle" class="switch-input" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span></label></div>
         <div class="screen-actions"><button id="soloStart">ソロで始める</button><button id="createRoom" class="secondary">マルチプレイを作成</button><button id="debugOpen" class="secondary">デバッグ</button></div>
         <div class="screen-fields">
           <label for="cpuCountSelect">CPUの人数</label>
-          <select id="cpuCountSelect" aria-label="CPUの人数"><option value="1">1人</option><option value="2" selected>2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option></select>
+          <select id="cpuCountSelect" aria-label="CPUの人数"><option value="1">1人</option><option value="2" selected>2人</option><option value="3">3人</option><option value="4">4人</option><option value="5">5人</option><option value="6">6人</option><option value="7">7人</option><option value="8" disabled>8人（鑑賞モード限定）</option></select>
           <label for="cpuDifficultySelect">CPUの強さ</label>
           <select id="cpuDifficultySelect" aria-label="CPUの強さ"><option value="weak">弱い</option><option value="normal" selected>普通</option><option value="strong">強い</option></select>
+          <label class="switch-row"><span>鑑賞モード（CPUのみ）</span><input id="spectatorModeToggle" class="switch-input" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label>
         </div>
         <div class="screen-actions"><button id="cpuStart" class="secondary">CPUと協力して遊ぶ</button></div>
+        <p id="cpuModeHint" class="screen-copy">鑑賞モードではプレイヤーを操作せず、CPUだけでプレイします。</p>
         <div class="screen-actions"><button id="playerSettingsOpen" class="secondary">プレイヤー設定</button></div>
         <div class="screen-fields">
           <input id="serverUrl" type="url" placeholder="サーバーURL (例: https://your-game-server.example)" aria-label="サーバーURL">
@@ -152,6 +165,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
             <label>上下 <input id="playerIconY" type="range" min="-100" max="100" value="0"></label>
             <button id="playerIconRemove" type="button" class="secondary">アイコンを削除</button>
           </div>
+          <span>登録絵文字（上 / 右 / 下 / 左）</span>
+          <div class="emoji-settings-grid">
+            <label>↑ 上<input id="emojiUp" type="text" maxlength="16" aria-label="上フリックの絵文字"></label>
+            <label>→ 右<input id="emojiRight" type="text" maxlength="16" aria-label="右フリックの絵文字"></label>
+            <label>↓ 下<input id="emojiDown" type="text" maxlength="16" aria-label="下フリックの絵文字"></label>
+            <label>← 左<input id="emojiLeft" type="text" maxlength="16" aria-label="左フリックの絵文字"></label>
+          </div>
+          <p class="screen-copy">プレイ中にマウスの中ボタンを押したまま4方向へドラッグすると送信できます。</p>
           <label class="switch-row"><span>マルチプレイ中にルームコードを表示</span><input id="roomCodeToggle" class="switch-input" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span></label>
         </div>
         <div class="screen-actions"><button id="playerSettingsSave">保存して戻る</button></div>
@@ -245,6 +266,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         <h2>マルチプレイ待機室</h2>
         <p id="lobbyCode" class="room-code"></p>
         <ol id="lobbyPlayers" class="lobby-list" aria-label="参加者"></ol>
+        <div id="lobbyCpuControls" class="screen-fields" hidden>
+          <label for="lobbyCpuCountSelect">追加するCPU</label>
+          <select id="lobbyCpuCountSelect" aria-label="追加するCPU"><option value="0">0人</option></select>
+          <p id="lobbyCpuSummary" class="screen-copy"></p>
+        </div>
         <div class="screen-actions"><button id="startRoom">ゲーム開始</button><button id="rejoinGame" class="secondary" hidden>途中参加</button><button id="leaveRoom" class="secondary">部屋から退出する</button></div>
         <p id="lobbyStatus" class="screen-status" role="status">参加者を待っています</p>
       </div>
@@ -255,6 +281,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         <h2>ゲームメニュー</h2>
         <p id="pauseStatus" class="screen-copy"></p>
         <div class="screen-fields"><label for="pauseDashModeSelect">ダッシュ方向</label><select id="pauseDashModeSelect" aria-label="ダッシュ方向"><option value="mouse">マウス方向</option><option value="move">移動方向</option></select></div>
+        <div class="screen-fields" aria-label="音量設定">
+          <label class="volume-row"><span>BGM音量</span><input id="pauseBgmVolume" type="range" min="0" max="100" step="1" value="70" aria-label="BGM音量"><output id="pauseBgmVolumeValue">70%</output></label>
+          <label class="volume-row"><span>効果音音量</span><input id="pauseSfxVolume" type="range" min="0" max="100" step="1" value="80" aria-label="効果音音量"><output id="pauseSfxVolumeValue">80%</output></label>
+        </div>
         <div class="screen-fields"><label class="switch-row"><span>ブルーム</span><input id="pauseBloomToggle" class="switch-input" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label><label class="switch-row"><span>軌道表示</span><input id="pauseTrailToggle" class="switch-input" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label></div>
         <div class="screen-actions"><button id="pauseResume">ゲームに戻る</button><button id="pausePlayerSettings" class="secondary">プレイヤー設定</button><button id="pauseRestartSolo" class="secondary" hidden>メインメニューに戻る</button><button id="pauseEndHost" class="secondary" hidden>終了して待機室に戻る</button><button id="pauseReturnGuest" class="secondary" hidden>中断して待機室に戻る</button></div>
       </div>
@@ -302,6 +332,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   const BASE_W = 960, BASE_H = 640;
   let W = BASE_W, H = BASE_H, runPlayerCount = 1;
   const TAU = Math.PI * 2;
+  const laserRayLength = () => Math.hypot(W, H);
+  const projectileLifetime = (speed, minimum = 0) => Math.max(minimum, laserRayLength() / Math.max(1, speed) + 0.5);
   const STAR_COS = Array.from({ length: 8 }, (_, i) => Math.cos(i * Math.PI / 4));
   const STAR_SIN = Array.from({ length: 8 }, (_, i) => Math.sin(i * Math.PI / 4));
   const C = { bg: '#0a0c13', grid: '#171b2a', fg: '#e8ecf5', muted: '#7d869c', enemy: '#ff4d6a', bullet: '#ffd76a', accent: '#5ee6d0' };
@@ -342,11 +374,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     ehexstar: { star: true, sides: 6, r: 25, vr: 1.05, color: '#ff83d0', fill: '#351026', hk: 0.9, mass: 2, elite: true },
     phexstar: { star: true, sides: 6, r: 28, vr: 1.05, color: '#ffffff', fill: '#ffffff', hk: 0.9, mass: 2, elite: true, pure: true },
     psept: { sides: 7, r: 31, vr: 1.08, color: '#ffffff', fill: '#ffffff', mass: 3, elite: true, pure: true, hpHigh: true },
-    sept: { sides: 7, r: 27, vr: 1.08, color: '#a9b8cf', fill: '#171d2b', mass: 3 },
+    sept: { sides: 7, r: 27, vr: 1.08, color: '#a9b8cf', fill: '#171d2b', mass: 3, hpHigh: 8, name: 'SEPT' },
+    esept: { sides: 7, r: 31, vr: 1.08, color: '#a9b8cf', fill: '#171d2b', mass: 4, elite: true, hpHigh: 10, name: 'ESEPT' },
     tridrone: { sides: 3, r: 11, vr: 1, color: '#ff5cf0', fill: '#2a0f29', mass: 1 },
     pseptDrone: { sides: 6, r: 16, vr: 1.05, color: '#57d8ff', fill: '#0b2a33', mass: 2 }
   };
-  const ELITE_BASE_TYPE = { esq: 'sq', equadstar: 'quadstar', ehex: 'hex', etri: 'tri', epent: 'pent', ecross: 'cross', ehexstar: 'hexstar' };
+  const ELITE_BASE_TYPE = { esq: 'sq', equadstar: 'quadstar', ehex: 'hex', etri: 'tri', epent: 'pent', ecross: 'cross', ehexstar: 'hexstar', esept: 'sept' };
   const PURE_BASE_TYPE = { ptri: 'tri', psq: 'sq', ppent: 'pent', phex: 'hex', pcross: 'cross', pquadstar: 'quadstar', phexstar: 'hexstar', psept: 'sept' };
   const BASE_ENEMY_TYPE = Object.assign({}, ELITE_BASE_TYPE, PURE_BASE_TYPE, { pseptDrone: 'sq' });
   const baseEnemyType = (type) => BASE_ENEMY_TYPE[type] || type;
@@ -357,6 +390,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   const isPentEnemy = (type) => baseEnemyType(type) === 'pent';
   const isQuadStarEnemy = (type) => baseEnemyType(type) === 'quadstar';
   const isLaserStar = (type) => baseEnemyType(type) === 'hexstar';
+  const SEPT_SUMMON_TYPES = ['tri', 'sq', 'pent', 'hex', 'cross', 'quadstar', 'hexstar', 'sept'];
+  const ESEPT_SUMMON_INTERVAL = 8, ESEPT_SUMMON_COUNT = 3, ESEPT_SUMMON_LIMIT = 8;
   function adjustHexSaturation(hex, scale) {
     const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b), light = (max + min) / 2;
@@ -438,22 +473,80 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   resize();
 
   /* ---------- audio ---------- */
-  let ac = null;
+  let ac = null, sfxVolume = 0.8, bgmVolume = 0.7;
+  let bgmScene = '', bgmTimer = 0, bgmGain = null, bgmStep = 0;
+  const BGM_TRACKS = {
+    menu: { beat: 0.42, lead: [72, 76, 79, 83, 79, 76, 74, 76, 72, 76, 79, 84, 83, 79, 76, 74], bass: [48, 0, 55, 0, 43, 0, 55, 0], leadType: 'sine', bassType: 'triangle' },
+    normal: { beat: 0.34, lead: [76, 0, 79, 83, 0, 79, 74, 0, 76, 0, 81, 84, 0, 81, 79, 0], bass: [48, 48, 55, 55, 43, 43, 50, 50], leadType: 'triangle', bassType: 'square' },
+    event: { beat: 0.27, lead: [84, 81, 84, 88, 86, 81, 79, 81, 84, 81, 86, 89, 88, 84, 81, 79], bass: [50, 50, 57, 57, 45, 45, 52, 52], leadType: 'square', bassType: 'triangle' },
+    boss: { beat: 0.5, lead: [62, 0, 65, 0, 69, 0, 65, 0, 60, 0, 65, 0, 67, 0, 65, 0], bass: [38, 0, 38, 0, 41, 0, 36, 0], leadType: 'sawtooth', bassType: 'sawtooth' },
+    sandbox: { beat: 0.38, lead: [72, 75, 79, 0, 82, 79, 75, 0, 70, 74, 77, 0, 82, 77, 74, 0], bass: [46, 0, 53, 0, 41, 0, 53, 0], leadType: 'sine', bassType: 'triangle' }
+  };
+  function musicScene() {
+    if (sandboxMode) return 'sandbox';
+    if (demoMode) return 'menu';
+    if (state === 'title' || state === 'jobselect') return 'menu';
+    if (wave > 0 && wave % BOSS_EVERY === 0) return 'boss';
+    if (randomEvent) return 'event';
+    return 'normal';
+  }
+  function playBgmNote(note, duration, type, volume, output, startAt) {
+    if (!note || !ac || ac.state !== 'running') return;
+    const oscillator = ac.createOscillator(), envelope = ac.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(440 * Math.pow(2, (note - 69) / 12), startAt);
+    envelope.gain.setValueAtTime(0.0001, startAt);
+    envelope.gain.exponentialRampToValueAtTime(volume, startAt + 0.015);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+    oscillator.connect(envelope); envelope.connect(output);
+    oscillator.start(startAt); oscillator.stop(startAt + duration + 0.02);
+  }
+  function startBgm(scene) {
+    if (!ac || scene === bgmScene) return;
+    bgmScene = scene;
+    clearInterval(bgmTimer);
+    bgmTimer = 0;
+    const now = ac.currentTime;
+    if (bgmGain) {
+      const previousGain = bgmGain;
+      previousGain.gain.cancelScheduledValues(now);
+      previousGain.gain.setTargetAtTime(0.0001, now, 0.08);
+      setTimeout(() => previousGain.disconnect(), 700);
+    }
+    const track = BGM_TRACKS[scene] || BGM_TRACKS.menu;
+    const output = ac.createGain();
+    output.gain.setValueAtTime(0.0001, now);
+    output.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.13 * bgmVolume), now + 0.35);
+    output.connect(ac.destination);
+    bgmGain = output;
+    bgmStep = 0;
+    const scheduleBeat = () => {
+      const startAt = ac.currentTime + 0.025;
+      const lead = track.lead[bgmStep % track.lead.length];
+      const bass = track.bass[bgmStep % track.bass.length];
+      playBgmNote(lead, track.beat * 0.82, track.leadType, 0.32, output, startAt);
+      playBgmNote(bass, track.beat * 1.65, track.bassType, 0.4, output, startAt);
+      bgmStep++;
+    };
+    scheduleBeat();
+    bgmTimer = setInterval(scheduleBeat, track.beat * 1000);
+  }
   function initAudio() {
     try {
       if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
       if (ac && ac.state === 'suspended') ac.resume();
+      startBgm(musicScene());
     } catch (e) { ac = null; }
   }
   function tone(f, d, type, v, slideTo, delay) {
-    if (!ac) return;
+    if (!ac || sfxVolume <= 0) return;
     try {
       const t = ac.currentTime + (delay || 0);
       const o = ac.createOscillator(), g = ac.createGain();
       o.type = type || 'square';
       o.frequency.setValueAtTime(f, t);
       if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t + d);
-      g.gain.setValueAtTime(v || 0.05, t);
+      g.gain.setValueAtTime((v === undefined ? 0.05 : v) * sfxVolume, t);
       g.gain.exponentialRampToValueAtTime(0.0001, t + d);
       o.connect(g); g.connect(ac.destination);
       o.start(t); o.stop(t + d + 0.02);
@@ -653,7 +746,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
 
   /* ---------- state ---------- */
   let state = 'title';          // title | jobselect | play | clear | upgrade | debuff | dying | over
-  let cpuPlayers = [], cpuTeamSize = 0, demoMode = false;
+  let cpuPlayers = [], cpuTeamSize = 0, demoMode = false, spectatorMode = false;
   const CPU_DIFFICULTY_PROFILES = {
     weak: { bulletRange: 100, bulletForce: 0.85, enemyRange: 78, enemyForce: 0.9, dashRange: 32, approachDistance: 300, retreatDistance: 95, aimError: 56 },
     normal: { bulletRange: 170, bulletForce: 2.4, enemyRange: 110, enemyForce: 1.8, dashRange: 70, approachDistance: 270, retreatDistance: 150, aimError: 0, hazardAvoidance: true, hazardMargin: 105, hazardForce: 2.8 },
@@ -662,6 +755,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   let cpuDifficulty = 'normal';
   let demoPlayTime = 0;
   const TITLE_DEMO_DURATION = 36;
+  const SCENE_FADE_DURATION = 0.42;
+  let sceneSnapshot = null, sceneFadeTime = SCENE_FADE_DURATION, lastSceneKind = null;
+  let demoRestartFade = '', demoFadeAlpha = 0;
   let pauseMenuOpen = false;
   let sandboxPanelOpen = false;
   let sandboxMode = false;
@@ -679,7 +775,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     { id: 'playerDamage', name: '被ダメージ増加', levels: [0.05, 0.1, 0.2], color: '#ff4d6a', glyph: '傷', description: 'プレイヤーが受けるダメージが増加' },
     { id: 'playerInvulnerability', name: '被弾時無敵時間減少', levels: [0.04, 0.08, 0.16], color: '#b784ff', glyph: '無', description: '被弾時の無敵時間が短縮' },
     { id: 'enemySplit', name: '敵分裂', levels: [0], color: '#8ee06c', glyph: '分', description: '復活しない敵が5%で2体に分裂' },
-    { id: 'enemyExplosion', name: '敵爆発', levels: [0], color: '#ff9f43', glyph: '爆', description: '復活しない敵が撃破時に6方向弾を発射' },
+    { id: 'enemyExplosion', name: '敵爆発', levels: [0], color: '#ff9f43', glyph: '爆', description: '復活しない敵が撃破時に10%の確率で6方向弾を発射' },
     { id: 'triangleShooter', name: '三角形強化', levels: [0], color: '#5ee6d0', glyph: '△', description: '三角形系の敵が一定間隔で弾を発射' }
   ];
   let hardModeEnabled = false;
@@ -732,9 +828,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   let netSocket = null, netRole = 'solo', netRoom = '', peerConnected = false, intentionalLeave = false;
   const MAX_PLAYERS = 8;
   const PLAYER_COLORS = ['#ffffff', '#5ee6d0', '#ffbd69', '#e68cff', '#8ee06c', '#ff7a86', '#72b7ff', '#f4e66a'];
-  let playerId = 1, roomRoster = [{ playerId: 1, isHost: true, name: 'P1' }];
+  let playerId = 1, roomRoster = [{ playerId: 1, isHost: true, name: 'P1' }], roomCpuCount = 0, lastAnnouncedCpuSignature = '';
   let playerName = 'P1';
   let chosenPlayerColor = '#ffffff', showRoomCode = true, joinedDuringGame = false;
+  const DEFAULT_EMOJIS = ['👍', '💦', '☠️', '⚠️'];
+  let chosenEmojis = DEFAULT_EMOJIS.slice(), emojiEffects = [], emojiGesture = null;
   let chosenPlayerIcon = '', iconSource = null, iconCrop = { zoom: 1, x: 0, y: 0 };
   const playerIconImages = new Map();
   const freshRemoteInput = () => ({ has: false, x: W / 2 + 45, y: H / 2, aimX: W / 2, aimY: H / 2, firing: false, dashT: 0, dashCd: 0 });
@@ -768,8 +866,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   const coop = () => netRole === 'guest' || (netRole === 'host' && peerConnected);
   const playerColor = (id) => id === playerId ? chosenPlayerColor : PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length];
   const hostRemotePlayers = () => netRole === 'host' ? roomRoster.filter((entry) => !entry.isHost).map((entry) => remotePlayers.get(entry.playerId)).filter(Boolean) : [];
-  const partyPlayers = () => [P, ...hostRemotePlayers(), ...(netRole === 'solo' ? cpuPlayers : [])];
+  const isPlayerlessRun = () => spectatorMode && netRole === 'solo' && !demoMode;
+  const partyPlayers = () => [...(isPlayerlessRun() ? [] : [P]), ...hostRemotePlayers(), ...((netRole === 'solo' || netRole === 'host') ? cpuPlayers : [])];
   const visiblePlayers = () => netRole === 'guest' ? [P, ...[...remotePlayers.entries()].sort((a, b) => a[0] - b[0]).map((entry) => entry[1])] : partyPlayers();
+  function cpuPlayerIds(count = cpuTeamSize) {
+    if (isPlayerlessRun()) return Array.from({ length: count }, (_, index) => index + 1);
+    if (netRole === 'host' || netRole === 'guest') {
+      const occupied = new Set(roomRoster.map((entry) => entry.playerId));
+      return Array.from({ length: MAX_PLAYERS - 1 }, (_, index) => index + 2).filter((id) => !occupied.has(id)).slice(0, count);
+    }
+    return Array.from({ length: count }, (_, index) => index + 2);
+  }
   function playerPosition(player) {
     return player;
   }
@@ -785,10 +892,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     noticeTimer = setTimeout(() => { notice.hidden = true; }, 2800);
   }
   function showMainMenu() {
-    if (demoMode) {
-      demoMode = false; cpuTeamSize = 0; resetRun(); state = 'title';
-    }
-    document.body.classList.remove('canvas-title-active');
+    if (!demoMode && state === 'title' && netRole === 'solo') startTitleDemo();
+    document.body.classList.toggle('canvas-title-active', demoMode);
     pauseMenuOpen = false;
     sandboxMode = false; sandboxPanelOpen = false;
     document.getElementById('sandboxScreen').hidden = true;
@@ -944,10 +1049,21 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     sandboxPanelOpen = false;
     pauseMenuOpen = false;
   }
+  function cleanEmoji(value, fallback) {
+    const text = Array.from(String(value || '').replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, 8).join('');
+    return text || fallback;
+  }
+  function readEmojiSettings() {
+    return ['emojiUp', 'emojiRight', 'emojiDown', 'emojiLeft'].map((id, index) =>
+      cleanEmoji(document.getElementById(id).value, DEFAULT_EMOJIS[index]));
+  }
   function showPlayerSettings() {
     document.getElementById('playerName').value = playerName === 'P1' ? '' : playerName;
     document.getElementById('playerColor').value = chosenPlayerColor;
     document.getElementById('roomCodeToggle').checked = showRoomCode;
+    ['emojiUp', 'emojiRight', 'emojiDown', 'emojiLeft'].forEach((id, index) => {
+      document.getElementById(id).value = chosenEmojis[index] || DEFAULT_EMOJIS[index];
+    });
     if (chosenPlayerIcon) loadPlayerIcon(chosenPlayerIcon);
     else document.getElementById('playerIconCrop').hidden = true;
     document.getElementById('mainMenu').hidden = true;
@@ -961,7 +1077,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (colorInput && /^#[0-9a-f]{6}$/i.test(colorInput.value)) chosenPlayerColor = colorInput.value;
     if (iconSource) chosenPlayerIcon = cropPlayerIcon();
     showRoomCode = document.getElementById('roomCodeToggle').checked;
-    try { localStorage.setItem('td-player-name', playerName); localStorage.setItem('td-player-color', chosenPlayerColor); localStorage.setItem('td-player-icon', chosenPlayerIcon); localStorage.setItem('td-room-code', showRoomCode ? '1' : '0'); } catch (_) {}
+    chosenEmojis = readEmojiSettings();
+    try { localStorage.setItem('td-player-name', playerName); localStorage.setItem('td-player-color', chosenPlayerColor); localStorage.setItem('td-player-icon', chosenPlayerIcon); localStorage.setItem('td-room-code', showRoomCode ? '1' : '0'); localStorage.setItem('td-player-emojis', JSON.stringify(chosenEmojis)); } catch (_) {}
     const ownPlayer = netRole === 'guest' ? remotePlayer : P;
     if (ownPlayer) { ownPlayer.color = chosenPlayerColor; ownPlayer.icon = chosenPlayerIcon; }
     if (netSocket && netSocket.connected) netSocket.emit('set-color', { color: chosenPlayerColor });
@@ -1001,8 +1118,32 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     for (const id of ['dashModeSelect', 'pauseDashModeSelect']) document.getElementById(id).value = dashMode;
     for (const id of ['bloomToggle', 'pauseBloomToggle']) document.getElementById(id).checked = bloomEnabled;
     for (const id of ['trailToggle', 'pauseTrailToggle']) document.getElementById(id).checked = trailEnabled;
+    syncVolumeControls();
     const hardModeToggle = document.getElementById('hardModeToggle');
     if (hardModeToggle) hardModeToggle.checked = hardModeEnabled;
+  }
+  function syncVolumeControls() {
+    for (const [type, volume] of [['Bgm', bgmVolume], ['Sfx', sfxVolume]]) {
+      const percent = Math.round(volume * 100);
+      for (const prefix of ['menu', 'pause']) {
+        document.getElementById(prefix + type + 'Volume').value = percent;
+        document.getElementById(prefix + type + 'VolumeValue').textContent = percent + '%';
+      }
+    }
+  }
+  function setVolumeSetting(type, rawValue) {
+    const percent = Number(rawValue);
+    if (!Number.isFinite(percent)) return;
+    const volume = Math.max(0, Math.min(100, percent)) / 100;
+    if (type === 'bgm') {
+      bgmVolume = volume;
+      try { localStorage.setItem('td-bgm-volume', String(Math.round(volume * 100))); } catch (_) {}
+      if (ac && bgmGain) bgmGain.gain.setTargetAtTime(Math.max(0.0001, 0.13 * bgmVolume), ac.currentTime, 0.03);
+    } else {
+      sfxVolume = volume;
+      try { localStorage.setItem('td-sfx-volume', String(Math.round(volume * 100))); } catch (_) {}
+    }
+    syncVolumeControls();
   }
   function openPauseMenu() {
     pauseMenuOpen = true;
@@ -1044,8 +1185,42 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       status.className = 'lobby-state'; status.textContent = entry.isHost ? 'ホスト' : '接続中';
       item.append(name, status); list.append(item);
     }
+    const cpuCount = netRole === 'host' ? cpuTeamSize : netRole === 'guest' ? roomCpuCount : 0;
+    cpuPlayerIds(cpuCount).forEach((id, index) => {
+      const item = document.createElement('li'), name = document.createElement('span'), status = document.createElement('span');
+      const cpuColor = PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length];
+      name.className = 'lobby-player';
+      name.append(createPlayerAvatar({ color: cpuColor }, id));
+      const label = document.createElement('span'); label.textContent = 'CPU ' + (index + 1);
+      name.append(label); name.style.color = cpuColor;
+      status.className = 'lobby-state'; status.textContent = 'CPU';
+      item.append(name, status); list.append(item);
+    });
+    updateLobbyCpuControls();
     const start = document.getElementById('startRoom');
-    if (start) start.disabled = playerId !== 1 || roomRoster.length < 2;
+    if (start) start.disabled = playerId !== 1 || (roomRoster.length < 2 && cpuTeamSize < 1);
+  }
+  function updateLobbyCpuControls() {
+    const controls = document.getElementById('lobbyCpuControls');
+    const select = document.getElementById('lobbyCpuCountSelect');
+    controls.hidden = netRole !== 'host';
+    if (netRole !== 'host') return;
+    const maxCount = Math.max(0, MAX_PLAYERS - roomRoster.length);
+    cpuTeamSize = Math.min(cpuTeamSize, maxCount);
+    select.replaceChildren();
+    for (let count = 0; count <= maxCount; count++) {
+      const option = document.createElement('option');
+      option.value = String(count); option.textContent = count + '人';
+      select.append(option);
+    }
+    select.value = String(cpuTeamSize);
+    document.getElementById('lobbyCpuSummary').textContent = '参加者とCPUの合計: ' + (roomRoster.length + cpuTeamSize) + ' / ' + MAX_PLAYERS + '人';
+    roomCpuCount = cpuTeamSize;
+    const signature = cpuTeamSize + ':' + roomRoster.map((entry) => entry.playerId).join(',');
+    if (netSocket && netSocket.connected && lastAnnouncedCpuSignature !== signature) {
+      lastAnnouncedCpuSignature = signature;
+      netSocket.emit('cpu-count', { count: cpuTeamSize });
+    }
   }
   function renderSkillList() {
     const list = document.getElementById('skillList');
@@ -1119,7 +1294,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   // プレイヤーごとに独立した強化状態(S)・取得レベル・アップグレード選択肢を持つ
   function newPlayer(x, y, color) {
-    return { x, y, prevX: x, prevY: y, r: 14, hp: 500, maxHp: 500, speed: PLAYER_BASE_SPEED, kx: 0, ky: 0, inv: 0, armorCd: 0, cool: 0, dashT: 0, dashCd: 0, dashJustEnded: false, dashHits: null, contactReportT: new Map(), dvx: 0, dvy: 0, lx: 0, ly: 0, color, name: 'P1', job: null, rerolls: 0, S: newStats(), levels: {}, choices: [], picked: null };
+    return { x, y, prevX: x, prevY: y, r: 14, hp: 500, maxHp: 500, speed: PLAYER_BASE_SPEED, kx: 0, ky: 0, inv: 0, armorCd: 0, cool: 0, dashT: 0, dashCd: 0, dashJustEnded: false, dashHits: null, contactReportT: new Map(), dvx: 0, dvy: 0, lx: 0, ly: 0, deathX: null, deathY: null, halfHealthEmojiSent: false, color, name: 'P1', job: null, rerolls: 0, S: newStats(), levels: {}, choices: [], picked: null };
   }
   function getRemotePlayer(id) {
     let pl = remotePlayers.get(id);
@@ -1149,8 +1324,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function resetRun() {
     resetPermanentDebuffs();
     sandboxMode = false; sandboxPanelOpen = false;
-    const activeCpuCount = netRole === 'solo' ? Math.max(0, Math.min(7, cpuTeamSize)) : 0;
-    runPlayerCount = Math.max(1, Math.min(MAX_PLAYERS, roomRoster.length + activeCpuCount));
+    const playerless = isPlayerlessRun();
+    const maxCpuCount = MAX_PLAYERS - (playerless ? 0 : roomRoster.length);
+    const activeCpuCount = (netRole === 'solo' || netRole === 'host') ? Math.max(0, Math.min(maxCpuCount, cpuTeamSize)) : 0;
+    cpuTeamSize = activeCpuCount;
+    runPlayerCount = Math.max(1, Math.min(MAX_PLAYERS, (playerless ? 0 : roomRoster.length) + activeCpuCount));
     const fieldScale = 1 + FIELD_SCALE_PER_PLAYER * (runPlayerCount - 1);
     W = Math.round(BASE_W * fieldScale); H = Math.round(BASE_H * fieldScale);
     resize();
@@ -1161,10 +1339,13 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     P.name = netRole === 'guest' ? hostEntry && hostEntry.name || 'P1' : playerName || 'P1';
     P.icon = netRole === 'guest' ? hostEntry && hostEntry.icon || '' : chosenPlayerIcon;
     P.id = 1;
+    if (playerless) { P.hp = 0; P.spectator = true; P.name = '観戦者'; }
     cpuPlayers = [];
+    const cpuIds = cpuPlayerIds(activeCpuCount);
     for (let i = 0; i < activeCpuCount; i++) {
-      const cpu = newPlayer(W / 2 + (i % 2 ? 1 : -1) * 28, H / 2 + (i + 1) * 24, playerColor(i + 2));
-      cpu.id = i + 2; cpu.name = 'CPU ' + (i + 1); cpu.cpu = true;
+      const id = cpuIds[i];
+      const cpu = newPlayer(W / 2 + (i % 2 ? 1 : -1) * 28, H / 2 + (i + 1) * 24, PLAYER_COLORS[(id - 1) % PLAYER_COLORS.length]);
+      cpu.id = id; cpu.name = 'CPU ' + (i + 1); cpu.cpu = true;
       cpuPlayers.push(cpu);
     }
     remotePlayers = new Map(); remoteInputs = new Map(); remoteCursors = new Map(); remotePickStates = new Map();
@@ -1180,6 +1361,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     shake = 0; hurtFlash = 0; pickFlash = 0;
     hoverIdx = -1; myPickIdx = -1; guestPicked = false; guestJobPicked = false; guestPendingJob = null; jobSelections = new Map(); upgradeId = 0; guestUpgradeId = -1;
     epicDropAvailable = false; upgradeEpicOnly = false; randomEvent = null;
+    emojiEffects = []; emojiGesture = null;
   }
   resetRun();
 
@@ -1281,7 +1463,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
 
   function beginWave(n) {
     debuffCutinId = null; debuffCutinT = 0;
-    hideMenuScreens();
+    if (!demoMode) hideMenuScreens();
     wave = n; state = 'play'; waveClearGuard = 1.2;
     bannerT = 1.8; bannerText = 'WAVE ' + n;
     randomEvent = null; phasePureCount = 0; bannerBossTypes = null;
@@ -1321,6 +1503,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         };
       });
       sfx.boss();
+      sendCpuEmojis(3);
       return;
     }
     const count = Math.ceil(Math.min(8 + (n - 1) * 3, 120) * (1 + ENEMY_COUNT_PER_PLAYER * (runPlayerCount - 1)) * (hardModeEnabled ? 1.5 : 1));
@@ -1352,6 +1535,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const nEHS = n >= 18 ? Math.min(1 + Math.floor((n - 18) / 6), 2) : 0;
     for (let i = 0; i < nEHS; i++) types.push('ehexstar');
     while (types.length < count) types.push('tri');
+    const replaceTriangle = (type) => {
+      const candidates = [];
+      for (let i = 0; i < types.length; i++) if (types[i] === 'tri') candidates.push(i);
+      if (!candidates.length) return false;
+      types[candidates[Math.floor(Math.random() * candidates.length)]] = type;
+      return true;
+    };
+    const nSept = n >= 26 ? Math.min(1 + Math.floor((n - 26) / 10), 3) : 0;
+    const nESept = n >= 36 ? Math.min(1 + Math.floor((n - 36) / 12), 2) : 0;
+    for (let i = 0; i < nSept; i++) replaceTriangle('sept');
+    for (let i = 0; i < nESept; i++) replaceTriangle('esept');
     for (let i = types.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const tmp = types[i]; types[i] = types[j]; types[j] = tmp; }
     // 人数に応じてフェーズ上限も広げ、敵を均等配分する
     const basePhaseCapacity = PHASE_MAX + (runPlayerCount - 1) * PHASE_CAPACITY_PER_PLAYER + (n - 1) * PHASE_CAPACITY_PER_WAVE;
@@ -1376,9 +1570,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
 
   function farFromPlayers(x, y) {
-    if (Math.hypot(x - P.x, y - P.y) <= 170) return false;
-    for (const pl of hostRemotePlayers()) if (pl.hp > 0 && Math.hypot(x - pl.x, y - pl.y) <= 170) return false;
-    return true;
+    return partyPlayers().every((player) => player.hp <= 0 || Math.hypot(x - player.x, y - player.y) > 170);
   }
   function startPhase(idx) {
     phasePureCount = 0;
@@ -1445,8 +1637,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
   }
 
-  function startGame(startWave = 1, initialUpgradeLevels = null, initialJob = null, initialJobs = null) {
+  function startGame(startWave = 1, initialUpgradeLevels = null, initialJob = null, initialJobs = null, isTitleDemo = false) {
     if (netRole === 'guest') return;
+    if (!isTitleDemo) {
+      demoMode = false; demoRestartFade = ''; demoFadeAlpha = 0;
+    }
+    document.body.classList.toggle('canvas-title-active', isTitleDemo);
     const jobs = initialJobs ? { ...initialJobs } : {};
     if (JOB_BY_ID.has(initialJob)) jobs[1] = initialJob;
     retryConfig = {
@@ -1456,6 +1652,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     };
     resetRun();
     if (retryConfig.upgradeLevels) applyUpgradeLevels(P, retryConfig.upgradeLevels);
+    for (const cpu of cpuPlayers) if (!JOB_BY_ID.has(retryConfig.jobs[cpu.id])) {
+      retryConfig.jobs[cpu.id] = JOBS[Math.floor(Math.random() * JOBS.length)].id;
+    }
     for (const player of partyPlayers()) {
       const job = retryConfig.jobs[player.id || 1];
       if (JOB_BY_ID.has(job)) player.job = job;
@@ -1470,18 +1669,33 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
     if (netRole === 'host' && netSocket && netSocket.connected) { netSocket.emit('start-game'); sendSnapshot(true); }
   }
+  function syncCpuMenuControls() {
+    const spectatorToggle = document.getElementById('spectatorModeToggle');
+    spectatorMode = spectatorToggle.checked;
+    const countSelect = document.getElementById('cpuCountSelect');
+    const eightPlayerOption = countSelect.querySelector('option[value="8"]');
+    eightPlayerOption.disabled = !spectatorMode;
+    if (!spectatorMode && Number(countSelect.value) > 7) countSelect.value = '7';
+    document.getElementById('cpuStart').textContent = spectatorMode ? 'CPUのみで鑑賞する' : 'CPUと協力して遊ぶ';
+    document.getElementById('cpuModeHint').textContent = spectatorMode
+      ? 'プレイヤーは参加せず、強さ設定に応じたCPUだけでプレイします（最大8人）。'
+      : 'CPUと協力してプレイします（最大7人）。';
+  }
   function startCpuGame() {
     if (netRole !== 'solo') { setNetStatus('CPU協力プレイはソロプレイで利用できます。'); return; }
+    syncCpuMenuControls();
     const count = Number(document.getElementById('cpuCountSelect').value);
-    if (!Number.isInteger(count) || count < 1 || count > 7) {
-      setNetStatus('CPUの人数は1〜7人から選択してください。');
+    const maxCount = spectatorMode ? 8 : 7;
+    if (!Number.isInteger(count) || count < 1 || count > maxCount) {
+      setNetStatus('CPUの人数が選択可能な範囲外です。');
       return;
     }
     cpuDifficulty = CPU_DIFFICULTY_PROFILES[document.getElementById('cpuDifficultySelect').value]
       ? document.getElementById('cpuDifficultySelect').value : 'normal';
-    cpuTeamSize = count; demoMode = false;
+    cpuTeamSize = count;
     const jobs = {};
-    for (let i = 0; i < count; i++) jobs[i + 2] = JOBS[(i + 1) % JOBS.length].id;
+    const ids = spectatorMode ? Array.from({ length: count }, (_, index) => index + 1) : Array.from({ length: count }, (_, index) => index + 2);
+    for (const id of ids) jobs[id] = JOBS[Math.floor(Math.random() * JOBS.length)].id;
     initAudio();
     startGame(1, null, null, jobs);
   }
@@ -1517,22 +1731,51 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function startTitleDemo() {
     if (state !== 'title' || netRole !== 'solo') return;
     demoMode = true; demoPlayTime = 0;
+    demoRestartFade = ''; demoFadeAlpha = 0;
     document.body.classList.add('canvas-title-active');
     cpuDifficulty = CPU_DIFFICULTY_PROFILES[document.getElementById('cpuDifficultySelect').value]
       ? document.getElementById('cpuDifficultySelect').value : 'normal';
     cpuTeamSize = Math.random() < 0.45 ? 0 : 1 + Math.floor(Math.random() * 7);
-    const demoWave = 1 + Math.floor(Math.random() * 24);
+    const demoWave = 1 + Math.floor(Math.random() * 50);
     const demoJob = JOBS[Math.floor(Math.random() * JOBS.length)].id;
     const jobs = { 1: demoJob }, playerLevels = randomDemoLoadout(demoJob, demoWave);
     for (let i = 0; i < cpuTeamSize; i++) jobs[i + 2] = JOBS[(i + 1) % JOBS.length].id;
-    startGame(demoWave, playerLevels, demoJob, jobs);
+    startGame(demoWave, playerLevels, demoJob, jobs, true);
     for (const cpu of cpuPlayers) applyUpgradeLevels(cpu, randomDemoLoadout(cpu.job, demoWave));
     applyDemoDebuffs(demoWave);
   }
   function finishTitleDemo() {
+    if (demoMode && !demoRestartFade) demoRestartFade = 'out';
+  }
+  function stopTitleDemo() {
     if (!demoMode) return;
-    demoMode = false; cpuTeamSize = 0; resetRun(); state = 'title';
+    demoMode = false; cpuTeamSize = 0; demoRestartFade = ''; demoFadeAlpha = 0;
+    resetRun(); state = 'title';
+    document.body.classList.remove('canvas-title-active');
+  }
+  function sceneKind() {
+    if (sandboxMode) return 'sandbox';
+    if (demoMode) return 'demo';
+    if (state === 'title' || state === 'jobselect') return 'menu';
+    if (wave > 0 && wave % BOSS_EVERY === 0) return 'boss';
+    return randomEvent ? 'event' : 'normal';
+  }
+  function captureSceneSnapshot() {
+    if (!sceneSnapshot) sceneSnapshot = document.createElement('canvas');
+    sceneSnapshot.width = cv.width; sceneSnapshot.height = cv.height;
+    sceneSnapshot.getContext('2d').drawImage(cv, 0, 0);
+    sceneFadeTime = 0;
+  }
+  function restartTitleDemo() {
+    const visibleMenu = ['mainMenu', 'playerSettingsScreen', 'debugScreen']
+      .find((id) => !document.getElementById(id).hidden);
+    demoMode = false; cpuTeamSize = 0;
+    resetRun(); state = 'title';
+    sceneSnapshot = null; sceneFadeTime = SCENE_FADE_DURATION;
     startTitleDemo();
+    if (visibleMenu) document.getElementById(visibleMenu).hidden = false;
+    demoRestartFade = 'in';
+    demoFadeAlpha = 1;
   }
   function retryGame() {
     startGame(retryConfig.startWave, retryConfig.upgradeLevels, null, retryConfig.jobs);
@@ -1668,6 +1911,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       status.textContent = 'サンドボックスはソロプレイで開始してください。';
       return;
     }
+    demoMode = false; demoRestartFade = ''; demoFadeAlpha = 0;
     resetRun();
     P.job = job;
     jobSelections.set(1, job);
@@ -1796,6 +2040,33 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const life = 0.6;
     texts.push({ x: x + (Math.random() - 0.5) * 18, y, str: fmtNum(v), color: color || '#ffffff', life, max: life, size: crit ? 24 : (color ? 12 : 14) });
   }
+  function addEmojiEffect(emoji, x, y, color) {
+    if (typeof emoji !== 'string' || !emoji || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    emojiEffects.push({ emoji, x, y, color: color || '#ffffff', life: 1.15, max: 1.15 });
+    if (emojiEffects.length > 32) emojiEffects.shift();
+  }
+  function sendPlayerEmoji(player, emoji) {
+    const text = cleanEmoji(emoji, '');
+    if (!player || !text || text.length > 16 || Array.from(text).length > 8) return;
+    if (netRole === 'guest') {
+      if (player.id === playerId && netSocket && netSocket.connected) {
+        const x = player.hp <= 0 && Number.isFinite(player.deathX) ? player.deathX : player.x;
+        const y = player.hp <= 0 && Number.isFinite(player.deathY) ? player.deathY : player.y;
+        addEmojiEffect(text, x, y, player.color || chosenPlayerColor);
+        netSocket.emit('player-emoji', { emoji: text });
+      }
+      return;
+    }
+    const x = player.hp <= 0 && Number.isFinite(player.deathX) ? player.deathX : player.x;
+    const y = player.hp <= 0 && Number.isFinite(player.deathY) ? player.deathY : player.y;
+    const id = player.id || 1, color = player.color || playerColor(id);
+    addEmojiEffect(text, x, y, color);
+    pushEv(['em', id, text, r1(x), r1(y), color]);
+  }
+  function sendCpuEmojis(index) {
+    if (demoMode || sandboxMode || netRole === 'guest') return;
+    for (const cpu of cpuPlayers) if (cpu.hp > 0) sendPlayerEmoji(cpu, chosenEmojis[index]);
+  }
 
   /* ---------- gameplay ---------- */
   function keyDir() {                                // 現在の移動入力(正規化)
@@ -1865,7 +2136,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       bullets.push({
         x: shooter.x + c * (shooter.r + 6), y: shooter.y + s * (shooter.r + 6),
         vx: c * bulletSpeed, vy: s * bulletSpeed,
-        r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: 1.4, hit: new Set(), px: shooter.x, py: shooter.y,
+        r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: projectileLifetime(bulletSpeed, 1.4), hit: new Set(), px: shooter.x, py: shooter.y,
         color: shooter.color || C.bullet,
         homing: !!S.missileHoming, owner: shooter.id || 1,
         crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, burstDmg: S.burstDmg, guide: S.guideLevel,
@@ -1963,7 +2234,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         const force = (safeDistance - distance) / safeDistance * profile.hazardForce * weight;
         pushFromSpecial(dx / distance * force, dy / distance * force, force);
       };
-      const repelBeam = (x, y, angle, width, weight = 1, length = 1300) => {
+      const repelBeam = (x, y, angle, width, weight = 1, length = laserRayLength()) => {
         const dx = pl.x - x, dy = pl.y - y, c = Math.cos(angle), s = Math.sin(angle);
         const along = dx * c + dy * s, side = dx * s - dy * c;
         const safeWidth = width + pl.r + profile.hazardMargin * 0.45;
@@ -2084,13 +2355,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (revived && e.type === 'train') return false;
     if (!revived && e.type !== 'tridrone') kills++;
     const et = ET[e.type];
+    const color = e.color || et.color;
     const sm = e.type === 'tri';
-    burst(e.x, e.y, sm ? 18 : 26, et.color, 320, 0.6, 3.4);
+    burst(e.x, e.y, sm ? 18 : 26, color, 320, 0.6, 3.4);
     burst(e.x, e.y, 8, '#ffffff', 220, 0.35, 2.4);
-    ring(e.x, e.y, sm ? 64 : 84, 0.38, et.color, 3);
+    ring(e.x, e.y, sm ? 64 : 84, 0.38, color, 3);
     if (e.matrixCells) for (const cell of e.matrixCells) {
       const pos = matrixCellCenter(e, cell);
-      burst(pos.x, pos.y, 8, et.color, 320, 0.45, 3);
+      burst(pos.x, pos.y, 8, color, 320, 0.45, 3);
     }
     shake = Math.max(shake, sm ? 5 : 8);
     sfx.kill();
@@ -2104,10 +2376,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         spawnEnemy(e.type, x, y, true, true);
       }
     }
-    if (canTriggerHardDebuffs && debuffLevel('enemyExplosion')) {
+    if (canTriggerHardDebuffs && debuffLevel('enemyExplosion') && Math.random() < 0.1) {
       for (let i = 0; i < 6; i++) {
         const angle = i * TAU / 6;
-        ebullets.push({ x: e.x, y: e.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: 5.5, color: et.color, dmg: 10 });
+        ebullets.push({ x: e.x, y: e.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: projectileLifetime(220, 5.5), color, dmg: 10 });
       }
     }
     if (ET[e.type].cross && !e.silent) crossHealOnDeath(e);
@@ -2297,6 +2569,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     sfx.hurt();
     if (P.hp <= 0) {
       P.hp = 0;
+      P.deathX = P.x; P.deathY = P.y;
       if (!partyPlayers().some((pl) => pl.hp > 0)) state = 'dying';
       if (state === 'dying') dyT = 1.2;
       burst(P.x, P.y, 60, '#ffffff', 520, 1.0, 4);
@@ -2315,6 +2588,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     amount = Math.ceil(amount);
 
     rp.hp -= amount; rp.inv = playerInvulnerabilityDuration();
+    if (rp.cpu && !rp.halfHealthEmojiSent && rp.hp <= rp.maxHp / 2) {
+      rp.halfHealthEmojiSent = true;
+      sendPlayerEmoji(rp, chosenEmojis[1]);
+    }
     const a = Math.atan2(pos.y - fromY, pos.x - fromX);
     pushEv(['k', rp.id, r1(Math.cos(a) * 380), r1(Math.sin(a) * 380), 1]);
     shake = Math.max(shake, 8);
@@ -2324,6 +2601,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     sfx.hurt();
     if (rp.hp <= 0) {
       rp.hp = 0;
+      rp.deathX = pos.x; rp.deathY = pos.y;
+      if (rp.cpu) sendPlayerEmoji(rp, chosenEmojis[2]);
       burst(pos.x, pos.y, 50, '#ffffff', 480, 0.9, 4);
       burst(pos.x, pos.y, 26, '#5ee6d0', 400, 1.0, 4);
       ring(pos.x, pos.y, 200, 0.8, '#ffffff', 4);
@@ -2365,7 +2644,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const aa = a + k * (elite ? 0.22 : 0.3), cc = Math.cos(aa), ss = Math.sin(aa), speed = elite ? 225 : 210;
       ebullets.push({
         x: e.x + cc * e.r, y: e.y + ss * e.r, vx: cc * speed, vy: ss * speed,
-        r: elite ? 5.5 : 5, life: 5, color: elite ? col : undefined,
+        r: elite ? 5.5 : 5, life: projectileLifetime(speed, 5), color: elite ? col : undefined,
         bounce: reflected ? 1 : 0, star: reflected, rot: aa
       });
     }
@@ -2378,7 +2657,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const col = ET[e.type].color;
     for (let i = 0; i < 24; i++) {
       const a = e.rot + i * TAU / 24, c = Math.cos(a), s = Math.sin(a);
-      ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 200, vy: s * 200, r: 5, life: 5, color: col });
+      ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 200, vy: s * 200, r: 5, life: projectileLifetime(200, 5), color: col });
     }
     burst(e.x, e.y, 8, col, 160, 0.25, 2.4); ring(e.x, e.y, 44, 0.25, col, 2); sfx.eshoot();
   }
@@ -2387,7 +2666,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const col = ET[e.type].color;
     for (let i = 0; i < 6; i++) {
       const angle = e.rot + i * TAU / 6, c = Math.cos(angle), s = Math.sin(angle);
-      ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 200, vy: s * 200, r: 5, life: 5, color: col });
+      ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 200, vy: s * 200, r: 5, life: projectileLifetime(200, 5), color: col });
     }
     burst(e.x, e.y, 8, col, 160, 0.25, 2.4); ring(e.x, e.y, 44, 0.25, col, 2); sfx.eshoot();
   }
@@ -2396,7 +2675,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const col = ET[e.type].color;
     for (let i = 0; i < 24; i++) {
       const a = e.rot + i * TAU / 24, c = Math.cos(a), s = Math.sin(a);
-      ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 210, vy: s * 210, r: 7, life: 7, bounce: bounceCount, star: true, rot: a, color: col, dmg: 12 });
+      ebullets.push({ x: e.x + c * e.r, y: e.y + s * e.r, vx: c * 210, vy: s * 210, r: 7, life: projectileLifetime(210, 7), bounce: bounceCount, star: true, rot: a, color: col, dmg: 12 });
     }
     burst(e.x, e.y, 18, col, 260, 0.45, 3.2); ring(e.x, e.y, 90, 0.4, col, 3); sfx.eshoot();
   }
@@ -2495,7 +2774,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const a = base + i * TAU / 8, c = Math.cos(a), s = Math.sin(a);
       ebullets.push({
         x: e.x + c * e.r * 0.8, y: e.y + s * e.r * 0.8, vx: c * 210, vy: s * 210,
-        r: 8, life: 9, bounce: bn, star: true, color: BOUNCE_COL, dmg: 12, rot: 0
+        r: 8, life: projectileLifetime(210, 9), bounce: bn, star: true, color: BOUNCE_COL, dmg: 12, rot: 0
       });
     }
     burst(e.x, e.y, 12, BOUNCE_COL, 220, 0.35, 2.8);
@@ -2527,7 +2806,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   function trinityBullet(x, y, a, sp, r, extra) {
     const c = Math.cos(a), s = Math.sin(a);
-    ebullets.push(Object.assign({ x, y, vx: c * sp, vy: s * sp, r: r || 5.5, life: 5.5, color: ET.trinity.color }, extra));
+    const minLife = extra && Number.isFinite(extra.life) ? extra.life : 5.5;
+    const bullet = Object.assign({ x, y, vx: c * sp, vy: s * sp, r: r || 5.5, life: projectileLifetime(sp, minLife), color: ET.trinity.color }, extra);
+    bullet.life = Math.max(bullet.life, projectileLifetime(sp, minLife));
+    ebullets.push(bullet);
   }
   function trinitySpiral(e, tk) {                       // 合体: 各三角形から3方向(計9方向)
     for (let i = 0; i < 3; i++) {
@@ -2827,7 +3109,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const speed = e.p2 ? 205 : 185;
     for (let k = -1; k <= 1; k++) {
       const a = base + k * 0.25, c = Math.cos(a), s = Math.sin(a);
-      ebullets.push({ x: mount.x, y: mount.y, vx: c * speed * tk, vy: s * speed * tk, r: 5.5, life: 5.5, color: ET.fortless.color });
+      ebullets.push({ x: mount.x, y: mount.y, vx: c * speed * tk, vy: s * speed * tk, r: 5.5, life: projectileLifetime(speed * tk, 5.5), color: ET.fortless.color });
     }
     burst(mount.x, mount.y, 4, ET.fortless.color, 130, 0.18, 2.2);
     ring(mount.x, mount.y, 24, 0.18, ET.fortless.color, 2);
@@ -2838,7 +3120,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const a = Math.atan2(target.y - mount.y, target.x - mount.x), speed = (e.p2 ? 235 : 210) * tk;
     ebullets.push({
       x: mount.x, y: mount.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
-      r: 9, life: 8, bounce: 3, star: true, rot: 0, color: BOUNCE_COL, dmg: 12
+      r: 9, life: projectileLifetime(speed, 8), bounce: 3, star: true, rot: 0, color: BOUNCE_COL, dmg: 12
     });
     burst(mount.x, mount.y, 5, BOUNCE_COL, 150, 0.22, 2.6);
     ring(mount.x, mount.y, 28, 0.2, BOUNCE_COL, 2);
@@ -3074,7 +3356,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const speed = e.mxForm >= 2 ? 270 : 220, bounce = e.mxForm >= 2 ? 1 : 0;
     for (let i = -1; i <= 1; i++) {
       const a = angle + i * 0.25;
-      ebullets.push({ x: turret.x, y: turret.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, r: 6, life: 6, color: ET.matrix.color, dmg: 10, bounce, star: !!bounce });
+      ebullets.push({ x: turret.x, y: turret.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, r: 6, life: projectileLifetime(speed, 6), color: ET.matrix.color, dmg: 10, bounce, star: !!bounce });
     }
     burst(turret.x, turret.y, 5, ET.matrix.color, 180, 0.22, 2.4);
     sfx.eshoot();
@@ -3372,7 +3654,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (unit.child) {
       e.mxChildren.splice(e.mxChildren.indexOf(unit), 1);
       const a0 = Math.random() * TAU;
-      for (let i = 0; i < 8; i++) { const a = a0 + i * TAU / 8; ebullets.push({ x: unit.x, y: unit.y, vx: Math.cos(a) * 220, vy: Math.sin(a) * 220, r: 6, life: 4, color: '#c075ff', dmg: 10 }); }
+      for (let i = 0; i < 8; i++) { const a = a0 + i * TAU / 8; ebullets.push({ x: unit.x, y: unit.y, vx: Math.cos(a) * 220, vy: Math.sin(a) * 220, r: 6, life: projectileLifetime(220, 4), color: '#c075ff', dmg: 10 }); }
     } else {
       items.push({ x: unit.x - 12, y: unit.y, life: 12, max: 12, ph: Math.random() * TAU }, { x: unit.x + 12, y: unit.y, life: 12, max: 12, ph: Math.random() * TAU });
       unit.mode = 'return'; unit.hp = unit.maxHp; unit.fireT = 1.2;
@@ -3404,7 +3686,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   function matrixFireSub(e, sub) {
     const target = getTargetPlayer(sub.x, sub.y), a = Math.atan2(target.y - sub.y, target.x - sub.x);
-    for (let i = -1; i <= 1; i++) { const q = a + i * .25; ebullets.push({ x: sub.x, y: sub.y, vx: Math.cos(q) * 230, vy: Math.sin(q) * 230, r: 6, life: 6, color: '#fff29b', dmg: 10, bounce: e.mxForm >= 2 ? 1 : 0, star: e.mxForm >= 2 }); }
+    for (let i = -1; i <= 1; i++) { const q = a + i * .25; ebullets.push({ x: sub.x, y: sub.y, vx: Math.cos(q) * 230, vy: Math.sin(q) * 230, r: 6, life: projectileLifetime(230, 6), color: '#fff29b', dmg: 10, bounce: e.mxForm >= 2 ? 1 : 0, star: e.mxForm >= 2 }); }
     sfx.eshoot();
   }
   function matrixStartThrow(e) {
@@ -3600,7 +3882,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         const target = getTargetPlayer(e.x, e.y);
         const angle = Math.atan2(target.y - e.y, target.x - e.x) + (Math.random() - 0.5) * 0.28;
         ebullets.push({ x: e.x + Math.cos(angle) * e.r, y: e.y + Math.sin(angle) * e.r,
-          vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, r: 6, life: 6, drop: true,
+          vx: Math.cos(angle) * 260, vy: Math.sin(angle) * 260, r: 6, life: projectileLifetime(260, 6), drop: true,
           rot: angle + Math.PI / 2, color: PSEPT_COLORS[0], dmg: 10 });
         e.pseptShotCount++; e.pseptShotT = 0.075;
       }
@@ -3647,7 +3929,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         const target = getTargetPlayer(e.x, e.y), base = Math.atan2(target.y - e.y, target.x - e.x);
         for (let k = -2; k <= 2; k++) {
           const angle = base + k * 0.22;
-          ebullets.push({ x: e.x + Math.cos(angle) * e.r, y: e.y + Math.sin(angle) * e.r, vx: Math.cos(angle) * 225, vy: Math.sin(angle) * 225, r: 5.5, life: 5.5, bounce: 1, star: true, rot: angle, color: PSEPT_COLORS[4] });
+          ebullets.push({ x: e.x + Math.cos(angle) * e.r, y: e.y + Math.sin(angle) * e.r, vx: Math.cos(angle) * 225, vy: Math.sin(angle) * 225, r: 5.5, life: projectileLifetime(225, 5.5), bounce: 1, star: true, rot: angle, color: PSEPT_COLORS[4] });
         }
         e.pseptPentVolley--; e.pseptPentT = 0.28;
       }
@@ -3690,8 +3972,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       : baseType === 'hexstar' ? bh * 3 + 4
       : baseType === 'tri' ? Math.round((bh * 2 + 1) * 0.9)
       : baseType === 'cross' ? bh * 2 + 4 : bh + 1;
-    const pureHpScale = type === 'psept' ? 15 : isPureEnemy(type) ? 3 : 1;
-    const hp = Math.round(HP_SCALE * baseHp * pureHpScale);
+    const hpScale = type === 'psept' ? 15 : et.hpHigh || (isPureEnemy(type) ? 3 : 1);
+    const hp = Math.round(HP_SCALE * baseHp * hpScale);
     const va = Math.random() * TAU, vs = Math.min(170, 80 + wave * 3) * (type === 'trap' ? 0.5 : 1);
     const enemy = {
       type, x, y, bx: x, by: y, r: et.r, hp, maxHp: hp, vx: Math.cos(va) * vs, vy: Math.sin(va) * vs,
@@ -3717,6 +3999,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       pseptLaserAngles: [],
       pseptLaserLaunchPending: false
     };
+    const enemyColor = et.color;
+    if (type === 'esept') {
+      enemy.id = ++uid;
+      enemy.septSummonType = SEPT_SUMMON_TYPES[Math.floor(Math.random() * SEPT_SUMMON_TYPES.length)];
+      enemy.septSummonT = 5.5;
+      enemy.color = ET[enemy.septSummonType].color;
+      enemy.fill = ET[enemy.septSummonType].fill;
+    }
     if (type === 'trinity') { enemy.sy0 = y; initTrinity(enemy); }
     if (type === 'fortless') initFortless(enemy);
     if (type === 'matrix') initMatrix(enemy);
@@ -3725,7 +4015,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (type === 'ptri') {
       enemy.pureTriSummonT = 4;
     }
-    burst(x, y, 12, et.color, 240, 0.4, 3);
+    burst(x, y, 12, enemy.color || enemyColor, 240, 0.4, 3);
     ring(x, y, 50, 0.3, '#ffffff', 2);
     if (!quiet) sfx.spawn();
     return enemy;
@@ -3830,7 +4120,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function fireTrainSplitVolley(x, y) {
     for (let i = 0; i < 12; i++) {
       const angle = i * TAU / 12, c = Math.cos(angle), s = Math.sin(angle);
-      ebullets.push({ x, y, vx: c * 220, vy: s * 220, r: 5.5, life: 5.5, color: ET.train.color });
+      ebullets.push({ x, y, vx: c * 220, vy: s * 220, r: 5.5, life: projectileLifetime(220, 5.5), color: ET.train.color });
     }
     if (ebullets.length > LIMITS.ebullets) ebullets.splice(0, ebullets.length - LIMITS.ebullets);
     ring(x, y, 72, 0.3, ET.train.color, 3); sfx.eshoot();
@@ -4013,7 +4303,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           if (chain.length === 1) {
             for (let i = 0; i < 12; i++) {
               const angle = i * TAU / 12;
-              ebullets.push({ x: head.x + Math.cos(angle) * head.r, y: head.y + Math.sin(angle) * head.r, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: 5.5, color: col });
+              ebullets.push({ x: head.x + Math.cos(angle) * head.r, y: head.y + Math.sin(angle) * head.r, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: projectileLifetime(220, 5.5), color: col });
             }
             head.shootIndex = (head.shootIndex + 1) % chain.length;
             head.shootT = TRAIN_SOLO_SHOT_INTERVAL;
@@ -4022,7 +4312,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           }
           const target = getTargetPlayer(shooter.x, shooter.y);
           const angle = Math.atan2(target.y - shooter.y, target.x - shooter.x), c = Math.cos(angle), s = Math.sin(angle);
-          ebullets.push({ x: shooter.x + c * shooter.r, y: shooter.y + s * shooter.r, vx: c * 220, vy: s * 220, r: 5.5, life: 5.5, color: col });
+          ebullets.push({ x: shooter.x + c * shooter.r, y: shooter.y + s * shooter.r, vx: c * 220, vy: s * 220, r: 5.5, life: projectileLifetime(220, 5.5), color: col });
           head.shootIndex = (head.shootIndex + 1) % chain.length;
           head.shootT = head.p2 ? TRAIN_PART_SHOT_INTERVAL_ENRAGED : TRAIN_PART_SHOT_INTERVAL; sfx.eshoot();
         }
@@ -4311,6 +4601,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const t = texts[i]; t.life -= dt; t.y -= 38 * dt;
       if (t.life <= 0) texts.splice(i, 1);
     }
+    for (let i = emojiEffects.length - 1; i >= 0; i--) {
+      emojiEffects[i].life -= dt;
+      if (emojiEffects[i].life <= 0) emojiEffects.splice(i, 1);
+    }
     shake *= Math.exp(-9 * dt);
     hurtFlash = Math.max(0, hurtFlash - dt * 2.2);
     pickFlash = Math.max(0, pickFlash - dt * 2);
@@ -4503,6 +4797,26 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         else if (e.type === 'matrix') updateMatrix(e, dt);
         e.bx = e.x; e.by = e.y;
       } else {
+        if (e.type === 'esept' && state !== 'dying' && e.born > 0.4) {
+          e.septSummonT -= dt;
+          if (e.septSummonT <= 0) {
+            e.septSummonT = ESEPT_SUMMON_INTERVAL;
+            const activeSummons = enemies.filter((candidate) => candidate.septSummonerId === e.id && candidate.hp > 0).length;
+            const count = Math.min(ESEPT_SUMMON_COUNT, Math.max(0, ESEPT_SUMMON_LIMIT - activeSummons));
+            for (let i = 0; i < count; i++) {
+              const angle = Math.random() * TAU, distance = e.r + 28;
+              const child = spawnEnemy(e.septSummonType,
+                Math.max(30, Math.min(W - 30, e.x + Math.cos(angle) * distance)),
+                Math.max(30, Math.min(H - 30, e.y + Math.sin(angle) * distance)), true, true);
+              child.septSummonerId = e.id;
+              child.kbx = Math.cos(angle) * 240; child.kby = Math.sin(angle) * 240;
+            }
+            if (count > 0) {
+              ring(e.x, e.y, 90, 0.38, e.color, 3);
+              burst(e.x, e.y, 12, e.color, 220, 0.35, 2.8);
+            }
+          }
+        }
         if (e.type === 'ptri' && state !== 'dying' && e.born > 0.4) {
           e.pureTriSummonT -= dt;
           if (e.pureTriSummonT <= 0) {
@@ -4625,13 +4939,13 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           quadStarFall(e, elite);
           e.fireT = (elite ? EQUADSTAR_ATTACK_INTERVAL : QUADSTAR_ATTACK_INTERVAL) + Math.random() * 0.4;
         }
-        if (hardModeEnabled && debuffLevel('triangleShooter') && isTri(e.type) && state !== 'dying' && e.born > 0.4) {
-          e.triangleShootT = (e.triangleShootT === undefined ? 2.5 : e.triangleShootT) - dt;
-          if (e.triangleShootT <= 0) {
-            const target = getTargetPlayer(e.x, e.y), angle = Math.atan2(target.y - e.y, target.x - e.x);
-            ebullets.push({ x: e.x, y: e.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: 5.5, color: ET[e.type].color, dmg: 10 });
-            e.triangleShootT = 2.5;
-          }
+      }
+      if (hardModeEnabled && debuffLevel('triangleShooter') && isTri(e.type) && state !== 'dying' && e.born > 0.4) {
+        e.triangleShootT = (e.triangleShootT === undefined ? 2.5 : e.triangleShootT) - dt;
+        if (e.triangleShootT <= 0) {
+          const target = getTargetPlayer(e.x, e.y), angle = Math.atan2(target.y - e.y, target.x - e.x);
+          ebullets.push({ x: e.x, y: e.y, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: projectileLifetime(220, 5.5), color: ET[e.type].color, dmg: 10 });
+          e.triangleShootT = 2.5;
         }
       }
       const pseptCopies = e.type === 'psept' && e.pseptAction === 3;
@@ -4875,6 +5189,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       ring(P.x, P.y, 300, 0.6, '#ffffff', 2); sfx.wave();
     } else if (!sandboxMode && state === 'play' && waveClearGuard <= 0 && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0) {
       state = 'clear'; clearT = 1.2; collectRemainingItems();
+      sendCpuEmojis(0);
       bannerBossTypes = null; bannerText = 'WAVE CLEAR'; bannerT = 1.4;
       showWaveClearFx();
       sfx.clear();
@@ -4952,7 +5267,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       if (p.hp <= 0) { p.choices = []; p.picked = 'dead'; }   // 戦闘不能の人は選択不要
       else { rollChoices(p, upgradeEpicOnly); p.picked = null; }
     }
-    if (netRole === 'solo') for (const cpu of cpuPlayers) if (cpu.hp > 0) {
+    if (netRole !== 'guest') for (const cpu of cpuPlayers) if (cpu.hp > 0) {
       const job = JOB_BY_ID.get(cpu.job);
       let choice = Math.floor(Math.random() * cpu.choices.length);
       if (cpuDifficulty === 'normal') {
@@ -5084,6 +5399,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   cv.addEventListener('pointerdown', (ev) => {
     if (ev.pointerType === 'mouse' && ev.button === 2) { rightDash(ev); return; }
+    if (ev.pointerType === 'mouse' && ev.button === 1) {
+      if (beginEmojiGesture(ev)) ev.preventDefault();
+      return;
+    }
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     initAudio(); cv.focus();
     setMouse(ev);
@@ -5104,6 +5423,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     mouse.down = true;
   });
   cv.addEventListener('pointermove', (ev) => {
+    if (emojiGesture) { updateEmojiGesture(ev); ev.preventDefault(); return; }
     setMouse(ev); hoverCheck();
     if (ev.pointerType !== 'mouse') return;
     // 左クリック長押し中の右クリック(および右を押したままの左クリック)は pointerdown ではなく pointermove の buttons 変化で届く
@@ -5112,10 +5432,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (lb && !mouse.down && (state === 'play' || state === 'clear')) mouse.down = true;
     else if (!lb && mouse.down) mouse.down = false;
   });
-  const up = (ev) => { if (ev && ev.pointerType === 'mouse' && ev.button === 2) { rightHeld = false; return; } mouse.down = false; };
+  const up = (ev) => {
+    if (emojiGesture && (!ev || ev.pointerId === emojiGesture.pointerId)) {
+      finishEmojiGesture(ev, ev.type === 'pointercancel');
+      return;
+    }
+    if (ev && ev.pointerType === 'mouse' && ev.button === 2) { rightHeld = false; return; }
+    mouse.down = false;
+  };
   cv.addEventListener('pointerup', up);
   cv.addEventListener('pointercancel', up);
-  window.addEventListener('blur', () => { mouse.down = false; for (const k in keys) keys[k] = false; });
+  window.addEventListener('blur', () => { finishEmojiGesture(null, true); mouse.down = false; for (const k in keys) keys[k] = false; });
   window.addEventListener('keydown', (ev) => {
     const k = ev.key.toLowerCase();
     const active = document.activeElement, menuControlFocused = active && ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName);
@@ -5521,6 +5848,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const sc = (0.4 + 0.6 * (1 - Math.pow(1 - k, 3))) * eventSizeScale('enemy');
       ctx.save();
       const et = ET[e.type];
+      const enemyColor = e.color || et.color, enemyFill = e.fill || et.fill;
       const ft = (isPentEnemy(e.type) || isQuadStarEnemy(e.type)) ? e.fireT : e.type === 'stardust' ? e.cd : et.cross ? e.healT : e.type === 'sq' && e.mode === 'wind' ? e.dashT : 9;
       const pseptChaser = e.type === 'psept' && e.pseptAction === 4;
       const esqWarning = (isSquareChaser(e.type) || pseptChaser) && e.born > 0.4 && e.chasePhase === 'warning';
@@ -5528,7 +5856,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const esqDotCharge = esqWarning || esqChasing ? esqChargeRatio(e) : 0;
       const ch = esqWarning || esqChasing ? esqDotCharge : ft < 0.45 ? 1 - ft / 0.45 : 0;
       if (et.cross) {                                   // 回復範囲の目安
-        ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = et.color;
+        ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = enemyColor;
         ctx.beginPath(); ctx.arc(e.x, e.y, CROSS_R * (e.type === 'pcross' ? 1.5 : 1) * sc, 0, TAU); ctx.fill(); ctx.restore();
       }
       if (e.type === 'phexstar' || (e.type === 'psept' && e.pseptAction === 3)) for (const copy of e.laserCopies || []) {
@@ -5555,14 +5883,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         ctx.restore();
         continue;
       }
-      ctx.shadowColor = bloomEnabled ? et.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + ch * 22 : 0;
+      ctx.shadowColor = bloomEnabled ? enemyColor : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + ch * 22 : 0;
       if (isLaserStar(e.type)) drawSixStar(e.x, e.y, e.r * sc * et.vr, e.rot);
       else if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, 0.36);
       else if (et.cross) drawCross(e.x, e.y, e.r * sc * et.vr, e.rot);
       else drawPoly(e.x, e.y, e.r * sc * et.vr, e.rot, et.sides);
-      ctx.fillStyle = e.flash > 0 ? '#ffffff' : (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active') ? adjustHexBrightness(e.pseptColor, 0.55) : et.fill);
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active') ? adjustHexBrightness(e.pseptColor, 0.55) : enemyFill);
       ctx.fill();
-      ctx.lineWidth = e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 || isPureEnemy(e.type) ? '#ffffff' : et.color;
+      ctx.lineWidth = e.type === 'tri' ? 2.5 : 3; ctx.strokeStyle = e.flash > 0 || isPureEnemy(e.type) ? '#ffffff' : enemyColor;
       ctx.stroke();
       if (isPureEnemy(e.type)) {
         const gaugeRadius = e.r * sc * et.vr + 8;
@@ -5607,7 +5935,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     for (const e of enemies) {
       if (e.type === 'psept' && e.pseptAction === 7 && (e.pseptLaserPhase === 1 || e.pseptLaserPhase === 2 || e.pseptLaserPhase === 3)) {
         for (const angle of e.pseptLaserAngles || []) {
-          const ex = e.x + Math.cos(angle) * 1300, ey = e.y + Math.sin(angle) * 1300;
+          const ex = e.x + Math.cos(angle) * laserRayLength(), ey = e.y + Math.sin(angle) * laserRayLength();
           ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(ex, ey); ctx.lineCap = 'round';
           if (e.pseptLaserPhase === 1) {
             ctx.strokeStyle = ET.psept.color; ctx.lineWidth = 2;
@@ -5622,7 +5950,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         }
       }
       if ((isLaserStar(e.type) || (e.type === 'psept' && e.pseptAction === 3)) && e.laserPhase > 0) {
-        const ex = e.x + Math.cos(e.laserAngle) * 1300, ey = e.y + Math.sin(e.laserAngle) * 1300;
+        const ex = e.x + Math.cos(e.laserAngle) * laserRayLength(), ey = e.y + Math.sin(e.laserAngle) * laserRayLength();
         const pseptCopies = e.type === 'psept' && e.pseptAction === 3;
         const hasCopies = e.type === 'phexstar' || pseptCopies;
         const size = eventSizeScale('enemy') * (hasCopies ? 1.6 : 1);
@@ -5637,7 +5965,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         } else { ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = ET[e.type].color; ctx.shadowBlur = 20 * size; ctx.strokeStyle = ET[e.type].color; ctx.lineWidth = 20 * size; ctx.globalAlpha = 0.35; ctx.setLineDash([]); ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * size; ctx.globalAlpha = 0.9; ctx.stroke(); }
         ctx.restore();
         for (const copy of hasCopies ? e.laserCopies || [] : []) {
-          const cx = copy.x + Math.cos(copy.angle) * 1300, cy = copy.y + Math.sin(copy.angle) * 1300;
+          const cx = copy.x + Math.cos(copy.angle) * laserRayLength(), cy = copy.y + Math.sin(copy.angle) * laserRayLength();
           ctx.save(); ctx.beginPath(); ctx.moveTo(copy.x, copy.y); ctx.lineTo(cx, cy); ctx.lineCap = 'round';
           if (e.laserPhase === 1) {
             ctx.globalAlpha = 0.65; ctx.strokeStyle = ET[e.type].color; ctx.lineWidth = 3; ctx.stroke();
@@ -5655,7 +5983,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         for (let i = 0; i < e.plates.length; i++) {
           const plate = e.plates[i];
           if (!plate.laserPhase) continue;
-          const face = fortlessFacePoint(e, i), ex = face.x + Math.cos(plate.laserAngle) * 1300, ey = face.y + Math.sin(plate.laserAngle) * 1300;
+          const face = fortlessFacePoint(e, i), ex = face.x + Math.cos(plate.laserAngle) * laserRayLength(), ey = face.y + Math.sin(plate.laserAngle) * laserRayLength();
           ctx.beginPath(); ctx.moveTo(face.x, face.y); ctx.lineTo(ex, ey);
           if (plate.laserPhase === 1) {
             ctx.globalAlpha = 0.35 + 0.4 * (Math.sin(time * 20) + 1) * 0.5;
@@ -5675,7 +6003,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       ctx.save();
       for (const p of e.parts || []) {
         if (!p.laserPhase) continue;
-        const ex = p.x + Math.cos(p.laserAngle) * 1300, ey = p.y + Math.sin(p.laserAngle) * 1300;
+        const ex = p.x + Math.cos(p.laserAngle) * laserRayLength(), ey = p.y + Math.sin(p.laserAngle) * laserRayLength();
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey);
         ctx.lineCap = 'round';
         if (p.laserPhase === 1) {
@@ -5693,7 +6021,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       if (!e.beam) { ctx.restore(); continue; }
       for (let i = 0; i < 3; i++) {
-        const a = e.la + i * TAU / 3, ex = e.cx + Math.cos(a) * 1300, ey = e.cy + Math.sin(a) * 1300;
+        const a = e.la + i * TAU / 3, ex = e.cx + Math.cos(a) * laserRayLength(), ey = e.cy + Math.sin(a) * laserRayLength();
         ctx.beginPath(); ctx.moveTo(e.cx, e.cy); ctx.lineTo(ex, ey);
         if (e.beam === 1) {
           const p = e.bp, blink = p > 0.65 ? (Math.floor(p * 40) % 2 ? 1 : 0.45) : 1;
@@ -5869,7 +6197,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
 
   function drawPlayer() {
-    if (state !== 'title' && state !== 'dying' && state !== 'over') {
+    if (state !== 'title') {
       for (const player of visiblePlayers()) drawOnePlayer(player, player.color || playerColor(player.id || 1));
     }
   }
@@ -5892,8 +6220,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function drawCursors() {
     if (state !== 'play' && state !== 'clear' && state !== 'dying' && state !== 'over') return;
     const self = myPlayer();
-    if (self.hp > 0) drawAimLine(self, mouse.x, mouse.y, playerColor(playerId));
-    drawCursorDot(mouse.x, mouse.y, playerColor(playerId));
+    if (!isPlayerlessRun()) {
+      if (self.hp > 0) drawAimLine(self, mouse.x, mouse.y, playerColor(playerId));
+      drawCursorDot(mouse.x, mouse.y, playerColor(playerId));
+    }
     if (netRole === 'host') {
       for (const pl of hostRemotePlayers()) {
         const input = remoteInputs.get(pl.id);
@@ -5908,17 +6238,67 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       drawCursorDot(cursor[0], cursor[1], playerColor(id));
     }
   }
+  const EMOJI_DIRECTIONS = [[0, -46], [46, 0], [0, 46], [-46, 0]];
+  function canUseEmoji() {
+    return !demoMode && !sandboxMode && !pauseMenuOpen && !isPlayerlessRun() &&
+      ['play', 'clear', 'upgrade', 'debuff', 'dying', 'over'].includes(state) &&
+      (netRole !== 'guest' || !!(netSocket && netSocket.connected));
+  }
+  function updateEmojiGesture(ev) {
+    if (!emojiGesture || ev.pointerId !== emojiGesture.pointerId) return;
+    const rect = cv.getBoundingClientRect();
+    const dx = (ev.clientX - emojiGesture.clientX) * W / Math.max(1, rect.width);
+    const dy = (ev.clientY - emojiGesture.clientY) * H / Math.max(1, rect.height);
+    if (Math.hypot(dx, dy) < 30) { emojiGesture.direction = -1; return; }
+    emojiGesture.direction = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+  }
+  function beginEmojiGesture(ev) {
+    if (!canUseEmoji()) return false;
+    initAudio(); setMouse(ev);
+    emojiGesture = { pointerId: ev.pointerId, clientX: ev.clientX, clientY: ev.clientY, anchorX: mouse.x, anchorY: mouse.y, direction: -1 };
+    try { cv.setPointerCapture(ev.pointerId); } catch (error) {}
+    return true;
+  }
+  function finishEmojiGesture(ev, cancelled = false) {
+    if (!emojiGesture || (ev && ev.pointerId !== emojiGesture.pointerId)) return false;
+    if (!cancelled && ev) updateEmojiGesture(ev);
+    const direction = emojiGesture.direction;
+    emojiGesture = null;
+    if (!cancelled && direction >= 0) sendPlayerEmoji(myPlayer(), chosenEmojis[direction]);
+    return true;
+  }
+  function drawEmojiSelector() {
+    if (!emojiGesture) return;
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(7, 12, 22, .82)'; ctx.strokeStyle = playerColor(playerId); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(emojiGesture.anchorX, emojiGesture.anchorY, 66, 0, TAU); ctx.fill(); ctx.stroke();
+    for (let index = 0; index < EMOJI_DIRECTIONS.length; index++) {
+      const offset = EMOJI_DIRECTIONS[index], x = emojiGesture.anchorX + offset[0], y = emojiGesture.anchorY + offset[1];
+      ctx.beginPath(); ctx.arc(x, y, 22, 0, TAU);
+      ctx.fillStyle = index === emojiGesture.direction ? 'rgba(94, 230, 208, .72)' : 'rgba(35, 44, 63, .92)'; ctx.fill();
+      ctx.font = '25px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+      ctx.fillText(chosenEmojis[index], x, y);
+    }
+    ctx.restore();
+  }
   function drawOnePlayer(player, color, showGauges = true) {
     const pos = playerPosition(player);
     const dp = pos === player ? player : Object.assign({}, player, pos);
     const size = eventSizeScale('player');
+    if (player.hp <= 0) {
+      const x = Number.isFinite(player.deathX) ? player.deathX : dp.x;
+      const y = Number.isFinite(player.deathY) ? player.deathY : dp.y;
+      ctx.save(); ctx.globalAlpha = 0.75; ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+      ctx.shadowColor = bloomEnabled ? color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 12 : 0;
+      ctx.beginPath(); ctx.arc(x, y, dp.r * size, 0, TAU); ctx.stroke(); ctx.restore();
+      return;
+    }
     if (showGauges && netRole !== 'solo') {
       ctx.save(); ctx.fillStyle = color; ctx.globalAlpha = 0.85; ctx.textAlign = 'center'; setFont(11, 700); spaced(1);
       const label = player.name || 'P' + (player.id || 1);
       ctx.fillText(player === myPlayer() ? label + ' / YOU' : label, dp.x, dp.y - dp.r * size - 19);
       spaced(0); ctx.restore();
     }
-    if (player.hp <= 0) return;
     if (showGauges && dp.inv > 0 && Math.floor(time * 24) % 2 === 0) { drawHpRingFor(dp, color); return; }
     ctx.save();
     ctx.shadowColor = bloomEnabled ? color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 20 : 0;
@@ -5960,14 +6340,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     ctx.globalCompositeOperation = 'lighter';
     for (const p of parts) {
       const k = p.life / p.max;
+      const radius = p.size * (0.4 + 0.6 * k);
+      if (!Number.isFinite(radius)) continue;
       ctx.globalAlpha = Math.max(0, k);
       ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.4 + 0.6 * k), 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0, radius), 0, TAU); ctx.fill();
     }
     for (const r of rings) {
+      const radius = Number.isFinite(r.r) ? Math.max(0, r.r) : 0;
       ctx.globalAlpha = Math.max(0, r.life / r.max);
       ctx.strokeStyle = r.color; ctx.lineWidth = r.lw * (r.life / r.max + 0.3);
-      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(r.x, r.y, radius, 0, TAU); ctx.stroke();
     }
     for (const revive of reviveAnimations) {
       const progress = Math.min(1, revive.t / revive.duration);
@@ -5983,6 +6366,16 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       setFont(t.size || 15, 700);
       ctx.globalAlpha = Math.max(0, t.life / t.max);
       ctx.fillStyle = t.color; ctx.fillText(t.str, t.x, t.y);
+    }
+    for (const effect of emojiEffects) {
+      const progress = 1 - effect.life / effect.max;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, effect.life / effect.max);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '34px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+      ctx.shadowColor = effect.color; ctx.shadowBlur = 12;
+      ctx.fillText(effect.emoji, effect.x, effect.y - 42 * progress);
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
   }
@@ -6371,7 +6764,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (!window.io) { setNetStatus('通信ライブラリを読み込めません。ネット接続を確認してください。'); return; }
     intentionalLeave = false;
     if (netSocket) netSocket.disconnect();
-    netRole = role; playerId = 1; peerConnected = false;
+    netRole = role; playerId = 1; peerConnected = false; roomCpuCount = 0; lastAnnouncedCpuSignature = '';
     roomRoster = role === 'host' ? [{ playerId: 1, isHost: true, name: playerName || 'P1', color: chosenPlayerColor }] : [];
     remotePlayers = new Map(); remoteInputs = new Map(); remoteCursors = new Map(); remotePickStates = new Map();
     snapBuf = []; clockOff = null; lastCurT = -1; lastSnapshotAt = 0; evq = [];
@@ -6402,6 +6795,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       setNetStatus(joinedDuringGame ? 'ゲーム中のルームです。途中参加を選んでください。' : 'ルーム ' + d.code + ' に参加しました。ホストの開始を待っています。');
     });
     netSocket.on('room-error', d => setNetStatus(d.message || 'ルーム処理に失敗しました'));
+    netSocket.on('cpu-count', d => {
+      if (netRole !== 'guest' || !d || !Number.isInteger(d.count)) return;
+      roomCpuCount = Math.max(0, Math.min(MAX_PLAYERS - roomRoster.length, d.count));
+      renderLobbyRoster();
+    });
     netSocket.on('room-roster', d => {
       syncRoster(d && d.players);
       if (d && d.players) for (const entry of d.players) {
@@ -6453,6 +6851,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         dashT: Math.max(0, Math.min(DASH_DUR, n(d.dashT, 0))), dashCd: Math.max(0, Math.min(DASH_CD, n(d.dashCd, 0)))
       };
       remoteInputs.set(id, next);
+    });
+    netSocket.on('player-emoji', d => {
+      if (netRole !== 'host' || !d || !Number.isInteger(d.playerId) || !roomRoster.some((entry) => entry.playerId === d.playerId)) return;
+      const emoji = cleanEmoji(d.emoji, '');
+      const player = remotePlayers.get(d.playerId);
+      if (!player || !emoji || emoji.length > 16 || Array.from(emoji).length > 8) return;
+      const x = player.hp <= 0 && Number.isFinite(player.deathX) ? player.deathX : player.x;
+      const y = player.hp <= 0 && Number.isFinite(player.deathY) ? player.deathY : player.y;
+      const color = player.color || playerColor(d.playerId);
+      addEmojiEffect(emoji, x, y, color);
+      pushEv(['em', d.playerId, emoji, r1(x), r1(y), color]);
     });
     netSocket.on('snapshot', applySnapshot);
     netSocket.on('start-game', () => { if (netRole === 'guest') { joinedDuringGame = false; resetRun(); hideMenuScreens(); sfx.start(); setNetStatus('協力プレイ中'); } });
@@ -6569,6 +6978,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const ft = (isPentEnemy(e.type) || isQuadStarEnemy(e.type)) ? e.fireT : e.type === 'stardust' ? e.cd : ET[e.type].cross ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : isSquareChaser(e.type) ? e.chaseT : 9;
     const o = { i: e.id, ty: e.type, x: r1(e.x), y: r1(e.y), rt: r2(e.rot), r: e.r, hp: r1(e.hp), mh: Math.round(e.maxHp), b: r2(Math.min(e.born, 1)), f: e.flash > 0 ? 1 : 0, ft: r2(isSquareChaser(e.type) ? ft : Math.min(ft, 1)) };
     if (e.reviveStacks > 0) o.rv = e.reviveStacks;
+    if (e.type === 'esept') o.ec = e.septSummonType;
     if (isLaserStar(e.type) || (e.type === 'psept' && e.pseptAction === 3)) {
       o.hsp = e.laserPhase; o.hsa = r2(e.laserAngle); o.hst = r2(e.laserT); o.hst0 = r2(e.laserT0);
       if (e.laserCopies) o.hsc = e.laserCopies.map((copy) => [r1(copy.x), r1(copy.y), r2(copy.angle)]);
@@ -6671,6 +7081,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         case 'd': damagePop(e[1], e[2], e[3], !!e[4], e[5] || undefined); break;
         case 's': if (sfx[e[1]]) sfx[e[1]](); break;
         case 'k': if (remotePlayer && remotePlayer.id === e[1]) { remotePlayer.kx += e[2]; remotePlayer.ky += e[3]; } if (e[4] && remotePlayer && remotePlayer.id === e[1]) hurtFlash = 1; break;
+        case 'em': if (e[1] !== playerId) addEmojiEffect(e[2], e[3], e[4], e[5]); break;
       }
     }
   }
@@ -6679,6 +7090,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const L = (k) => (p ? lerp(p[k], o[k], al) : o[k]);
     const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft, chaseT: p ? lerp(p.ft, o.ft, al) : o.ft, chasePhase: o.cp || 'warning', reviveStacks: o.rv || 0 };
     e.bx = e.x; e.by = e.y;
+    if (o.ty === 'esept' && SEPT_SUMMON_TYPES.includes(o.ec)) {
+      e.septSummonType = o.ec;
+      e.color = ET[o.ec].color; e.fill = ET[o.ec].fill;
+    }
     if (isSquareChaser(o.ty)) {
       const previousTeleport = p && p.tp;
       e.teleportX = previousTeleport ? lerp(previousTeleport[0], o.tp[0], al) : o.tp ? o.tp[0] : e.x;
@@ -6889,7 +7304,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const p = BA.get(q[0]); let x, y;
       if (p) { x = lerp(p[1], q[1], alpha); y = lerp(p[2], q[2], alpha); }
       else { const back = (rt - b.t) / 1000; x = q[1] + q[3] * back; y = q[2] + q[4] * back; }     // 新しい弾は速度で時刻合わせ
-      return { x, y, vx: q[3], vy: q[4], px: x - q[3] * 0.016, py: y - q[4] * 0.016, r: q[5], owner: q[6] || 1 };
+      return { x, y, vx: q[3], vy: q[4], life: projectileLifetime(Math.hypot(q[3], q[4]), 1.4), px: x - q[3] * 0.016, py: y - q[4] * 0.016, r: q[5], owner: q[6] || 1 };
     }).filter((b) => b.owner !== playerId);
     bullets.push(...localBullets);
     const EBA = new Map(); for (const q of a.eb) EBA.set(q[0], q);
@@ -6897,7 +7312,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const p = EBA.get(q[0]); let x, y;
       if (p) { x = lerp(p[1], q[1], alpha); y = lerp(p[2], q[2], alpha); }
       else { const back = (rt - b.t) / 1000; x = q[1] + q[3] * back; y = q[2] + q[4] * back; }
-      return { id: q[0], x, y, vx: q[3], vy: q[4], r: q[5], color: q[6] || undefined, star: !!q[7], triangle: !!q[10], drop: !!q[11], rot: q[11] ? Math.atan2(q[4], q[3]) + Math.PI / 2 : time * 6, dmg: q[8] || 10, delay: q[9] || 0 };
+      return { id: q[0], x, y, vx: q[3], vy: q[4], life: projectileLifetime(Math.hypot(q[3], q[4]), 5.5), r: q[5], color: q[6] || undefined, star: !!q[7], triangle: !!q[10], drop: !!q[11], rot: q[11] ? Math.atan2(q[4], q[3]) + Math.PI / 2 : time * 6, dmg: q[8] || 10, delay: q[9] || 0 };
     });
     const IA = new Map(); for (const q of a.it) IA.set(q[0], q);
     items = b.it.map((q) => { const p = IA.get(q[0]); return { x: p ? lerp(p[1], q[1], alpha) : q[1], y: p ? lerp(p[2], q[2], alpha) : q[2], life: q[3], ph: q[4], type: q[5] || 'heal' }; });
@@ -7028,8 +7443,23 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   document.getElementById('playerSettingsOpen').addEventListener('click', showPlayerSettings);
   document.getElementById('playerSettingsSave').addEventListener('click', savePlayerSettings);
   document.getElementById('pausePlayerSettings').addEventListener('click', showPlayerSettings);
-  document.getElementById('soloStart').addEventListener('click', () => { cpuTeamSize = 0; demoMode = false; initAudio(); startGame(); });
+  document.getElementById('soloStart').addEventListener('click', () => {
+    document.getElementById('spectatorModeToggle').checked = false;
+    syncCpuMenuControls();
+    try { localStorage.setItem('td-spectator-mode', '0'); } catch (_) {}
+    cpuTeamSize = 0; initAudio(); startGame();
+  });
   document.getElementById('cpuStart').addEventListener('click', startCpuGame);
+  document.getElementById('spectatorModeToggle').addEventListener('change', () => {
+    syncCpuMenuControls();
+    try { localStorage.setItem('td-spectator-mode', spectatorMode ? '1' : '0'); } catch (_) {}
+  });
+  document.getElementById('cpuCountSelect').addEventListener('change', syncCpuMenuControls);
+  document.getElementById('lobbyCpuCountSelect').addEventListener('change', (event) => {
+    if (netRole !== 'host') return;
+    cpuTeamSize = Number(event.target.value);
+    renderLobbyRoster();
+  });
   document.getElementById('hardModeToggle').addEventListener('change', (event) => {
     if (state !== 'jobselect' || netRole === 'guest') { syncSettingsControls(); return; }
     hardModeEnabled = event.target.checked;
@@ -7088,8 +7518,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       syncSettingsControls();
     });
   }
+  for (const [id, type] of [['menuBgmVolume', 'bgm'], ['pauseBgmVolume', 'bgm'], ['menuSfxVolume', 'sfx'], ['pauseSfxVolume', 'sfx']]) {
+    document.getElementById(id).addEventListener('input', (event) => setVolumeSetting(type, event.target.value));
+  }
   try {
     bloomEnabled = localStorage.getItem('td-bloom') !== '0'; trailEnabled = localStorage.getItem('td-trails') !== '0';
+    const savedBgmVolume = localStorage.getItem('td-bgm-volume'), savedSfxVolume = localStorage.getItem('td-sfx-volume');
+    if (savedBgmVolume !== null && Number.isFinite(Number(savedBgmVolume))) bgmVolume = Math.max(0, Math.min(100, Number(savedBgmVolume))) / 100;
+    if (savedSfxVolume !== null && Number.isFinite(Number(savedSfxVolume))) sfxVolume = Math.max(0, Math.min(100, Number(savedSfxVolume))) / 100;
+    spectatorMode = localStorage.getItem('td-spectator-mode') === '1';
+    const savedEmojis = JSON.parse(localStorage.getItem('td-player-emojis') || 'null');
+    if (Array.isArray(savedEmojis)) chosenEmojis = DEFAULT_EMOJIS.map((emoji, index) => cleanEmoji(savedEmojis[index], emoji));
     playerName = localStorage.getItem('td-player-name') || 'P1';
     chosenPlayerColor = localStorage.getItem('td-player-color') || '#ffffff';
     chosenPlayerIcon = localStorage.getItem('td-player-icon') || '';
@@ -7098,7 +7537,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   if (playerName !== 'P1') document.getElementById('playerName').value = playerName;
   if (P) P.color = chosenPlayerColor;
   if (P) P.icon = chosenPlayerIcon;
+  document.getElementById('spectatorModeToggle').checked = spectatorMode;
+  syncCpuMenuControls();
   syncSettingsControls();
+  window.addEventListener('pageshow', () => {
+    if (state === 'title' && netRole === 'solo' && !demoMode && !sandboxMode) startTitleDemo();
+  });
   document.getElementById('pauseResume').addEventListener('click', closePauseMenu);
   document.getElementById('pauseRestartSolo').addEventListener('click', () => {
     state = 'title'; pauseMenuOpen = false; showMainMenu();
@@ -7132,9 +7576,15 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       state = 'title'; joinedDuringGame = false; showLobbyScreen(true); showNotice('待機室に戻りました');
     } else { state = 'title'; showMainMenu(); }
   });
-  document.getElementById('createRoom').addEventListener('click', () => { cpuTeamSize = 0; demoMode = false; readPlayerName(); createOnlineRoom(); });
-  document.getElementById('joinRoom').addEventListener('click', () => { cpuTeamSize = 0; demoMode = false; readPlayerName(); joinOnlineRoom(); });
-  document.getElementById('startRoom').addEventListener('click', () => { if (netRole === 'host' && roomRoster.length > 1) { cpuTeamSize = 0; initAudio(); startGame(); } });
+  document.getElementById('createRoom').addEventListener('click', () => { stopTitleDemo(); cpuTeamSize = 0; readPlayerName(); createOnlineRoom(); });
+  document.getElementById('joinRoom').addEventListener('click', () => { stopTitleDemo(); cpuTeamSize = 0; readPlayerName(); joinOnlineRoom(); });
+  document.getElementById('startRoom').addEventListener('click', () => {
+    if (netRole === 'host' && (roomRoster.length > 1 || cpuTeamSize > 0)) {
+      cpuDifficulty = CPU_DIFFICULTY_PROFILES[document.getElementById('cpuDifficultySelect').value]
+        ? document.getElementById('cpuDifficultySelect').value : 'normal';
+      initAudio(); startGame();
+    }
+  });
   document.getElementById('leaveRoom').addEventListener('click', () => {
     leaveRoom(netRole === 'host' ? '部屋を解散しました' : '部屋から退出しました');
   });
@@ -7149,6 +7599,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   /* ---------- main loop ---------- */
   let last = performance.now();
   function frame(now) {
+    requestAnimationFrame(frame);
     let dt = Math.min(0.05, (now - last) / 1000); last = now;
     const soloPaused = (pauseMenuOpen || sandboxPanelOpen) && netRole === 'solo';
 
@@ -7183,11 +7634,28 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       if (demoMode && !soloPaused) {
         demoPlayTime += dt;
-        if (demoPlayTime >= TITLE_DEMO_DURATION) finishTitleDemo();
+        if (state === 'dying' || state === 'over' || demoPlayTime >= TITLE_DEMO_DURATION) finishTitleDemo();
+      }
+      if (!soloPaused) {
+        if (demoRestartFade === 'out') {
+          demoFadeAlpha = Math.min(1, demoFadeAlpha + dt / SCENE_FADE_DURATION);
+          if (demoFadeAlpha >= 1) restartTitleDemo();
+        } else if (demoRestartFade === 'in') {
+          demoFadeAlpha = Math.max(0, demoFadeAlpha - dt / SCENE_FADE_DURATION);
+          if (demoFadeAlpha <= 0) demoRestartFade = '';
+        }
       }
       if (!soloPaused) updateFx(state === 'dying' ? dt * 0.5 : dt);
       if (netRole === 'host' && (state === 'jobselect' || state === 'play' || state === 'upgrade' || state === 'debuff' || state === 'clear' || state === 'dying' || state === 'over') && performance.now() - lastNetSend >= snapshotInterval()) sendSnapshot();
     }
+    startBgm(musicScene());
+    const visualScene = sceneKind();
+    if (lastSceneKind === null) lastSceneKind = visualScene;
+    else if (visualScene !== lastSceneKind) {
+      if (!demoRestartFade) captureSceneSnapshot();
+      lastSceneKind = visualScene;
+    }
+    if (sceneSnapshot) sceneFadeTime = Math.min(SCENE_FADE_DURATION, sceneFadeTime + dt);
     if (pauseMenuOpen && state !== 'play' && state !== 'clear') closePauseMenu();
     if (!soloPaused) bannerT = Math.max(0, bannerT - dt);
     refreshGameOverScreen();
@@ -7226,8 +7694,23 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (state === 'over') drawOver();
     if (demoMode) drawTitleDemoOverlay();
     if (state === 'play' || state === 'clear' || state === 'dying' || state === 'over') drawCursors();
+    drawEmojiSelector();
+    if (sceneSnapshot) {
+      ctx.save();
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+      ctx.globalAlpha = 1 - sceneFadeTime / SCENE_FADE_DURATION;
+      ctx.drawImage(sceneSnapshot, 0, 0, sceneSnapshot.width, sceneSnapshot.height, 0, 0, W, H);
+      ctx.restore();
+      if (sceneFadeTime >= SCENE_FADE_DURATION) sceneSnapshot = null;
+    }
+    if (demoFadeAlpha > 0) {
+      ctx.save();
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+      ctx.globalAlpha = demoFadeAlpha;
+      ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
 
-    requestAnimationFrame(frame);
   }
   startTitleDemo();
   requestAnimationFrame(frame);

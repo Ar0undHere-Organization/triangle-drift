@@ -146,6 +146,10 @@ function validateEnemyContact(d) {
     finite(d.x, -10000, 10000) && finite(d.y, -10000, 10000) &&
     typeof d.dash === 'boolean';
 }
+function validateEmoji(d) {
+  return isPlainObject(d) && typeof d.emoji === 'string' && d.emoji.length > 0 &&
+    d.emoji.length <= 16 && Array.from(d.emoji).length <= 8 && !/[\u0000-\u001f\u007f]/.test(d.emoji);
+}
 
 io.on('connection', socket => {
   socket.data.roomCode = null;
@@ -231,6 +235,13 @@ io.on('connection', socket => {
     roomGames.set(socket.data.roomCode, true);
     socket.to(socket.data.roomCode).emit('start-game');
   });
+  socket.on('cpu-count', payload => {
+    if (!hasRoomMembership(socket) || !socket.data.isHost || !isPlainObject(payload) ||
+        !Number.isInteger(payload.count) || payload.count < 0 ||
+        payload.count > MAX_PLAYERS - getRoomPlayers(socket.data.roomCode).length ||
+        !allowRate(socket, 'cpu-count', 12)) return;
+    socket.to(socket.data.roomCode).emit('cpu-count', { count: payload.count });
+  });
   socket.on('end-game', () => {
     if (!hasRoomMembership(socket) || !socket.data.isHost || !allowRate(socket, 'end-game', 3)) return;
     roomGames.set(socket.data.roomCode, false);
@@ -255,11 +266,21 @@ io.on('connection', socket => {
     if (!hasRoomMembership(socket) || socket.data.isHost || !validateInput(payload) || !allowRate(socket, 'input', 80)) return;
     sendGuestEventToHost(socket, 'input', payload);
   });
+  socket.on('player-emoji', payload => {
+    if (!hasRoomMembership(socket) || socket.data.isHost || !validateEmoji(payload) ||
+        !allowRate(socket, 'player-emoji', 8)) return;
+    sendGuestEventToHost(socket, 'player-emoji', { emoji: payload.emoji });
+  });
   socket.on('upgrade-pick', payload => {
     if (!hasRoomMembership(socket) || socket.data.isHost || !isPlainObject(payload) ||
         !Number.isInteger(payload.index) || payload.index < 0 || payload.index > 100 ||
         !allowRate(socket, 'upgrade-pick', 5)) return;
     sendGuestEventToHost(socket, 'upgrade-pick', { index: payload.index });
+  });
+  socket.on('upgrade-reroll', payload => {
+    if (!hasRoomMembership(socket) || socket.data.isHost || !isPlainObject(payload) ||
+        !allowRate(socket, 'upgrade-reroll', 5)) return;
+    sendGuestEventToHost(socket, 'upgrade-reroll', {});
   });
   socket.on('late-upgrade-pick', payload => {
     if (!hasRoomMembership(socket) || socket.data.isHost || !isPlainObject(payload) ||
