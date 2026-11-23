@@ -14,6 +14,7 @@ const { Server } = require('socket.io');
 
 const PORT = parsePort(process.env.PORT, 3000);
 const MAX_PLAYERS = 8;
+const JOB_IDS = ['shooter', 'bomber', 'survivor', 'cleaner', 'assassin', 'martial'];
 const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PUBLIC_DIR = path.resolve(process.env.PUBLIC_DIR || path.join(__dirname, 'public'));
@@ -289,9 +290,8 @@ io.on('connection', socket => {
     sendGuestEventToHost(socket, 'late-upgrade-pick', { index: payload.index });
   });
   socket.on('job-pick', payload => {
-    const jobs = ['gunner', 'trick', 'assassin', 'guardian', 'paladin'];
     if (!hasRoomMembership(socket) || socket.data.isHost || !isPlainObject(payload) ||
-        !jobs.includes(payload.jobId) || !allowRate(socket, 'job-pick', 3)) return;
+        !JOB_IDS.includes(payload.jobId) || !allowRate(socket, 'job-pick', 3)) return;
     sendGuestEventToHost(socket, 'job-pick', { jobId: payload.jobId });
   });
   socket.on('bullet-hit', payload => {
