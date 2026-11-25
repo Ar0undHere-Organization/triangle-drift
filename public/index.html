@@ -110,6 +110,13 @@ kbd { font-family: var(--font-display); font-size: 12px; padding: 1px 6px; borde
 .sandbox-screen { z-index: 6; }
 .sandbox-panel { width: min(760px, 100%); }
 .sandbox-fields-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sandbox-enemy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 6px; max-height: 220px; overflow-y: auto; margin: 8px 0; }
+.sandbox-enemy-option { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px; border: 1px solid #394157; border-radius: 4px; background: #111724; color: var(--fg); cursor: pointer; }
+.sandbox-enemy-option[aria-pressed="true"] { border-color: var(--accent); background: #1b2b35; }
+.sandbox-enemy-option canvas { width: 34px; height: 34px; flex: 0 0 34px; }
+.sandbox-enemy-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.sandbox-info-dialog { position: absolute; z-index: 8; inset: 12% 8%; overflow: auto; padding: 20px; border: 1px solid #46516a; border-radius: 8px; background: #101623; color: var(--fg); }
+.sandbox-info-dialog[hidden] { display: none; }
 body.canvas-title-active header, body.canvas-title-active .hint { display: none; }
 @media (max-width: 520px) { .screen-panel { padding: 16px; } .screen-panel h2 { font-size: 23px; } }
 </style>
@@ -224,24 +231,39 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           </select>
           <span>アップグレードレベル (0〜99)</span>
           <div id="sandboxUpgradeFields" class="debug-upgrade-grid"></div>
-          <div class="screen-actions"><button id="sandboxApplyUpgrades">アップグレードを反映</button></div>
+          <div class="sandbox-fields-grid">
+            <label for="sandboxSkillLevel">自動割り振りレベル数</label><input id="sandboxSkillLevel" type="number" min="0" max="99" step="1" value="10">
+          </div>
+          <div class="screen-actions"><button id="sandboxAutoAllocate" class="secondary">スキルをランダム配分</button><button id="sandboxApplyUpgrades">指定レベルを全員に反映</button></div>
+          <label class="switch-row"><span>自機を参加させる</span><input id="sandboxPlayerPresent" class="switch-input" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span></label>
+          <div class="sandbox-fields-grid">
+            <label for="sandboxCpuCount">CPU人数</label><select id="sandboxCpuCount" aria-label="サンドボックスCPU人数"></select>
+            <label for="sandboxCpuDifficulty">CPUの強さ</label><select id="sandboxCpuDifficulty"><option value="weak">弱い</option><option value="normal" selected>普通</option><option value="strong">強い</option></select>
+          </div>
+          <div class="screen-actions"><button id="sandboxApplyTeam" class="secondary">プレイヤー・CPU設定を反映</button></div>
           <label class="switch-row"><span>自機を無敵にする</span><input id="sandboxInvulnerable" class="switch-input" type="checkbox" checked><span class="switch-track" aria-hidden="true"></span></label>
         </div>
         <div class="screen-fields">
           <span>敵を召喚</span>
+          <input id="sandboxEnemyType" type="hidden" value="tri">
+          <div id="sandboxEnemyGrid" class="sandbox-enemy-grid" role="listbox" aria-label="召喚する敵タイプ"></div>
           <div class="sandbox-fields-grid">
-            <label for="sandboxEnemyType">敵タイプ</label><select id="sandboxEnemyType" aria-label="召喚する敵タイプ"></select>
+            <label for="sandboxEnemyWave">敵の強さ (ウェーブ)</label><input id="sandboxEnemyWave" type="number" min="1" max="999" step="1" value="1">
             <label for="sandboxEnemyX">X座標</label><input id="sandboxEnemyX" type="number" step="1" value="480">
             <label for="sandboxEnemyY">Y座標</label><input id="sandboxEnemyY" type="number" step="1" value="320">
             <label for="sandboxReviveStacks">復活スタック</label><input id="sandboxReviveStacks" type="number" min="0" max="99" step="1" value="0">
-            <label for="sandboxTrainEdge">列車の出現方向</label>
-            <select id="sandboxTrainEdge" aria-label="列車の出現方向"><option value="0">左から</option><option value="1">右から</option><option value="2">上から</option><option value="3">下から</option></select>
           </div>
-          <label for="sandboxEnemyState">敵の状態をJSONで上書き (任意)</label>
+          <label for="sandboxEnemyState">敵の状態をJSONで上書き (任意) <button id="sandboxJsonInfo" type="button" class="secondary" aria-label="JSON入力の説明">i</button></label>
           <textarea id="sandboxEnemyState" rows="3" placeholder="{&quot;hp&quot;:1,&quot;reviveStacks&quot;:8}"></textarea>
           <p class="debug-hint">例: {"hp":1,"laserPhase":2,"laserT":3}。数値・文字列・真偽値の状態項目を指定できます。</p>
           <div class="screen-actions"><button id="sandboxSpawnEnemy">敵を召喚</button><button id="sandboxRevivePlayer" class="secondary">自機を復帰</button></div>
           <p id="sandboxStatus" class="screen-status" role="status"></p>
+        </div>
+        <div id="sandboxJsonInfoDialog" class="sandbox-info-dialog" role="dialog" aria-modal="true" aria-label="JSON入力の説明" hidden>
+          <h3>敵の状態をJSONで変更</h3>
+          <p>召喚する敵に適用する状態をJSONオブジェクトで指定します。指定できる項目と型はコードで許可されたものに限られます。</p>
+          <p>例: <code>{"hp":1,"reviveStacks":2}</code>。数値は有限値で入力してください。trainのhp/maxHpはチェーン全体で管理されるため変更できません。</p>
+          <button id="sandboxJsonInfoClose" type="button" class="secondary">閉じる</button>
         </div>
         <div class="screen-actions"><button id="sandboxClose" class="secondary">ゲームに戻る</button></div>
       </div>
@@ -354,6 +376,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     // boss: Magnetro (一定ダメージで分裂する六角形の列)。seg = 複数パーツ型
     train: { sides: 4, r: 19, vr: 1, color: '#c3d0e0', fill: '#1b2230', boss: true, seg: true, name: 'MAGNETRO' },
     fortless: { sides: 8, r: 80, vr: 1, color: '#81d4df', fill: '#10232b', hk: 1, boss: true, name: 'FORTLESS', sy: 166 },
+    funnels: { sides: 4, r: 38, vr: 1, color: '#7de7e8', fill: '#122c34', boss: true, name: 'FUNNELS' },
     matrix: { sides: 4, r: 64, vr: 1, color: '#58e0d1', fill: '#102b32', boss: true, name: 'MATRIX' },
     hex: { sides: 6, r: 23, vr: 1.05, color: '#4ddcff', fill: '#0b2a33', mass: 3 },
     ehex: { sides: 6, r: 25, vr: 1.05, color: '#68e2ff', fill: '#0b2a33', mass: 3, elite: true },
@@ -377,6 +400,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     sept: { sides: 7, r: 27, vr: 1.08, color: '#a9b8cf', fill: '#171d2b', mass: 3, hpHigh: 8, name: 'SEPT' },
     esept: { sides: 7, r: 31, vr: 1.08, color: '#a9b8cf', fill: '#171d2b', mass: 4, elite: true, hpHigh: 10, name: 'ESEPT' },
     tridrone: { sides: 3, r: 11, vr: 1, color: '#ff5cf0', fill: '#2a0f29', mass: 1 },
+    fortlessDrone: { sides: 3, r: 11, vr: 1, color: '#81d4df', fill: '#10232b', mass: 1 },
     pseptDrone: { sides: 6, r: 16, vr: 1.05, color: '#57d8ff', fill: '#0b2a33', mass: 2 }
   };
   const ELITE_BASE_TYPE = { esq: 'sq', equadstar: 'quadstar', ehex: 'hex', etri: 'tri', epent: 'pent', ecross: 'cross', ehexstar: 'hexstar', esept: 'sept' };
@@ -432,7 +456,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   const CROSS_R = 140;
   const BOSS_COL = '#ffe36e', BOUNCE_COL = '#7ad7ff';
   const BOSS_EVERY = 5;
-  const BOSS_ORDER = ['stardust', 'train', 'trinity', 'fortless', 'matrix'];
+  const BOSS_ORDER = ['stardust', 'train', 'trinity', 'fortless', 'funnels'];
+  function bossDisplayName(enemy) {
+    if (enemy.type === 'stardust' && enemy.enhanced) return 'HOLY STARDUST';
+    if (enemy.type === 'train' && enemy.enhanced) return 'ELECTRO MAGNETRO';
+    if (enemy.type === 'trinity' && enemy.enhanced) return 'BONDED TRINITY';
+    if (enemy.type === 'fortless' && enemy.enhanced) return 'IMMORTAL FORTLESS';
+    return ET[enemy.type].name || enemy.type.toUpperCase();
+  }
   const ENEMY_DAMAGE_MULTIPLIER = 5;
   const enemyDamageMultiplier = () => ENEMY_DAMAGE_MULTIPLIER * (wave >= 101 ? 1 + (wave - 100) * 0.02 : 1) * playerDamageTakenMultiplier();
   const MATRIX_CELL = 40, MATRIX_MAIN_SIZE = 4, MATRIX_EXTRA_CELLS = 14, MATRIX_FRAGMENT_CELL = 24;
@@ -447,8 +478,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   const FIELD_SCALE_PER_PLAYER = 1 / 8, ENEMY_COUNT_PER_PLAYER = 0.3, PHASE_CAPACITY_PER_PLAYER = 5, PHASE_CAPACITY_PER_WAVE = 0.5, BOSS_HP_PER_PLAYER = 0.7;
   const bossHp = () => Math.round((360 + Math.max(0, Math.floor(Math.max(1, wave) / BOSS_EVERY) - 1) * 600) * (1 + BOSS_HP_PER_PLAYER * (runPlayerCount - 1)));
   const FORTLESS_SIDES = 8, FORTLESS_PANEL_DEPTH = 16, FORTLESS_PANEL_HALF = 34;
-  const FORTLESS_PANEL_REPAIR = 9, FORTLESS_ATTACK_INTERVAL = 5.8;
-  const FORTLESS_SPAWN_INTERVAL = 10.5, FORTLESS_LASER_WARN = 0.9, FORTLESS_LASER_ACT = 0.55;
+  const FORTLESS_PANEL_REPAIR = 13.5, FORTLESS_ATTACK_INTERVAL = 5.8;
+  const FUNNELS_ORBIT_RADIUS = 128, FUNNELS_SATELLITE_RADIUS = 17;
+  const FUNNELS_LASER_TURN_SPEED = 0.85, FUNNELS_DASH_SPEED = 1550, FUNNELS_SPARK_RADIUS = 172;
+  const FORTLESS_LASER_WARN = 0.9, FORTLESS_LASER_ACT = 3;
   const QUADSTAR_ATTACK_INITIAL = 1.6, EQUADSTAR_ATTACK_INITIAL = 2.0;
   const QUADSTAR_ATTACK_INTERVAL = 2.7, EQUADSTAR_ATTACK_INTERVAL = 3.4;
   const QUADSTAR_METEOR_RADIUS = 54;
@@ -474,6 +507,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
 
   /* ---------- audio ---------- */
   let ac = null, sfxVolume = 0.8, bgmVolume = 0.7;
+  let frameSfxPlayed = new Set();
   let bgmScene = '', bgmTimer = 0, bgmGain = null, bgmStep = 0;
   const BGM_TRACKS = {
     menu: { beat: 0.42, lead: [72, 76, 79, 83, 79, 76, 74, 76, 72, 76, 79, 84, 83, 79, 76, 74], bass: [48, 0, 55, 0, 43, 0, 55, 0], leadType: 'sine', bassType: 'triangle' },
@@ -575,11 +609,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     revive() { tone(620, 0.28, 'sine', 0.045, 1240); tone(930, 0.2, 'triangle', 0.025, 1560, 0.08); },
     dash() { tone(260, 0.16, 'sawtooth', 0.04, 1000); }
   };
+  function playSfxOnce(name, play, replicate) {
+    if (frameSfxPlayed.has(name)) return;
+    frameSfxPlayed.add(name);
+    play();
+    if (replicate) pushEv(['s', name]);
+  }
   // ホスト: 効果音はゲストの画面でも鳴らすため演出イベントとして転送する(UI専用の音は除外)
   Object.keys(sfx).forEach((k) => {
-    if (k === 'hover' || k === 'pick' || k === 'start') return;
     const f = sfx[k];
-    sfx[k] = function () { f.apply(null, arguments); pushEv(['s', k]); };
+    const replicate = k !== 'hover' && k !== 'pick' && k !== 'start';
+    sfx[k] = function () { playSfxOnce(k, () => f.apply(null, arguments), replicate); };
   });
 
   /* ---------- upgrades ---------- */
@@ -732,12 +772,55 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
   }
   function buildSandboxEnemyTypes() {
-    const select = document.getElementById('sandboxEnemyType');
-    for (const [type, enemy] of Object.entries(ET)) {
-      const option = document.createElement('option');
-      option.value = type; option.textContent = enemy.name || type.toUpperCase();
-      select.append(option);
+    const grid = document.getElementById('sandboxEnemyGrid');
+    const typeOrder = Object.keys(ET).sort((a, b) => sandboxEnemyUnlockWave(a) - sandboxEnemyUnlockWave(b) || a.localeCompare(b));
+    for (const type of typeOrder) {
+      const enemy = ET[type], button = document.createElement('button'), icon = document.createElement('canvas'), name = document.createElement('span');
+      button.type = 'button'; button.className = 'sandbox-enemy-option'; button.setAttribute('role', 'option');
+      button.dataset.enemyType = type; button.setAttribute('aria-pressed', 'false');
+      icon.width = 48; icon.height = 48; icon.setAttribute('aria-hidden', 'true');
+      const iconContext = icon.getContext('2d'), radius = Math.max(8, Math.min(17, enemy.r * 0.42));
+      iconContext.beginPath();
+      const sides = enemy.cross ? 12 : enemy.sides || 4;
+      for (let index = 0; index < (enemy.star ? sides * 2 : sides); index++) {
+        const angle = -Math.PI / 2 + index * Math.PI * 2 / (enemy.star ? sides * 2 : sides);
+        const r = enemy.star && index % 2 ? radius * 0.42 : radius;
+        const x = 24 + Math.cos(angle) * r, y = 24 + Math.sin(angle) * r;
+        if (index === 0) iconContext.moveTo(x, y); else iconContext.lineTo(x, y);
+      }
+      iconContext.closePath();
+      iconContext.fillStyle = enemy.fill; iconContext.fill();
+      iconContext.strokeStyle = enemy.color; iconContext.lineWidth = 2.5; iconContext.stroke();
+      if (enemy.cross) {
+        iconContext.strokeStyle = enemy.color; iconContext.lineWidth = 4;
+        iconContext.beginPath(); iconContext.moveTo(24, 13); iconContext.lineTo(24, 35);
+        iconContext.moveTo(13, 24); iconContext.lineTo(35, 24); iconContext.stroke();
+      }
+      name.textContent = enemy.name || type.toUpperCase();
+      button.append(icon, name);
+      button.addEventListener('click', () => {
+        document.getElementById('sandboxEnemyType').value = type;
+        for (const option of grid.querySelectorAll('button')) option.setAttribute('aria-pressed', String(option === button));
+      });
+      grid.append(button);
     }
+    const cpuCount = document.getElementById('sandboxCpuCount');
+    for (let count = 0; count <= 8; count++) {
+      const option = document.createElement('option');
+      option.value = String(count); option.textContent = count + '人'; cpuCount.append(option);
+    }
+    cpuCount.value = '2';
+    document.getElementById('sandboxEnemyGrid').querySelector('[data-enemy-type="tri"]').click();
+  }
+  function sandboxEnemyUnlockWave(type) {
+    const waves = {
+      tri: 1, sq: 2, esq: 3, etri: 3, pent: 4, hex: 5, epent: 6, cross: 7, hexstar: 8,
+      ehex: 9, quadstar: 10, equadstar: 16, ecross: 16, ehexstar: 18, stardust: 5,
+      train: 10, trinity: 15, fortless: 20, matrix: 25, sept: 26, ptri: 26, psq: 26,
+      ppent: 26, phex: 26, pcross: 26, pquadstar: 26, phexstar: 26, psept: 26, esept: 36,
+      tridrone: 15, fortlessDrone: 20, pseptDrone: 26
+    };
+    return waves[type] || 1;
   }
   buildJobButtons();
   buildUpgradeFields('debugUpgradeFields', 'debugUpgrade-');
@@ -748,9 +831,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   let state = 'title';          // title | jobselect | play | clear | upgrade | debuff | dying | over
   let cpuPlayers = [], cpuTeamSize = 0, demoMode = false, spectatorMode = false;
   const CPU_DIFFICULTY_PROFILES = {
-    weak: { bulletRange: 100, bulletForce: 0.85, enemyRange: 78, enemyForce: 0.9, dashRange: 32, approachDistance: 300, retreatDistance: 95, aimError: 56 },
-    normal: { bulletRange: 170, bulletForce: 2.4, enemyRange: 110, enemyForce: 1.8, dashRange: 70, approachDistance: 270, retreatDistance: 150, aimError: 0, hazardAvoidance: true, hazardMargin: 105, hazardForce: 2.8 },
-    strong: { bulletRange: 230, bulletForce: 3.2, enemyRange: 155, enemyForce: 2.5, dashRange: 105, approachDistance: 250, retreatDistance: 180, aimError: 0, predictive: true, strategic: true, hazardAvoidance: true, hazardMargin: 145, hazardForce: 3.6 }
+    weak: { bulletRange: 100, bulletForce: 0.85, enemyRange: 78, enemyForce: 0.9, dashRange: 32, approachDistance: 300, retreatDistance: 95, aimError: 56, aimQuality: 0.55 },
+    normal: { bulletRange: 170, bulletForce: 2.4, enemyRange: 110, enemyForce: 1.8, dashRange: 70, approachDistance: 270, retreatDistance: 150, aimError: 0, aimQuality: 0.82, cornerEscape: true, hazardAvoidance: true, hazardMargin: 105, hazardForce: 2.8 },
+    strong: { bulletRange: 230, bulletForce: 3.2, enemyRange: 155, enemyForce: 2.5, dashRange: 105, approachDistance: 250, retreatDistance: 180, aimError: 0, aimQuality: 1, aimLead: 0.82, cornerEscape: true, predictive: true, strategic: true, hazardAvoidance: true, hazardMargin: 145, hazardForce: 3.6 }
   };
   let cpuDifficulty = 'normal';
   let demoPlayTime = 0;
@@ -1365,8 +1448,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   resetRun();
 
-  const RANDOM_EVENT_CHANCE = 0.35, RANDOM_EVENT_START_WAVE = 6;
-  const PARTY_EVENT_KINDS = ['bomb', 'king', 'gather', 'bond'];
+  const RANDOM_EVENT_CHANCE = 0.35;
   const HORDE_EVENT_TYPES = [
     { pair: ['tri', 'etri'], pure: 'ptri', label: '三角形' },
     { pair: ['sq', 'esq'], pure: 'psq', label: '四角形' },
@@ -1385,20 +1467,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     return true;
   };
   function createRandomEvent() {
-    const kinds = ['horde', 'meteor', 'items', 'size', 'nineLives', 'train', 'sweep'];
+    const kinds = ['horde', 'meteor', 'items', 'size', 'nineLives', 'train'];
     if (wave % BOSS_EVERY === 0) kinds.splice(kinds.indexOf('nineLives'), 1);
-    // 複数人前提のパーティーイベントは、CPUを含めて生存者が2人以上のときだけ抽選に入る
-    const alive = alivePartyPlayers();
-    if (alive.length >= 2) kinds.push(...PARTY_EVENT_KINDS);
     const kind = kinds[Math.floor(Math.random() * kinds.length)];
-    if (kind === 'sweep') return { type: kind, title: 'レーザー横断注意！', sweepTimer: 1.6, lasers: [] };
-    if (kind === 'bomb') return { type: kind, title: '爆弾リレー！', bomb: null, bombDelay: 2.4, flash: 0 };
-    if (kind === 'king') {
-      const king = alive[Math.floor(Math.random() * alive.length)];
-      return { type: kind, title: '王様を守れ！', kingId: king.id || 1, kingAlive: true, rewarded: false };
-    }
-    if (kind === 'gather') return { type: kind, title: 'みんなで集合！', circle: null, gatherCd: 1.4, hold: 0, inside: 0, total: alive.length, flash: 0 };
-    if (kind === 'bond') return { type: kind, title: '絆レーザー！', bondTick: 0.4 };
     if (kind === 'horde') {
       const group = HORDE_EVENT_TYPES[Math.floor(Math.random() * HORDE_EVENT_TYPES.length)];
       return { type: kind, pair: group.pair, pure: group.pure, title: group.label + '大量発生！' };
@@ -1473,297 +1544,18 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
   }
 
-  /* ---------- パーティーイベント（爆弾リレー / 王様 / 集合 / 絆レーザー）と横断レーザー ---------- */
-  const SWEEP_LASER_WARN = 1.3, SWEEP_LASER_CROSS_TIME = 11, SWEEP_LASER_INTERVAL = 5.2;
-  const SWEEP_LASER_HALF = 9, SWEEP_LASER_DAMAGE = 30, SWEEP_LASER_COLOR = '#ff4d6d';
-  const BOMB_FUSE = 8, BOMB_RADIUS = 210, BOMB_SELF_DAMAGE = 12, BOMB_PASS_COOLDOWN = 0.45, BOMB_RESPAWN = 2.5, BOMB_POWER = 9;
-  const KING_DAMAGE_BOOST = 2.5, KING_BULLET_SIZE = 1.5, KING_REWARD_HEAL = 0.35, KING_REWARD_ITEMS = 5, KING_COLOR = '#ffd84a';
-  const GATHER_HOLD = 0.9, GATHER_COOLDOWN = 11, GATHER_POWER = 10, GATHER_SPEED = 38, GATHER_COLOR = '#ffe36e';
-  const BOND_TICK = 0.2, BOND_HALF_WIDTH = 10, BOND_TICK_POWER = 0.4;
-  const alivePartyPlayers = () => partyPlayers().filter((player) => player.hp > 0 && !player.spectator);
-  const eventPower = () => HP_SCALE * (2 + Math.floor((Math.max(1, wave) - 1) / 1.8));   // 通常敵HPと同じ伸び方
-  const eventPlayerById = (players, id) => players.find((player) => (player.id || 1) === id) || null;
-  function hurtAnyPlayer(player, amount, fromX, fromY) {
-    if (player === P) hurtPlayer(amount, fromX, fromY); else hurtRemotePlayer(player, amount, fromX, fromY);
-  }
-  function healAnyPlayer(player, amount) {
-    const healed = Math.min(player.maxHp - player.hp, Math.round(amount));
-    if (healed <= 0) return;
-    player.hp += healed;
-    const pos = playerPosition(player);
-    floatText(pos.x, pos.y - 34, '+' + healed, '#7df0a8');
-  }
-  const eventDamageable = (enemy) => enemy.hp > 0 && !ET[enemy.type].boss;
-  function damageEnemiesInRadius(x, y, radius, damage, ownerId, color, knockback) {
-    for (const enemy of enemies) {
-      if (!eventDamageable(enemy)) continue;
-      if (radius !== Infinity && !bodyHit(enemy, x, y, radius + enemy.r * 0.8)) continue;
-      const dealt = applyEnemyDamage(enemy, damage, ownerId, x, y, radius === Infinity ? 0 : radius);
-      if (dealt > 0) damagePop(enemy.x, enemy.y - enemy.r - 6, dealt, false, color);
-      if (knockback) {
-        const length = Math.hypot(enemy.x - x, enemy.y - y) || 1;
-        applyEnemyKnockback(enemy, (enemy.x - x) / length * knockback, (enemy.y - y) / length * knockback);
-      }
+  function randomBossSpawnPosition(type, occupied) {
+    const radius = Math.max(90, ET[type].r || 60);
+    const minX = Math.min(W / 2, radius + 24), maxX = Math.max(W / 2, W - radius - 24);
+    const minY = Math.min(H / 2, radius + 24), maxY = Math.max(H / 2, H - radius - 24);
+    let position = { x: W / 2, y: H / 2 };
+    for (let attempt = 0; attempt < 50; attempt++) {
+      position = { x: minX + Math.random() * (maxX - minX), y: minY + Math.random() * (maxY - minY) };
+      if (occupied.every((other) => Math.hypot(position.x - other.x, position.y - other.y) > radius + other.radius + 80)) break;
     }
-  }
-  function pointSegmentDistance(px, py, ax, ay, bx, by) {
-    const dx = bx - ax, dy = by - ay, lengthSq = dx * dx + dy * dy;
-    const t = lengthSq ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq)) : 0;
-    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
-  }
-  // 絆レーザーは生存プレイヤーをID順に一筆書きでつなぐ（ホストとゲストで同じ並びになる）
-  function bondChain(players) {
-    return players.filter((player) => player.hp > 0 && !player.spectator)
-      .sort((a, b) => (a.id || 1) - (b.id || 1));
-  }
-  // 王様イベント中は、敵は王様を最優先で狙う
-  function eventKing() {
-    if (!randomEvent || randomEvent.type !== 'king' || !randomEvent.kingAlive) return null;
-    const king = eventPlayerById(partyPlayers(), randomEvent.kingId);
-    return king && king.hp > 0 ? king : null;
-  }
-  function isEventKing(player) {
-    return !!(randomEvent && randomEvent.type === 'king' && randomEvent.kingAlive && player && (player.id || 1) === randomEvent.kingId);
-  }
-
-  function updatePartyEvents(dt) {
-    if (state !== 'play' || !randomEvent) return;
-    const ev = randomEvent;
-    if (ev.flash) ev.flash = Math.max(0, ev.flash - dt * 1.6);
-    if (ev.type === 'sweep') updateSweepLasers(ev, dt);
-    else if (ev.type === 'bomb') updateBombRelay(ev, dt);
-    else if (ev.type === 'king') updateKingEvent(ev);
-    else if (ev.type === 'gather') updateGatherEvent(ev, dt);
-    else if (ev.type === 'bond') updateBondLaser(ev, dt);
-  }
-
-  // 横断レーザー: ステージ端から端までの線がゆっくり横断。ダッシュ(無敵)で抜けないと大ダメージ
-  function updateSweepLasers(ev, dt) {
-    ev.sweepTimer -= dt;
-    if (ev.sweepTimer <= 0) {
-      ev.sweepTimer += SWEEP_LASER_INTERVAL;
-      const axis = Math.random() < 0.5 ? 'x' : 'y', dir = Math.random() < 0.5 ? 1 : -1;
-      const span = axis === 'x' ? W : H;
-      ev.lasers.push({ axis, dir, pos: dir > 0 ? 0 : span, t: 0, speed: span / SWEEP_LASER_CROSS_TIME, hit: [], fired: 0 });
-      sfx.bossCall();
-    }
-    for (let i = ev.lasers.length - 1; i >= 0; i--) {
-      const laser = ev.lasers[i];
-      laser.t += dt;
-      if (laser.t < SWEEP_LASER_WARN) continue;
-      if (!laser.fired) { laser.fired = 1; sfx.meteor(); shake = Math.max(shake, 6); }
-      laser.pos += laser.dir * laser.speed * dt;
-      const span = laser.axis === 'x' ? W : H;
-      if (laser.pos < -20 || laser.pos > span + 20) { ev.lasers.splice(i, 1); continue; }
-      for (const player of alivePartyPlayers()) {
-        const id = player.id || 1;
-        if (player.inv > 0 || laser.hit.includes(id)) continue;
-        const pos = playerPosition(player), coord = laser.axis === 'x' ? pos.x : pos.y;
-        if (Math.abs(coord - laser.pos) >= SWEEP_LASER_HALF + player.r) continue;
-        laser.hit.push(id);
-        // レーザーの進行方向側から押し返し、線の向こう側へ抜けさせる
-        const fromX = laser.axis === 'x' ? laser.pos + laser.dir * 40 : pos.x;
-        const fromY = laser.axis === 'x' ? pos.y : laser.pos + laser.dir * 40;
-        hurtAnyPlayer(player, SWEEP_LASER_DAMAGE, fromX, fromY);
-        burst(pos.x, pos.y, 18, SWEEP_LASER_COLOR, 320, 0.4, 3);
-      }
-    }
-  }
-
-  // 爆弾リレー: ダッシュで味方に体当たりすると爆弾を渡せる。時間切れで持ち主の周囲が大爆発
-  function updateBombRelay(ev, dt) {
-    const alive = alivePartyPlayers();
-    if (!ev.bomb) {
-      ev.bombDelay -= dt;
-      if (ev.bombDelay > 0 || !alive.length) return;
-      const holder = alive[Math.floor(Math.random() * alive.length)], pos = playerPosition(holder);
-      ev.bomb = { holder: holder.id || 1, fuse: BOMB_FUSE, max: BOMB_FUSE, passCd: 0.6 };
-      floatText(pos.x, pos.y - 44, 'BOMB!', '#ff9f43');
-      ring(pos.x, pos.y, 90, 0.4, '#ff9f43', 3);
-      sfx.bossCall();
-      return;
-    }
-    const bomb = ev.bomb;
-    let holder = eventPlayerById(alive, bomb.holder);
-    if (!holder) {                                        // 持ち主が倒れたら、生存者の誰かへ移る
-      if (!alive.length) { ev.bomb = null; ev.bombDelay = BOMB_RESPAWN; return; }
-      holder = alive[Math.floor(Math.random() * alive.length)];
-      bomb.holder = holder.id || 1; bomb.passCd = 0.6;
-    }
-    bomb.fuse -= dt; bomb.passCd = Math.max(0, bomb.passCd - dt);
-    const holderPos = playerPosition(holder);
-    if (bomb.passCd <= 0 && (holder.dashT > 0 || holder.dashJustEnded)) {
-      for (const other of alive) {
-        if (other === holder) continue;
-        const otherPos = playerPosition(other);
-        if (Math.hypot(otherPos.x - holderPos.x, otherPos.y - holderPos.y) >= holder.r + other.r + 18) continue;
-        bomb.holder = other.id || 1; bomb.passCd = BOMB_PASS_COOLDOWN;
-        floatText(otherPos.x, otherPos.y - 44, 'PASS!', KING_COLOR);
-        ring(otherPos.x, otherPos.y, 64, 0.3, KING_COLOR, 3);
-        burst(otherPos.x, otherPos.y, 12, '#ff9f43', 260, 0.35, 2.6);
-        sfx.heal();
-        if (other.cpu) sendPlayerEmoji(other, chosenEmojis[3]);
-        return;
-      }
-    }
-    if (bomb.fuse <= 0) explodeEventBomb(ev, holder);
-  }
-  function explodeEventBomb(ev, holder) {
-    const pos = playerPosition(holder);
-    damageEnemiesInRadius(pos.x, pos.y, BOMB_RADIUS, eventPower() * BOMB_POWER, holder.id || 1, '#ff9f43', 320);
-    clearEnemyBulletsNear(pos.x, pos.y, BOMB_RADIUS);
-    if (holder.inv <= 0) hurtAnyPlayer(holder, BOMB_SELF_DAMAGE, pos.x - 1, pos.y + 1);
-    ring(pos.x, pos.y, BOMB_RADIUS, 0.45, '#ffffff', 6);
-    ring(pos.x, pos.y, BOMB_RADIUS * 1.25, 0.65, '#ff9f43', 5);
-    ring(pos.x, pos.y, BOMB_RADIUS * 0.6, 0.35, '#ff5d6a', 4);
-    burst(pos.x, pos.y, 70, '#ff9f43', 620, 0.9, 4.5);
-    burst(pos.x, pos.y, 40, '#ffffff', 480, 0.6, 3.5);
-    floatText(pos.x, pos.y - 56, 'BOOM!!', '#ff9f43');
-    shake = Math.max(shake, 26);
-    sfx.impact(); sfx.boss();
-    ev.bomb = null; ev.bombDelay = BOMB_RESPAWN; ev.flash = 0.55;
-  }
-
-  // 王様を守れ: 王様が倒れたら失敗。フェーズ終了まで生き残ると全員回復＋アイテム
-  function updateKingEvent(ev) {
-    if (!ev.kingAlive || ev.rewarded) return;
-    if (eventKing()) return;
-    ev.kingAlive = false;
-    ev.title = '王様が倒れた…';
-    ev.bannerT = 2.4;
-    const king = eventPlayerById(partyPlayers(), ev.kingId);
-    if (king) floatText(king.deathX || king.x, (king.deathY || king.y) - 44, 'KING DOWN', '#ff7a86');
-    sfx.memberLeave();
-  }
-  // フェーズ（またはウェーブ）終了時に呼ぶ
-  function finishPartyEvent() {
-    const ev = randomEvent;
-    if (!ev || ev.type !== 'king' || !ev.kingAlive || ev.rewarded) return;
-    const king = eventKing();
-    if (!king) return;
-    ev.rewarded = true;
-    ev.title = '王様を守りきった！';
-    ev.bannerT = 2.4;
-    for (const player of alivePartyPlayers()) healAnyPlayer(player, player.maxHp * KING_REWARD_HEAL);
-    const pos = playerPosition(king);
-    for (let i = 0; i < KING_REWARD_ITEMS; i++) {
-      const angle = i / KING_REWARD_ITEMS * TAU;
-      items.push({ x: Math.max(30, Math.min(W - 30, pos.x + Math.cos(angle) * 70)), y: Math.max(30, Math.min(H - 30, pos.y + Math.sin(angle) * 70)), life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false });
-    }
-    ring(pos.x, pos.y, 260, 0.8, KING_COLOR, 5);
-    burst(pos.x, pos.y, 50, KING_COLOR, 420, 0.9, 3.5);
-    floatText(pos.x, pos.y - 56, 'KING SURVIVED!', KING_COLOR);
-    sfx.revive();
-  }
-
-  // みんなで集合: 生存者全員が同時に円の中へ入ると、画面全体に衝撃波
-  function makeGatherCircle(count) {
-    const r = Math.min(Math.min(W, H) * 0.3, 70 + count * 12);
-    const angle = Math.random() * TAU;
-    return { x: r + 40 + Math.random() * (W - r * 2 - 80), y: r + 40 + Math.random() * (H - r * 2 - 80), r, vx: Math.cos(angle) * GATHER_SPEED, vy: Math.sin(angle) * GATHER_SPEED };
-  }
-  function updateGatherEvent(ev, dt) {
-    const alive = alivePartyPlayers();
-    ev.total = alive.length;
-    if (ev.gatherCd > 0) {
-      ev.gatherCd -= dt;
-      if (ev.gatherCd <= 0) {
-        ev.gatherCd = 0; ev.hold = 0; ev.circle = makeGatherCircle(alive.length);
-        ring(ev.circle.x, ev.circle.y, ev.circle.r * 1.4, 0.5, GATHER_COLOR, 4);
-        sfx.bossCall();
-      }
-      return;
-    }
-    const c = ev.circle;
-    if (!c) return;
-    c.x += c.vx * dt; c.y += c.vy * dt;
-    if (c.x < c.r + 20 || c.x > W - c.r - 20) { c.vx *= -1; c.x = Math.max(c.r + 20, Math.min(W - c.r - 20, c.x)); }
-    if (c.y < c.r + 20 || c.y > H - c.r - 20) { c.vy *= -1; c.y = Math.max(c.r + 20, Math.min(H - c.r - 20, c.y)); }
-    let inside = 0;
-    for (const player of alive) {
-      const pos = playerPosition(player);
-      if (Math.hypot(pos.x - c.x, pos.y - c.y) < c.r + player.r * 0.5) inside++;   // 体が半分入っていればOK
-    }
-    ev.inside = inside;
-    if (alive.length && inside === alive.length) ev.hold += dt;
-    else ev.hold = Math.max(0, ev.hold - dt);
-    if (ev.hold < GATHER_HOLD) return;
-    damageEnemiesInRadius(c.x, c.y, Infinity, eventPower() * GATHER_POWER, undefined, GATHER_COLOR, 260);
-    for (const bullet of ebullets) bullet.remove = true;
-    const reach = Math.hypot(W, H);
-    ring(c.x, c.y, reach, 0.9, GATHER_COLOR, 7);
-    ring(c.x, c.y, reach * 0.7, 0.7, '#ffffff', 5);
-    ring(c.x, c.y, c.r * 1.6, 0.4, '#ffffff', 4);
-    burst(c.x, c.y, 80, GATHER_COLOR, 700, 1.0, 4.5);
-    floatText(c.x, c.y - c.r - 18, 'TEAM BLAST!!', GATHER_COLOR);
-    shake = Math.max(shake, 28);
-    sfx.clear(); sfx.impact();
-    ev.circle = null; ev.hold = 0; ev.gatherCd = GATHER_COOLDOWN; ev.flash = 1;
-    for (const cpu of cpuPlayers) if (cpu.hp > 0) sendPlayerEmoji(cpu, chosenEmojis[0]);
-  }
-
-  // 絆レーザー: プレイヤー間をつなぐ線に触れた敵へ継続ダメージ
-  function updateBondLaser(ev, dt) {
-    ev.bondTick -= dt;
-    if (ev.bondTick > 0) return;
-    ev.bondTick += BOND_TICK;
-    const chain = bondChain(partyPlayers()).map(playerPosition);
-    if (chain.length < 2) return;
-    const damage = eventPower() * BOND_TICK_POWER;
-    for (const enemy of enemies) {
-      if (!eventDamageable(enemy)) continue;
-      const reach = BOND_HALF_WIDTH + enemy.r * 0.85 * eventSizeScale('enemy');
-      for (let i = 1; i < chain.length; i++) {
-        if (pointSegmentDistance(enemy.x, enemy.y, chain[i - 1].x, chain[i - 1].y, chain[i].x, chain[i].y) >= reach) continue;
-        const dealt = applyEnemyDamage(enemy, damage, undefined, enemy.x, enemy.y, 0);
-        if (dealt > 0) damagePop(enemy.x, enemy.y - enemy.r - 6, dealt, false, '#a0e7ff');
-        break;
-      }
-    }
-  }
-
-  // CPU向け: イベント中の動き（爆弾を渡しに行く、円に集まる、レーザーをダッシュで抜ける など）
-  function cpuEventSteer(pl) {
-    const ev = randomEvent;
-    if (!ev || state !== 'play') return null;
-    const out = { x: 0, y: 0, dash: null, holdDash: false };
-    const id = pl.id || 1;
-    if (ev.type === 'sweep') {
-      for (const laser of ev.lasers || []) {
-        if (laser.hit.includes(id)) continue;
-        const coord = laser.axis === 'x' ? pl.x : pl.y, ahead = (coord - laser.pos) * laser.dir;
-        if (ahead < -SWEEP_LASER_HALF - pl.r) continue;                  // すでに通過済み
-        const ux = laser.axis === 'x' ? laser.dir : 0, uy = laser.axis === 'x' ? 0 : laser.dir;
-        if (ahead < 260) out.holdDash = true;                            // レーザー用にダッシュを温存する
-        if (laser.t >= SWEEP_LASER_WARN && ahead < 62 + pl.r && pl.dashCd <= 0) out.dash = { x: -ux, y: -uy };
-        else if (ahead < 170 && pl.dashCd > 0) { out.x += ux * 2.4; out.y += uy * 2.4; }   // ダッシュ待ちの間は逃げる
-      }
-    } else if (ev.type === 'bomb' && ev.bomb && ev.bomb.holder === id) {
-      let target = null, distance = Infinity;
-      for (const other of alivePartyPlayers()) {
-        if (other === pl) continue;
-        const pos = playerPosition(other), d = Math.hypot(pos.x - pl.x, pos.y - pl.y);
-        if (d < distance) { distance = d; target = pos; }
-      }
-      if (target) {
-        const dx = (target.x - pl.x) / (distance || 1), dy = (target.y - pl.y) / (distance || 1);
-        out.x += dx * 1.8; out.y += dy * 1.8;
-        if (distance < 150 && ev.bomb.passCd <= 0) out.dash = { x: dx, y: dy };
-      }
-    } else if (ev.type === 'gather' && ev.circle && ev.gatherCd <= 0) {
-      // 円の中心へ強く引き寄せる（敵よけより優先し、円の中にとどまる）
-      const c = ev.circle, dx = c.x - pl.x, dy = c.y - pl.y, distance = Math.hypot(dx, dy) || 1;
-      const pull = distance > c.r * 0.55 ? 6 : 6 * distance / (c.r * 0.55);
-      out.x += dx / distance * pull; out.y += dy / distance * pull;
-      out.holdDash = distance < c.r;
-    } else if (ev.type === 'king' && !isEventKing(pl)) {
-      const king = eventKing();
-      if (king) {
-        const dx = king.x - pl.x, dy = king.y - pl.y, distance = Math.hypot(dx, dy) || 1;
-        if (distance > 140) { out.x += dx / distance * 0.6; out.y += dy / distance * 0.6; }
-      }
-    }
-    return out;
+    position.radius = radius;
+    occupied.push(position);
+    return position;
   }
 
   function beginWave(n) {
@@ -1773,15 +1565,16 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     bannerT = 1.8; bannerText = 'WAVE ' + n;
     randomEvent = null; phasePureCount = 0; bannerBossTypes = null;
     clearProjectiles(bullets, C.bullet); clearProjectiles(ebullets, ET.pent.color); meteors.length = 0;
+    clearTransientEffects();
     if (n % BOSS_EVERY === 0) {
       let bossTypes;
-      if (n === 25) bossTypes = ['matrix'];
+      if (n === 25) bossTypes = ['funnels'];
       else if (n >= 101) {
-        const available = BOSS_ORDER.filter((type) => type !== 'matrix');
+        const available = BOSS_ORDER.slice();
         bossTypes = Array.from({ length: 3 }, () => available[Math.floor(Math.random() * available.length)]);
       }
       else if (n >= 30) {
-        const available = BOSS_ORDER.filter((type) => type !== 'matrix');
+        const available = BOSS_ORDER.slice();
         for (let i = available.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [available[i], available[j]] = [available[j], available[i]];
@@ -1792,18 +1585,20 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       randomEvent = null;
       bannerBossTypes = bossTypes.length > 1 ? bossTypes : null;
-      bannerText = bannerBossTypes ? '' : 'BOSS  ' + ET[bossTypes[0]].name;
+      bannerText = bannerBossTypes ? '' : 'BOSS  ' + bossDisplayName({ type: bossTypes[0], enhanced: n >= 30 });
       bannerCol = ET[bossTypes[0]].color;
       phaseIdx = 0; phaseCount = 1; wavePhases = [];
+      const occupiedBossPositions = [];
       spawns = bossTypes.map((type, index) => {
         if (type === 'train') {
           const edge = Math.floor(Math.random() * 4);
           const lx = 160 + Math.random() * (W - 320), ly = 120 + Math.random() * (H - 240);
           return { x: edge === 0 ? 0 : edge === 1 ? W : lx, y: edge === 2 ? 0 : edge === 3 ? H : ly, t: 0, delay: 2.6 + index * 0.8, type, edge };
         }
+        const position = randomBossSpawnPosition(type, occupiedBossPositions);
         return {
-          x: bossTypes.length > 1 ? W * (index + 1) / (bossTypes.length + 1) : W / 2,
-          y: type === 'matrix' ? H * 0.22 : ET[type].sy || 175,
+          x: position.x,
+          y: position.y,
           t: 0, delay: 1.6 + index * 0.8, type
         };
       });
@@ -1878,9 +1673,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     return partyPlayers().every((player) => player.hp <= 0 || Math.hypot(x - player.x, y - player.y) > 170);
   }
   function startPhase(idx) {
+    clearProjectiles(bullets, C.bullet);
+    clearProjectiles(ebullets, ET.pent.color);
+    meteors.length = 0;
+    trainRushes.length = 0;
+    clearTransientEffects();
     phasePureCount = 0;
     const list = wavePhases[idx].slice();
-    randomEvent = wave >= RANDOM_EVENT_START_WAVE && Math.random() < RANDOM_EVENT_CHANCE ? createRandomEvent() : null;
+    randomEvent = wave >= 26 && Math.random() < RANDOM_EVENT_CHANCE ? createRandomEvent() : null;
     if (randomEvent) {
       randomEvent.bannerT = 2.4;
       if (randomEvent.type === 'horde') {
@@ -2196,11 +1996,23 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     document.getElementById('sandboxScreen').hidden = false;
     document.getElementById('sandboxJob').value = JOB_BY_ID.has(P.job) ? P.job : 'shooter';
     document.getElementById('sandboxInvulnerable').checked = sandboxInvulnerable;
+    document.getElementById('sandboxPlayerPresent').checked = !spectatorMode;
+    document.getElementById('sandboxCpuCount').value = String(cpuTeamSize);
+    document.getElementById('sandboxCpuDifficulty').value = cpuDifficulty;
+    document.getElementById('sandboxEnemyWave').value = String(Math.max(1, wave));
+    syncSandboxCpuOptions();
+    const sourcePlayer = partyPlayers()[0] || P;
     for (const upgrade of UPG) {
-      document.getElementById('sandboxUpgrade-' + upgrade.id).value = String(P.levels[upgrade.id] || 0);
+      document.getElementById('sandboxUpgrade-' + upgrade.id).value = String(sourcePlayer.levels[upgrade.id] || 0);
     }
     mouse.down = false;
     document.getElementById('sandboxClose').focus();
+  }
+  function syncSandboxCpuOptions() {
+    const playerPresent = document.getElementById('sandboxPlayerPresent').checked;
+    const select = document.getElementById('sandboxCpuCount'), maxCount = playerPresent ? MAX_PLAYERS - 1 : MAX_PLAYERS;
+    for (const option of select.options) option.disabled = Number(option.value) > maxCount;
+    if (Number(select.value) > maxCount) select.value = String(maxCount);
   }
   function closeSandboxPanel() {
     sandboxPanelOpen = false;
@@ -2211,15 +2023,24 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   function startSandbox() {
     const status = document.getElementById('debugStatus');
-    const job = document.getElementById('debugJob').value;
+    const job = document.getElementById('sandboxJob').value;
     if (netRole !== 'solo' || !JOB_BY_ID.has(job)) {
       status.textContent = 'サンドボックスはソロプレイで開始してください。';
       return;
     }
+    spectatorMode = !document.getElementById('sandboxPlayerPresent').checked;
+    cpuTeamSize = Number(document.getElementById('sandboxCpuCount').value);
+    if (!Number.isInteger(cpuTeamSize) || cpuTeamSize < 0 || cpuTeamSize > (spectatorMode ? MAX_PLAYERS : MAX_PLAYERS - 1)) {
+      status.textContent = 'CPU人数の設定が有効な範囲外です。';
+      return;
+    }
+    cpuDifficulty = CPU_DIFFICULTY_PROFILES[document.getElementById('sandboxCpuDifficulty').value]
+      ? document.getElementById('sandboxCpuDifficulty').value : 'normal';
     demoMode = false; demoRestartFade = ''; demoFadeAlpha = 0;
     resetRun();
     P.job = job;
     jobSelections.set(1, job);
+    for (const cpu of cpuPlayers) cpu.job = job;
     state = 'play'; sandboxMode = true; sandboxInvulnerable = document.getElementById('sandboxInvulnerable').checked;
     wave = 0; phaseIdx = 0; phaseCount = 1; wavePhases = []; waveClearGuard = 0;
     randomEvent = null; spawns = [];
@@ -2229,6 +2050,56 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     document.getElementById('sandboxStatus').textContent = '';
     sfx.start();
     openSandboxPanel();
+  }
+  function applySandboxTeamSettings() {
+    const playerPresent = document.getElementById('sandboxPlayerPresent').checked;
+    const cpuCount = Number(document.getElementById('sandboxCpuCount').value);
+    const maxCpuCount = playerPresent ? MAX_PLAYERS - 1 : MAX_PLAYERS;
+    if (!Number.isInteger(cpuCount) || cpuCount < 0 || cpuCount > maxCpuCount) {
+      document.getElementById('sandboxStatus').textContent = 'CPU人数は0〜' + maxCpuCount + '人から選択してください。';
+      return false;
+    }
+    const previousCpuPlayers = cpuPlayers.slice();
+    const wasPlayerless = spectatorMode;
+    spectatorMode = !playerPresent;
+    cpuTeamSize = cpuCount;
+    cpuDifficulty = CPU_DIFFICULTY_PROFILES[document.getElementById('sandboxCpuDifficulty').value]
+      ? document.getElementById('sandboxCpuDifficulty').value : 'normal';
+    runPlayerCount = Math.max(1, cpuTeamSize + (playerPresent ? 1 : 0));
+    const fieldScale = 1 + FIELD_SCALE_PER_PLAYER * (runPlayerCount - 1);
+    W = Math.round(BASE_W * fieldScale); H = Math.round(BASE_H * fieldScale); resize();
+    P.x = W / 2 - (playerPresent ? 55 : 0); P.y = H / 2; P.prevX = P.x; P.prevY = P.y;
+    if (playerPresent) {
+      P.spectator = false;
+      if (wasPlayerless || P.hp <= 0) P.hp = P.maxHp;
+    } else {
+      P.spectator = true; P.hp = 0;
+    }
+    const ids = cpuPlayerIds(cpuTeamSize);
+    cpuPlayers = ids.map((id, index) => {
+      const cpu = previousCpuPlayers[index] || newPlayer(W / 2, H / 2, PLAYER_COLORS[(id - 1 + MAX_PLAYERS) % MAX_PLAYERS]);
+      cpu.id = id; cpu.name = 'CPU ' + (index + 1); cpu.cpu = true;
+      cpu.color = PLAYER_COLORS[(id - 1 + MAX_PLAYERS) % MAX_PLAYERS];
+      if (!JOB_BY_ID.has(cpu.job)) cpu.job = document.getElementById('sandboxJob').value;
+      const angle = -Math.PI / 2 + index * TAU / Math.max(1, ids.length);
+      cpu.x = W / 2 + Math.cos(angle) * 90; cpu.y = H / 2 + Math.sin(angle) * 90;
+      cpu.prevX = cpu.x; cpu.prevY = cpu.y;
+      return cpu;
+    });
+    document.getElementById('sandboxStatus').textContent = 'プレイヤー' + (playerPresent ? 'あり' : 'なし') + ' / CPU ' + cpuPlayers.length + '人';
+    return true;
+  }
+  function applySandboxBuild(player, levels, job) {
+    player.job = job;
+    player.S = newStats(); player.levels = {}; player.speed = PLAYER_BASE_SPEED;
+    player.maxHp = 500; player.hp = 500; player.cool = 0; player.dashT = 0; player.dashCd = 0;
+    player.armorCd = 0; player.kx = 0; player.ky = 0;
+    for (const upgrade of UPG) {
+      const level = levels[upgrade.id] || 0;
+      for (let i = 0; i < level; i++) upgrade.apply(player.S, player);
+      if (level > 0) player.levels[upgrade.id] = level;
+    }
+    player.hp = player.maxHp;
   }
   function applySandboxUpgrades() {
     const status = document.getElementById('sandboxStatus');
@@ -2249,27 +2120,50 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       document.getElementById('sandboxJob').focus();
       return;
     }
-    P.job = job; jobSelections.set(1, job);
-    P.S = newStats(); P.levels = {}; P.speed = PLAYER_BASE_SPEED;
-    P.maxHp = 500; P.hp = 500; P.cool = 0; P.dashT = 0; P.dashCd = 0;
-    P.armorCd = 0; P.kx = 0; P.ky = 0;
-    for (const upgrade of UPG) {
-      const level = levels[upgrade.id];
-      for (let i = 0; i < level; i++) upgrade.apply(P.S, P);
-      if (level > 0) P.levels[upgrade.id] = level;
-    }
-    P.hp = P.maxHp;
+    for (const player of partyPlayers()) applySandboxBuild(player, levels, job);
+    jobSelections.set(1, job);
     sandboxInvulnerable = document.getElementById('sandboxInvulnerable').checked;
-    status.textContent = 'プレイヤーのアップグレードを反映しました。';
+    status.textContent = partyPlayers().length + '人にアップグレードを反映しました。';
+  }
+  function autoAllocateSandboxUpgrades() {
+    const status = document.getElementById('sandboxStatus');
+    const levelField = document.getElementById('sandboxSkillLevel'), levelCount = Number(levelField.value);
+    const job = document.getElementById('sandboxJob').value;
+    if (!levelField.value.trim() || !Number.isInteger(levelCount) || levelCount < 0 || levelCount > MAX_DEBUG_UPGRADE_LEVEL || !JOB_BY_ID.has(job)) {
+      status.textContent = 'レベル数は0〜' + MAX_DEBUG_UPGRADE_LEVEL + 'の整数、ジョブは有効なジョブを指定してください。';
+      levelField.focus();
+      return;
+    }
+    const levels = {};
+    for (const upgrade of UPG) levels[upgrade.id] = 0;
+    const jobInfo = JOB_BY_ID.get(job);
+    const pool = UPG.map((upgrade) => ({
+      upgrade,
+      weight: upgrade.weight * (upgrade.categories.some((category) => category !== 'none' && jobInfo.categories.includes(category)) ? JOB_UPGRADE_WEIGHT : 1)
+    }));
+    for (let level = 0; level < levelCount; level++) {
+      const total = pool.reduce((sum, item) => sum + item.weight, 0);
+      let roll = Math.random() * total;
+      const selected = pool.find((item) => (roll -= item.weight) <= 0) || pool[pool.length - 1];
+      levels[selected.upgrade.id]++;
+    }
+    for (const upgrade of UPG) document.getElementById('sandboxUpgrade-' + upgrade.id).value = String(levels[upgrade.id]);
+    applySandboxUpgrades();
   }
   function spawnSandboxEnemy() {
     const status = document.getElementById('sandboxStatus');
     const type = document.getElementById('sandboxEnemyType').value;
+    const waveField = document.getElementById('sandboxEnemyWave'), enemyWave = Number(waveField.value);
     const xField = document.getElementById('sandboxEnemyX'), yField = document.getElementById('sandboxEnemyY');
     const x = Number(xField.value), y = Number(yField.value);
     const reviveField = document.getElementById('sandboxReviveStacks'), reviveStacks = Number(reviveField.value);
     if (!Object.prototype.hasOwnProperty.call(ET, type)) {
       status.textContent = '敵タイプを選択してください。';
+      return;
+    }
+    if (!waveField.value.trim() || !Number.isInteger(enemyWave) || enemyWave < 1 || enemyWave > 999) {
+      status.textContent = '敵の強さは1〜999ウェーブの整数で入力してください。';
+      waveField.focus();
       return;
     }
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > W || y < 0 || y > H) {
@@ -2292,11 +2186,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       return;
     }
     let enemy;
-    if (type === 'train') {
-      const edge = Number(document.getElementById('sandboxTrainEdge').value);
-      spawnTrain({ edge, x, y });
-      enemy = enemies.find((candidate) => candidate.type === 'train' && candidate.cid === trainCid - 1 && candidate.ci === 0);
-    } else enemy = spawnEnemy(type, x, y, false, false);
+    const currentWave = wave;
+    wave = enemyWave;
+    try {
+      if (type === 'train') {
+        const edge = Math.floor(Math.random() * 4);
+        spawnTrain({ edge, x, y });
+        enemy = enemies.find((candidate) => candidate.type === 'train' && candidate.cid === trainCid - 1 && candidate.ci === 0);
+      } else enemy = spawnEnemy(type, x, y, false, false);
+    } finally {
+      wave = currentWave;
+    }
     if (!enemy) {
       status.textContent = '敵を生成できませんでした。';
       return;
@@ -2308,10 +2208,17 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   function reviveSandboxPlayer() {
     if (!sandboxMode) return;
-    P.hp = P.maxHp; P.inv = 1; P.x = W / 2; P.y = H / 2; P.prevX = P.x; P.prevY = P.y;
-    P.kx = 0; P.ky = 0; state = 'play'; dyT = 0; overT = 0;
+    if (!applySandboxTeamSettings()) return;
+    for (const player of partyPlayers()) {
+      player.hp = player.maxHp; player.inv = 1;
+      player.kx = 0; player.ky = 0; player.dashT = 0; player.dashCd = 0;
+      player.deathX = null; player.deathY = null;
+      if (player === P) { player.x = W / 2 - (spectatorMode ? 0 : 55); player.y = H / 2; }
+      player.prevX = player.x; player.prevY = player.y;
+    }
+    state = 'play'; dyT = 0; overT = 0;
     document.getElementById('gameOverScreen').hidden = true;
-    document.getElementById('sandboxStatus').textContent = '自機を全回復してステージ中央に戻しました。';
+    document.getElementById('sandboxStatus').textContent = 'プレイヤーとCPUを復帰しました（CPU ' + cpuPlayers.length + '人）。';
   }
 
   /* ---------- fx helpers ---------- */
@@ -2434,16 +2341,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     let a = Math.atan2(aimY - shooter.y, aimX - shooter.x);
     const n = Math.max(1, Math.floor(S.shots));
     const bulletSpeed = S.bspeed;
-    const kingShot = isEventKing(shooter);                  // 王様の弾は強力で大きい
-    const shotDamage = S.dmg / Math.sqrt(n) * (kingShot ? KING_DAMAGE_BOOST : 1);
-    const shotRadius = S.bsize * (kingShot ? KING_BULLET_SIZE : 1);
+    const shotDamage = S.dmg / Math.sqrt(n);
     for (let i = 0; i < n; i++) {
       const ang = a + (i - (n - 1) / 2) * S.spread;
       const c = Math.cos(ang), s = Math.sin(ang);
       bullets.push({
         x: shooter.x + c * (shooter.r + 6), y: shooter.y + s * (shooter.r + 6),
         vx: c * bulletSpeed, vy: s * bulletSpeed,
-        r: shotRadius, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: projectileLifetime(bulletSpeed, 1.4), hit: new Set(), px: shooter.x, py: shooter.y,
+        r: S.bsize, dmg: shotDamage, pierceChance: S.pierce, ricochetChance: S.ric, life: projectileLifetime(bulletSpeed, 1.4), hit: new Set(), px: shooter.x, py: shooter.y,
         color: shooter.color || C.bullet,
         homing: !!S.missileHoming, owner: shooter.id || 1,
         crit: S.critChance, cdmg: S.critDmg, kb: S.kb, burst: S.burstLv, burstDmg: S.burstDmg, guide: S.guideLevel,
@@ -2457,12 +2362,60 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     shake = Math.max(shake, 1.2);
     sfx.shoot();
   }
+  function cpuTargetPoint(enemy, pl, profile) {
+    if (profile.strategic && enemy.type === 'fortless' && Array.isArray(enemy.plates)) {
+      const exposed = enemy.plates.map((plate, index) => ({ plate, index }))
+        .filter(({ plate }) => plate.hp <= 0);
+      if (exposed.length) {
+        let best = null, bestDistance = Infinity;
+        for (const { index } of exposed) {
+          const point = fortlessPanelCenter(enemy, index);
+          const distance = Math.hypot(point.x - pl.x, point.y - pl.y);
+          if (distance < bestDistance) { best = point; bestDistance = distance; }
+        }
+        if (best) return best;
+      }
+    }
+    return nearPt(enemy, pl.x, pl.y);
+  }
+  function cpuAimPoint(enemy, pl, point, profile) {
+    const dx = point.x - pl.x, dy = point.y - pl.y, distance = Math.hypot(dx, dy) || 1;
+    const lead = profile.aimLead || 0;
+    if (!lead || !Number.isFinite(enemy.cpuVx) || !Number.isFinite(enemy.cpuVy)) return point;
+    const flightTime = Math.min(0.9, distance / Math.max(1, pl.S.bspeed || 260)) * lead;
+    return { x: point.x + enemy.cpuVx * flightTime, y: point.y + enemy.cpuVy * flightTime };
+  }
+  function cpuSpreadAim(pl, target, point, profile) {
+    const dx = point.x - pl.x, dy = point.y - pl.y, distance = Math.hypot(dx, dy) || 1;
+    const targetAngle = Math.atan2(dy, dx), shotCount = Math.max(1, Math.floor(pl.S.shots || 1));
+    const spread = pl.S.spread || 0, offsets = Array.from({ length: shotCount }, (_, index) => (index - (shotCount - 1) / 2) * spread);
+    const candidates = [0].concat(offsets).map((offset) => targetAngle - offset);
+    const pointRadius = Math.max(8, target.r || ET[target.type].r || 16);
+    const hitRadius = pointRadius * (0.72 + 0.28 * profile.aimQuality);
+    let bestAngle = targetAngle, bestScore = -Infinity;
+    for (const candidate of candidates) {
+      let hits = 0, precision = 0;
+      for (const offset of offsets) {
+        const difference = Math.abs(Math.atan2(Math.sin(candidate + offset - targetAngle), Math.cos(candidate + offset - targetAngle)));
+        const miss = distance * Math.sin(difference);
+        if (miss <= hitRadius) { hits++; precision += hitRadius - miss; }
+      }
+      const shift = Math.abs(Math.atan2(Math.sin(candidate - targetAngle), Math.cos(candidate - targetAngle)));
+      const score = hits * 100 + precision - shift * 0.01;
+      if (score > bestScore) { bestScore = score; bestAngle = candidate; }
+    }
+    const error = (profile.aimError || 0) * (1 - profile.aimQuality);
+    return {
+      x: pl.x + Math.cos(bestAngle) * distance + Math.sin(time * 1.7 + pl.id) * error,
+      y: pl.y + Math.sin(bestAngle) * distance + Math.cos(time * 1.3 + pl.id) * error
+    };
+  }
   function cpuControl(pl) {
     const profile = CPU_DIFFICULTY_PROFILES[cpuDifficulty] || CPU_DIFFICULTY_PROFILES.normal;
     let target = null, targetPoint = null, targetDistance = Infinity, targetScore = Infinity;
     for (const enemy of enemies) {
       if (enemy.hp <= 0) continue;
-      const point = nearPt(enemy, pl.x, pl.y);
+      const point = cpuTargetPoint(enemy, pl, profile);
       const distance = Math.hypot(point.x - pl.x, point.y - pl.y);
       let score = distance;
       if (profile.strategic) {
@@ -2555,6 +2508,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       for (const enemy of enemies) {
         const pseptCopies = enemy.type === 'psept' && enemy.pseptAction === 3;
+        if (enemy.type === 'stardust' && enemy.enhanced && enemy.holyLaserPhase > 0) {
+          for (let i = 0; i < 4; i++) repelBeam(enemy.x, enemy.y, enemy.holyLaserBase + i * Math.PI / 2, enemy.holyLaserPhase === 1 ? 4 : 12);
+        }
         if ((isLaserStar(enemy.type) || pseptCopies) && enemy.laserPhase > 0) {
           const weight = enemy.laserPhase === 3 ? Math.max(0, enemy.laserT / (enemy.laserT0 || 0.2)) : 1;
           const width = enemy.type === 'phexstar' || pseptCopies ? 11 : 7;
@@ -2568,8 +2524,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         if (enemy.type === 'fortless') for (let i = 0; i < (enemy.plates || []).length; i++) {
           const plate = enemy.plates[i];
           if (plate.type === 'laser' && plate.laserPhase > 0) {
-            const face = fortlessFacePoint(enemy, i);
-            repelBeam(face.x, face.y, plate.laserAngle, plate.laserPhase === 1 ? 3 : 12);
+            for (const offset of [-23, 23]) {
+              const mount = fortlessMount(enemy, i, offset, 12);
+              repelBeam(mount.x, mount.y, plate.laserAngle, plate.laserPhase === 1 ? 3 : 12);
+            }
           }
         }
         if (enemy.type === 'trinity') {
@@ -2578,6 +2536,22 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           }
           if (enemy.beam) for (let i = 0; i < 3; i++) repelBeam(enemy.cx, enemy.cy, enemy.la + i * TAU / 3, 13);
         }
+        if (enemy.type === 'funnels') {
+          for (const satellite of enemy.funnels || []) {
+            if (enemy.funnelMode === 'rush' && (satellite.state === 'warning' || satellite.state === 'dash')) {
+              repelBeam(satellite.x, satellite.y, satellite.angle, satellite.state === 'warning' ? 5 : 15, 1, satellite.wall ? satellite.wall.distance : laserRayLength());
+            }
+            if (enemy.funnelMode === 'laser' && (enemy.funnelLaserPhase === 'warning' || enemy.funnelLaserPhase === 'active')) {
+              repelBeam(satellite.x, satellite.y, satellite.angle, enemy.funnelLaserPhase === 'warning' ? 5 : 14, 1, satellite.wall ? satellite.wall.distance : laserRayLength());
+            }
+          }
+          if (enemy.funnelMode === 'slash' && enemy.funnelSlashPhase === 'warning') {
+            for (const angle of enemy.funnelSlashAngles || []) repelBeam(enemy.x, enemy.y, angle, 5);
+          }
+        }
+        if (enemy.type === 'train' && enemy.rushWarning && Number.isFinite(enemy.rushWarning.angle)) {
+          repelBeam(enemy.rushWarning.x, enemy.rushWarning.y, enemy.rushWarning.angle, 14);
+        }
       }
       for (const rush of trainRushes) for (let i = 0; i < rush.length; i++) {
         const x = rush.x - Math.cos(rush.angle) * TRAIN_GAP * i;
@@ -2585,29 +2559,31 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         repelPoint(x, y, i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS);
       }
     }
-    const eventSteer = cpuEventSteer(pl);
-    if (eventSteer) { moveX += eventSteer.x; moveY += eventSteer.y; }
     if (pl.x < 90) moveX += (90 - pl.x) / 90;
     else if (pl.x > W - 90) moveX -= (pl.x - W + 90) / 90;
     if (pl.y < 90) moveY += (90 - pl.y) / 90;
     else if (pl.y > H - 90) moveY -= (pl.y - H + 90) / 90;
     const moveLength = Math.hypot(moveX, moveY);
     if (moveLength > 1) { moveX /= moveLength; moveY /= moveLength; }
+    const cornered = !!profile.cornerEscape
+      && ((pl.x < 82 || pl.x > W - 82) && (pl.y < 82 || pl.y > H - 82));
+    if (cornered) {
+      moveX += (W / 2 - pl.x) / Math.max(1, W / 2);
+      moveY += (H / 2 - pl.y) / Math.max(1, H / 2);
+    }
     const evadeBullet = nearestBulletDistance < profile.dashRange && nearestBullet;
     const evadeSpecial = specialDashForce > 0.55;
     const dashAtEnemy = !evadeBullet && !evadeSpecial && pl.S.dashDamage > 0 && targetDistance < (profile.strategic ? 155 : 125) && targetPoint;
-    const dashTarget = evadeBullet ? { x: nearestBullet.x, y: nearestBullet.y } : targetPoint || nearestEnemy;
-    const dashX = evadeBullet ? pl.x - dashTarget.x : evadeSpecial ? specialDashX : dashAtEnemy ? dashTarget.x - pl.x : dashTarget ? pl.x - dashTarget.x : moveX;
-    const dashY = evadeBullet ? pl.y - dashTarget.y : evadeSpecial ? specialDashY : dashAtEnemy ? dashTarget.y - pl.y : dashTarget ? pl.y - dashTarget.y : moveY;
-    const aimError = profile.aimError || 0;
+    const dashTarget = evadeBullet ? { x: nearestBullet.x, y: nearestBullet.y } : cornered ? { x: W / 2, y: H / 2 } : targetPoint || nearestEnemy;
+    const dashX = evadeBullet ? pl.x - dashTarget.x : evadeSpecial ? specialDashX : cornered ? dashTarget.x - pl.x : dashAtEnemy ? dashTarget.x - pl.x : dashTarget ? pl.x - dashTarget.x : moveX;
+    const dashY = evadeBullet ? pl.y - dashTarget.y : evadeSpecial ? specialDashY : cornered ? dashTarget.y - pl.y : dashAtEnemy ? dashTarget.y - pl.y : dashTarget ? pl.y - dashTarget.y : moveY;
+    const aimPoint = target && targetPoint ? cpuSpreadAim(pl, target, cpuAimPoint(target, pl, targetPoint, profile), profile) : null;
     return {
       dx: moveX, dy: moveY,
-      aimX: targetPoint ? targetPoint.x + Math.sin(time * 1.7 + pl.id) * aimError : pl.x + 1,
-      aimY: targetPoint ? targetPoint.y + Math.cos(time * 1.3 + pl.id) * aimError : pl.y,
-      fire: !!target, dash: pl.dashCd <= 0 && pl.dashT <= 0 && (eventSteer && eventSteer.dash ? true
-        : !(eventSteer && eventSteer.holdDash) && (!!evadeBullet || evadeSpecial || !!dashAtEnemy)),
-      dashX: eventSteer && eventSteer.dash ? eventSteer.dash.x : dashX,
-      dashY: eventSteer && eventSteer.dash ? eventSteer.dash.y : dashY
+      aimX: aimPoint ? aimPoint.x : pl.x + 1,
+      aimY: aimPoint ? aimPoint.y : pl.y,
+      fire: !!target, dash: pl.dashCd <= 0 && pl.dashT <= 0 && (!!evadeBullet || evadeSpecial || !!dashAtEnemy || cornered),
+      dashX, dashY
     };
   }
 
@@ -2664,13 +2640,27 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const hadReviveStacks = (e.reviveStacks || 0) > 0;
     const revived = !e.silent && reviveEnemy(e);
     if (revived && e.type === 'train') return false;
-    if (!revived && e.type !== 'tridrone') kills++;
+    if (!revived && e.type !== 'tridrone' && e.type !== 'fortlessDrone') kills++;
     const et = ET[e.type];
     const color = e.color || et.color;
+    const deathX = e.type === 'funnels' && Number.isFinite(e.lastHitX) ? e.lastHitX : e.x;
+    const deathY = e.type === 'funnels' && Number.isFinite(e.lastHitY) ? e.lastHitY : e.y;
     const sm = e.type === 'tri';
-    burst(e.x, e.y, sm ? 18 : 26, color, 320, 0.6, 3.4);
-    burst(e.x, e.y, 8, '#ffffff', 220, 0.35, 2.4);
-    ring(e.x, e.y, sm ? 64 : 84, 0.38, color, 3);
+    if (e.type === 'funnels' && e.funnels && e.funnels.length) {
+      for (const satellite of e.funnels) {
+        burst(satellite.x, satellite.y, 16, color, 320, 0.52, 3.5);
+        burst(satellite.x, satellite.y, 7, '#ffffff', 230, 0.34, 2.5);
+        ring(satellite.x, satellite.y, 76, 0.4, color, 3.5);
+      }
+    } else {
+      burst(e.x, e.y, sm ? 18 : 26, color, 320, 0.6, 3.4);
+      burst(e.x, e.y, 8, '#ffffff', 220, 0.35, 2.4);
+      ring(e.x, e.y, sm ? 64 : 84, 0.38, color, 3);
+    }
+    if (e.type === 'train' && !e.silent &&
+        !enemies.some((segment) => segment !== e && segment.type === 'train' && segment.cid === e.cid && segment.hp > 0)) {
+      fireTrainSplitVolley(e.x, e.y);
+    }
     if (e.matrixCells) for (const cell of e.matrixCells) {
       const pos = matrixCellCenter(e, cell);
       burst(pos.x, pos.y, 8, color, 320, 0.45, 3);
@@ -2678,7 +2668,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     shake = Math.max(shake, sm ? 5 : 8);
     sfx.kill();
     const canTriggerHardDebuffs = hardModeEnabled && !revived && !hadReviveStacks && !e.silent &&
-      !et.boss && !et.seg && e.type !== 'tridrone';
+      !et.boss && !et.seg && e.type !== 'tridrone' && e.type !== 'fortlessDrone';
     if (canTriggerHardDebuffs && debuffLevel('enemySplit') && Math.random() < 0.05) {
       for (let i = 0; i < 2; i++) {
         const angle = i * Math.PI + Math.random() * 0.35;
@@ -2695,9 +2685,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
     if (ET[e.type].cross && !e.silent) crossHealOnDeath(e);
     const itemDropChance = ITEM_DROP + (randomEvent && randomEvent.type === 'items' ? ITEM_BONUS_DROP : 0);
-    if (!revived && e.type !== 'tridrone' && !e.silent && (ET[e.type].cross || Math.random() < itemDropChance)) items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false });
+    if (!revived && e.type !== 'tridrone' && e.type !== 'fortlessDrone' && !e.silent && (ET[e.type].cross || Math.random() < itemDropChance)) items.push({ x: deathX, y: deathY, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false });
     if (isPureEnemy(e.type) && !e.silent && Math.random() < 0.12) {
-      items.push({ x: e.x, y: e.y, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false, type: 'reroll' });
+      items.push({ x: deathX, y: deathY, life: 12, max: 12, ph: Math.random() * TAU, speed: 0, targetId: null, attracted: false, type: 'reroll' });
     }
     if (ET[e.type].cross && isEliteEnemy(e.type) && !e.silent) {
       let granted = 0;
@@ -2717,7 +2707,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       if (granted) sfx.heal();
     }
-    if (!revived && !e.silent && e.type !== 'tridrone') {
+    if (!revived && !e.silent && e.type !== 'tridrone' && e.type !== 'fortlessDrone') {
       const killer = partyPlayers().find((pl) => pl.id === e.lastHitPlayerId);
       if (killer && killer.hp > 0) {
         const heal = Math.min(killer.maxHp - killer.hp, lifeStealHeal(killer.S.lifeSteal));
@@ -2808,6 +2798,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
     if (enemy.type !== 'train') {
       if (Number.isInteger(sourcePlayerId)) enemy.lastHitPlayerId = sourcePlayerId;
+      if (enemy.type === 'funnels' && Number.isFinite(hitX) && Number.isFinite(hitY)) {
+        enemy.lastHitX = hitX; enemy.lastHitY = hitY;
+      }
       enemy.hp -= amount;
       enemy.flash = 0.09;
       if (enemy.type === 'matrix') {
@@ -2930,8 +2923,6 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
 
   function getTargetPlayer(x, y) {
-    const king = eventKing();
-    if (king) return king;
     const candidates = partyPlayers();
     const alive = candidates.filter(p => p.hp > 0);
     return alive.sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0] || P;
@@ -3050,11 +3041,38 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       floatText(e.x, e.y - 74, 'ENRAGED', BOSS_COL);
       shake = Math.max(shake, 10); sfx.boss();
     }
+    if (e.enhanced) updateHolyStardustLaser(e, dt);
     e.cd -= dt;
     if (e.cd <= 0) {                                // 流れ星 → 星弾 を交互に
-      if (e.atk % 2 === 0) bossMeteors(e); else bossBounce(e);
+      if (e.atk % 2 === 0) {
+        bossMeteors(e);
+        if (e.enhanced) startHolyStardustLaser(e);
+      } else bossBounce(e);
       e.atk++;
       e.cd = e.p2 ? 1.9 : 2.7;
+    }
+    function startHolyStardustLaser(e) {
+      e.holyLaserPhase = 1; e.holyLaserT = 0.75; e.holyLaserBase = e.rot;
+    }
+    function updateHolyStardustLaser(e, dt) {
+      if (!e.holyLaserPhase) return;
+      if (e.holyLaserPhase === 1) {
+        e.holyLaserT -= dt;
+        if (e.holyLaserT <= 0) { e.holyLaserPhase = 2; e.holyLaserT = 1.5; }
+      } else {
+        for (let i = 0; i < 4; i++) {
+          const angle = e.holyLaserBase + i * Math.PI / 2, dx = Math.cos(angle), dy = Math.sin(angle);
+          for (const player of partyPlayers()) {
+            if (player.hp <= 0 || player.inv > 0) continue;
+            const pos = playerPosition(player), rx = pos.x - e.x, ry = pos.y - e.y;
+            if (rx * dx + ry * dy <= 0 || Math.abs(rx * dy - ry * dx) > 10 + player.r * 0.5) continue;
+            if (player === P) hurtPlayer(12, e.x, e.y); else hurtRemotePlayer(player, 12, e.x, e.y);
+            break;
+          }
+        }
+        e.holyLaserT -= dt;
+        if (e.holyLaserT <= 0) e.holyLaserPhase = 0;
+      }
     }
   }
   function bossMeteors(e) {
@@ -3063,11 +3081,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     for (let i = 0; i < n; i++) {
       meteors.push({
         x: 50 + Math.random() * (W - 100), y: 100 + Math.random() * (H - 150),
-        t: -i * 0.12, warn: 0.9, fall: 0.3, r: 160, fell: false
+        t: -i * 0.12, warn: 0.9, fall: 0.3, r: 160, fell: false, color: e.enhanced ? '#75d9e8' : BOSS_COL
       });
     }
-    ring(e.x, e.y, 90, 0.35, BOSS_COL, 3);
-    burst(e.x, e.y, 10, BOSS_COL, 200, 0.4, 3);
+    const color = e.enhanced ? '#75d9e8' : BOSS_COL;
+    ring(e.x, e.y, 90, 0.35, color, 3);
+    burst(e.x, e.y, 10, color, 200, 0.4, 3);
     sfx.bossCall();
   }
   function quadStarFall(e, elite, countOverride, spacing) {
@@ -3088,6 +3107,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       ebullets.push({
         x: e.x + c * e.r * 0.8, y: e.y + s * e.r * 0.8, vx: c * 210, vy: s * 210,
         r: 8, life: projectileLifetime(210, 9), bounce: bn, star: true, color: BOUNCE_COL, dmg: 12, rot: 0
+      });
+    }
+    if (e.enhanced) for (let i = 0; i < 8; i++) {
+      const a = base + (i + 0.5) * TAU / 8, speed = 250, c = Math.cos(a), s = Math.sin(a);
+      ebullets.push({
+        x: e.x + c * e.r * 0.8, y: e.y + s * e.r * 0.8,
+        vx: c * speed, vy: s * speed, r: 5.5,
+        life: projectileLifetime(speed, 5.5), color: ET.stardust.color, dmg: 10
       });
     }
     burst(e.x, e.y, 12, BOUNCE_COL, 220, 0.35, 2.8);
@@ -3112,15 +3139,19 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     e.turn = 0; e.sStage = 0; e.sT = 0; e.bursts = 0;
     e.beamReverseStart = 0; e.beamReverseDuration = 0;
     e.cx = e.x; e.cy = e.y;
+    const mergeSpeed = e.enhanced ? 175 : 0, mergeDirection = Math.random() * TAU;
+    e.mergeVx = Math.cos(mergeDirection) * mergeSpeed; e.mergeVy = Math.sin(mergeDirection) * mergeSpeed;
+    e.bondedMeteorT = 0.6;
     e.parts = [0, 1, 2].map((i) => {
       const a = e.la + i * TAU / 3;
       return { x: e.x + Math.cos(a) * TRI_OFS, y: e.y + Math.sin(a) * TRI_OFS, rot: a, chg: 0, atkT: 0, laserPhase: 0, laserAngle: a };
     });
   }
-  function trinityBullet(x, y, a, sp, r, extra) {
+  function trinityColor(e) { return e.color || ET.trinity.color; }
+  function trinityBullet(x, y, a, sp, r, extra, color = ET.trinity.color) {
     const c = Math.cos(a), s = Math.sin(a);
     const minLife = extra && Number.isFinite(extra.life) ? extra.life : 5.5;
-    const bullet = Object.assign({ x, y, vx: c * sp, vy: s * sp, r: r || 5.5, life: projectileLifetime(sp, minLife), color: ET.trinity.color }, extra);
+    const bullet = Object.assign({ x, y, vx: c * sp, vy: s * sp, r: r || 5.5, life: projectileLifetime(sp, minLife), color }, extra);
     bullet.life = Math.max(bullet.life, projectileLifetime(sp, minLife));
     ebullets.push(bullet);
   }
@@ -3129,17 +3160,22 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const p = e.parts[i];
       for (let k = 0; k < 3; k++) {
         const a = e.la + TAU / 6 + i * TAU / 9 + k * TAU / 3;
-        trinityBullet(p.x + Math.cos(a) * e.r * 0.8, p.y + Math.sin(a) * e.r * 0.8, a, 175 * tk, 5);
+        trinityBullet(p.x + Math.cos(a) * e.r * 0.8, p.y + Math.sin(a) * e.r * 0.8, a, 175 * tk, 5, undefined, trinityColor(e));
       }
     }
-    ring(e.cx, e.cy, 54, 0.25, ET.trinity.color, 2);
+    ring(e.cx, e.cy, 54, 0.25, trinityColor(e), 2);
     sfx.eshoot();
   }
   function trinityVolley(e, p, tk, bounce) {
     const target = getTargetPlayer(p.x, p.y), a0 = Math.atan2(target.y - p.y, target.x - p.x);
-    for (let k = -1; k <= 1; k++) trinityBullet(p.x, p.y, a0 + k * 0.28, (e.p2 ? 255 : 225) * tk, 5.5, bounce ? { life: 9, bounce, triangle: true, rot: 0, dmg: 12 } : undefined);
-    burst(p.x, p.y, 6, ET.trinity.color, 150, 0.22, 2.4);
-    ring(p.x, p.y, 40, 0.25, ET.trinity.color, 2);
+    const ways = e.enhanced ? 5 : 3;
+    for (let k = 0; k < ways; k++) {
+      const offset = k - (ways - 1) / 2;
+      trinityBullet(p.x, p.y, a0 + offset * 0.28, (e.p2 ? 255 : 225) * tk, 5.5,
+        bounce ? { life: 9, bounce, triangle: true, rot: 0, dmg: 12 } : undefined, trinityColor(e));
+    }
+    burst(p.x, p.y, 6, trinityColor(e), 150, 0.22, 2.4);
+    ring(p.x, p.y, 40, 0.25, trinityColor(e), 2);
   }
   function trinityPartBeamHit(p) {
     const c = Math.cos(p.laserAngle), s = Math.sin(p.laserAngle);
@@ -3162,18 +3198,38 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       p.laserAngle = Math.atan2(target.y - p.y, target.x - p.x);
     }
   }
-  function trinityMeteorVolley(p) {
+  function trinityMeteorVolley(e, p) {
     const target = getTargetPlayer(p.x, p.y);
-    const angle = Math.atan2(target.y - p.y, target.x - p.x);
-    const c = Math.cos(angle), s = Math.sin(angle);
-    for (let i = 0; i < 5; i++) {
-      const distance = 72 + i * 68;
-      const x = Math.max(34, Math.min(W - 34, p.x + c * distance));
-      const y = Math.max(34, Math.min(H - 34, p.y + s * distance));
-      meteors.push({ x, y, t: -i * 0.13, warn: 0.62, fall: 0.26, r: 72, color: ET.trinity.color, trinity: true });
+    const aim = Math.atan2(target.y - p.y, target.x - p.x);
+    const ways = e.enhanced ? 5 : 3;
+    for (let i = 0; i < ways; i++) {
+      const angle = aim + (i - (ways - 1) / 2) * 0.34;
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      const edgeDistance = Math.min(
+        dx > 0 ? (W - 40 - p.x) / dx : dx < 0 ? (40 - p.x) / dx : Infinity,
+        dy > 0 ? (H - 40 - p.y) / dy : dy < 0 ? (40 - p.y) / dy : Infinity
+      );
+      const count = Math.max(1, Math.ceil(Math.max(0, edgeDistance) / 82));
+      for (let i = 1; i <= count; i++) {
+        const distance = Math.min(edgeDistance, i * 82);
+        const x = Math.max(40, Math.min(W - 40, p.x + dx * distance));
+        const y = Math.max(40, Math.min(H - 40, p.y + dy * distance));
+        meteors.push({ x, y, t: -(i - 1) * 0.11, warn: 0.62, fall: 0.26, r: 72, color: trinityColor(e), trinity: true });
+      }
     }
-    ring(p.x + c * 180, p.y + s * 180, 180, 0.34, ET.trinity.color, 3);
+    ring(p.x + Math.cos(aim) * 180, p.y + Math.sin(aim) * 180, 180, 0.34, trinityColor(e), 3);
     sfx.meteor();
+  }
+  function trinityStartMerging(e) {
+    e.form = 'merging'; e.ft = 0;
+    e.mergeX = 180 + Math.random() * Math.max(1, W - 360);
+    e.mergeY = 150 + Math.random() * Math.max(1, H - 300);
+    e.mergeAngle = Math.random() * TAU;
+    e.parts.forEach((part) => { part.chg = 0; part.laserPhase = 0; });
+  }
+  function trinityMergeTarget(e, index) {
+    const angle = (Number.isFinite(e.mergeAngle) ? e.mergeAngle : e.la) + index * TAU / 3;
+    return { x: e.mergeX + Math.cos(angle) * TRI_OFS, y: e.mergeY + Math.sin(angle) * TRI_OFS };
   }
   function trinitySpawnDrones(p) {
     for (let i = 0; i < 9; i++) {
@@ -3190,12 +3246,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   }
   function trinitySplitAttack(e, p, tk) {
     const target = getTargetPlayer(p.x, p.y), aim = Math.atan2(target.y - p.y, target.x - p.x), mode = Math.floor(Math.random() * 4);
-    const fire = (a, speed) => trinityBullet(p.x + Math.cos(a) * e.r, p.y + Math.sin(a) * e.r, a, speed * tk, 5);
+    const fire = (a, speed) => trinityBullet(p.x + Math.cos(a) * e.r, p.y + Math.sin(a) * e.r, a, speed * tk, 5, undefined, trinityColor(e));
     if (mode === 0) for (let i = -2; i <= 2; i++) fire(aim + i * 0.4, 145);
     else if (mode === 1) for (let i = -1; i <= 1; i++) fire(aim + i * 0.24, 165);
     else if (mode === 2) for (let i = -1; i <= 1; i += 2) fire(aim + i * 0.12, 155);
     else for (let i = 0; i < 6; i++) fire(i * TAU / 6 + e.phi, 135);
-    ring(p.x, p.y, 36, 0.2, ET.trinity.color, 2);
+    ring(p.x, p.y, 36, 0.2, trinityColor(e), 2);
     sfx.eshoot();
   }
   function trinityBeamHit(e) {                          // レーザー判定
@@ -3226,8 +3282,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         e.beamReverseStart = e.bp;
         e.beamReverseDuration = Math.min(TRI_ENRAGED_REVERSAL_DURATION, act - e.beamReverseStart);
       }
-      ring(e.x, e.y, 170, 0.6, ET.trinity.color, 4);
-      floatText(e.x, e.y - 74, 'ENRAGED', ET.trinity.color);
+      ring(e.x, e.y, 170, 0.6, trinityColor(e), 4);
+      floatText(e.x, e.y - 74, 'ENRAGED', trinityColor(e));
       shake = Math.max(shake, 10); sfx.boss();
     }
     e.ft += dt;
@@ -3254,12 +3310,21 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       } else {                                           // 分離開始: 各三角形が自分の向きへ飛び出す
         e.form = 'splitting'; e.ft = 0; e.beam = 0; e.phi = e.la; e.turn = 0; e.sStage = 0; e.sT = 0;
         parts.forEach((q) => { q.laserPhase = 0; });
-        ring(e.cx, e.cy, 120, 0.4, ET.trinity.color, 3); shake = Math.max(shake, 6); sfx.impact();
+        ring(e.cx, e.cy, 120, 0.4, trinityColor(e), 3); shake = Math.max(shake, 6); sfx.impact();
       }
     } else if (e.form === 'splitting') {
       if (e.ft >= TRI_SPLIT_T) { e.form = 'split'; e.ft = 0; trinityStartSplitTurn(e); }
     } else if (e.form === 'merging') {
-      if (e.ft >= TRI_MERGE_T) { e.form = 'merged'; e.ft = 0; e.vT = 0.3; e.dir *= -1; parts.forEach((q) => { q.laserPhase = 0; }); ring(e.cx, e.cy, 100, 0.4, ET.trinity.color, 3); sfx.impact(); }
+      if (e.ft >= TRI_MERGE_T) {
+        e.form = 'merged'; e.ft = 0; e.vT = 0.3; e.dir *= -1; e.la = e.mergeAngle;
+        e.cx = e.mergeX; e.cy = e.mergeY;
+        if (e.enhanced) {
+          const direction = Math.random() * TAU;
+          e.mergeVx = Math.cos(direction) * 175; e.mergeVy = Math.sin(direction) * 175;
+        }
+        parts.forEach((q) => { q.laserPhase = 0; });
+        ring(e.cx, e.cy, 100, 0.4, trinityColor(e), 3); sfx.impact();
+      }
     }
     // --- 各パーツの3way連射後、順番に1本ずつレーザーを撃つ
     if (e.form === 'split') {
@@ -3281,7 +3346,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           } else e.sT = burstGap;
         } else if (e.sStage === 2 && e.sT <= 0) {
           e.turn++;
-          if (e.turn >= TRI_TURNS) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; q.laserPhase = 0; }); }
+          if (e.turn >= TRI_TURNS) trinityStartMerging(e);
           else trinityStartSplitTurn(e);
         }
       } else if (e.sStage === 0) {
@@ -3290,13 +3355,13 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         p.chg = Math.max(0, Math.min(1, 1 - e.sT / TRI_SPLIT_LASER_WARN));
         if (e.sT <= 0) {
           p.chg = 0; p.laserPhase = 0; e.sStage = 2; e.sT = gap;
-          trinityMeteorVolley(p);
+          trinityMeteorVolley(e, p);
           trinitySplitSupport(e, p, tk);
         }
       } else if (e.sT <= 0) {
         p.laserPhase = 0;
         e.turn++;
-        if (e.turn >= TRI_TURNS) { e.form = 'merging'; e.ft = 0; parts.forEach((q) => { q.chg = 0; q.laserPhase = 0; }); }
+        if (e.turn >= TRI_TURNS) trinityStartMerging(e);
         else trinityStartSplitTurn(e);
       }
     } else parts.forEach((q) => { q.chg = 0; });
@@ -3328,17 +3393,298 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       });
     } else {
       // 合体: 中央付近にとどまり、3つの三角形が風車状に回転
-      const tx = W / 2 + Math.sin(time * 0.5) * 34, ty = e.sy0 + Math.cos(time * 0.7) * 22;
-      e.cx += (tx - e.cx) * Math.min(1, dt * 3); e.cy += (ty - e.cy) * Math.min(1, dt * 3);
       const merging = e.form === 'merging';
+      if (merging) {
+        e.cx += (e.mergeX - e.cx) * Math.min(1, dt * 3);
+        e.cy += (e.mergeY - e.cy) * Math.min(1, dt * 3);
+      } else if (e.enhanced) {
+        const margin = e.r + TRI_OFS + 16;
+        e.cx += e.mergeVx * dt; e.cy += e.mergeVy * dt;
+        if (e.cx < margin || e.cx > W - margin) {
+          e.cx = Math.max(margin, Math.min(W - margin, e.cx)); e.mergeVx *= -1;
+        }
+        if (e.cy < margin || e.cy > H - margin) {
+          e.cy = Math.max(margin, Math.min(H - margin, e.cy)); e.mergeVy *= -1;
+        }
+        e.bondedMeteorT -= dt;
+        if (e.form === 'merged' && e.bondedMeteorT <= 0) {
+          meteors.push({
+            x: 54 + Math.random() * (W - 108), y: 70 + Math.random() * (H - 140),
+            t: 0, warn: 0.78, fall: 0.28, r: 58, color: trinityColor(e), trinity: true
+          });
+          e.bondedMeteorT = 0.55 + Math.random() * 0.3;
+        }
+      }
       for (let i = 0; i < 3; i++) {
         const q = parts[i], a = e.la + i * TAU / 3;
-        const tx = e.cx + Math.cos(a) * TRI_OFS, ty = e.cy + Math.sin(a) * TRI_OFS;
+        const mergeTarget = trinityMergeTarget(e, i);
+        const tx = merging ? mergeTarget.x : e.cx + Math.cos(a) * TRI_OFS;
+        const ty = merging ? mergeTarget.y : e.cy + Math.sin(a) * TRI_OFS;
         if (merging) { chase(q, tx, ty, 5, 520, dt); q.rot += angDiff(a, q.rot) * Math.min(1, dt * 10); }
         else { q.x = tx; q.y = ty; q.rot = a; }                 // 合体中は完全に固定(頂点が正確に重なる)
       }
     }
     centroid();
+  }
+
+  function initFunnels(e) {
+    e.funnelMode = 'orbit'; e.funnelAttackIndex = -1; e.funnelTimer = 3;
+    e.funnelOrbitAngle = Math.random() * TAU; e.funnelOrbitRadius = FUNNELS_ORBIT_RADIUS;
+    e.funnels = Array.from({ length: 6 }, (_, index) => {
+      const orbitAngle = e.funnelOrbitAngle + index * TAU / 6;
+      return {
+        index, orbitAngle, x: e.x + Math.cos(orbitAngle) * e.funnelOrbitRadius,
+        y: e.y + Math.sin(orbitAngle) * e.funnelOrbitRadius, angle: orbitAngle,
+        prevX: e.x + Math.cos(orbitAngle) * e.funnelOrbitRadius,
+        prevY: e.y + Math.sin(orbitAngle) * e.funnelOrbitRadius,
+        state: 'orbit', timer: 0, speed: 0
+      };
+    });
+    e.funnelLaserPhase = ''; e.funnelSparks = [];
+    e.funnelSlashPhase = ''; e.funnelSlashVolleys = 0; e.funnelSlashAngles = [];
+  }
+  function funnelsColor(e) { return e.color || ET.funnels.color; }
+  function funnelsWallPoint(x, y, angle, inset = 0) {
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    const distances = [
+      dx > 0 ? (W - inset - x) / dx : dx < 0 ? (inset - x) / dx : Infinity,
+      dy > 0 ? (H - inset - y) / dy : dy < 0 ? (inset - y) / dy : Infinity
+    ].filter((distance) => distance >= 0);
+    const distance = Math.min(...distances);
+    return { x: x + dx * distance, y: y + dy * distance, distance };
+  }
+  function funnelsOrbitPoint(e, satellite, radius = e.funnelOrbitRadius) {
+    const angle = e.funnelOrbitAngle + satellite.index * TAU / 6;
+    return { x: e.x + Math.cos(angle) * radius, y: e.y + Math.sin(angle) * radius, angle };
+  }
+  function beginFunnelsRush(e) {
+    e.funnelMode = 'rush';
+    for (const satellite of e.funnels) {
+      const outward = Math.atan2(satellite.y - e.y, satellite.x - e.x);
+      satellite.wall = funnelsWallPoint(satellite.x, satellite.y, outward, FUNNELS_SATELLITE_RADIUS);
+      satellite.state = 'launch'; satellite.angle = outward; satellite.speed = 0;
+      ring(satellite.x, satellite.y, 52, 0.32, funnelsColor(e), 3);
+      burst(satellite.x, satellite.y, 8, funnelsColor(e), 210, 0.3, 2.8);
+    }
+    shake = Math.max(shake, 4); sfx.bossCall();
+  }
+  function beginFunnelsLaser(e) {
+    e.funnelMode = 'laser'; e.funnelLaserPhase = 'grow'; e.funnelLaserT = 1.7;
+    e.funnelSparks = []; e.funnelSparkIndex = 0;
+    for (const satellite of e.funnels) satellite.speed = 0;
+    ring(e.x, e.y, e.funnelOrbitRadius, 0.55, funnelsColor(e), 3);
+    burst(e.x, e.y, 18, funnelsColor(e), 170, 0.45, 3.2);
+    sfx.bossCall();
+  }
+  function beginFunnelsSlash(e) {
+    e.funnelMode = 'slash'; e.funnelSlashPhase = 'warning';
+    e.funnelSlashT = 0.55; e.funnelSlashVolleys = 4;
+    e.funnelSlashBase = e.rot;
+    e.funnelSlashAngles = Array.from({ length: 8 }, (_, index) => e.funnelSlashBase + index * TAU / 8);
+    for (const satellite of e.funnels) {
+      ring(satellite.x, satellite.y, 42, 0.3, funnelsColor(e), 2.5);
+      burst(satellite.x, satellite.y, 5, funnelsColor(e), 170, 0.25, 2.5);
+    }
+    shake = Math.max(shake, 3);
+  }
+  function finishFunnelsAttack(e) {
+    e.funnelMode = 'return'; e.funnelReturnT = 0;
+    e.funnelOrbitRadius = FUNNELS_ORBIT_RADIUS;
+    for (const satellite of e.funnels) { satellite.state = 'returnOrbit'; satellite.speed = 0; }
+  }
+  function funnelsLaserHit(satellite) {
+    const angle = satellite.angle, dx = Math.cos(angle), dy = Math.sin(angle);
+    for (const player of partyPlayers()) {
+      if (player.hp <= 0 || player.inv > 0 || (player === P && state === 'dying')) continue;
+      const pos = playerPosition(player), rx = pos.x - satellite.x, ry = pos.y - satellite.y;
+      const along = rx * dx + ry * dy, side = Math.abs(rx * dy - ry * dx);
+      if (along < 0 || along > satellite.wall.distance || side > 10 + player.r * 0.5) continue;
+      if (player === P) hurtPlayer(12, satellite.x, satellite.y);
+      else hurtRemotePlayer(player, 12, satellite.x, satellite.y);
+    }
+  }
+  function funnelsExplodeSpark(e, spark) {
+    ring(spark.x, spark.y, FUNNELS_SPARK_RADIUS * 1.1, 0.55, funnelsColor(e), 5);
+    burst(spark.x, spark.y, 28, funnelsColor(e), 320, 0.48, 4.2);
+    for (const player of partyPlayers()) {
+      const pos = playerPosition(player);
+      if (player.hp <= 0 || player.inv > 0 || Math.hypot(pos.x - spark.x, pos.y - spark.y) > FUNNELS_SPARK_RADIUS) continue;
+      if (player === P) hurtPlayer(16, spark.x, spark.y);
+      else hurtRemotePlayer(player, 16, spark.x, spark.y);
+    }
+    shake = Math.max(shake, 7);
+    sfx.impact();
+  }
+  function fireFunnelsSlash(e) {
+    const base = e.rot;
+    e.funnelSlashAngles = Array.from({ length: 8 }, (_, index) => base + index * TAU / 8);
+    for (let index = 0; index < e.funnelSlashAngles.length; index++) {
+      const angle = e.funnelSlashAngles[index], source = e.funnels[index % e.funnels.length];
+      const speed = 560, x = source.x + Math.cos(angle) * FUNNELS_SATELLITE_RADIUS, y = source.y + Math.sin(angle) * FUNNELS_SATELLITE_RADIUS;
+      ebullets.push({
+        x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        r: 6.5, life: projectileLifetime(speed, 5), color: funnelsColor(e), dmg: 14
+      });
+      burst(source.x, source.y, 4, funnelsColor(e), 160, 0.2, 2.5);
+    }
+    ring(e.x, e.y, e.funnelOrbitRadius + 40, 0.25, funnelsColor(e), 3);
+    shake = Math.max(shake, 3);
+    sfx.eshoot();
+  }
+  function updateFunnels(e, dt) {
+    if (state === 'dying' || e.born < 0.8) return;
+    const target = getTargetPlayer(e.x, e.y), targetPos = playerPosition(target);
+    for (const satellite of e.funnels) { satellite.prevX = satellite.x; satellite.prevY = satellite.y; }
+    e.x = Math.max(120, Math.min(W - 120, e.x + Math.sin(time * 0.41 + e.ph) * 8 * dt));
+    e.y = Math.max(100, Math.min(H - 100, e.y + Math.cos(time * 0.37 + e.ph) * 7 * dt));
+    e.rot = Math.atan2(targetPos.y - e.y, targetPos.x - e.x);
+    if (e.funnelMode === 'orbit') {
+      e.funnelOrbitAngle += dt * 0.34;
+      for (const satellite of e.funnels) {
+        const point = funnelsOrbitPoint(e, satellite);
+        satellite.x = point.x; satellite.y = point.y; satellite.angle = point.angle;
+      }
+      e.funnelTimer -= dt;
+      if (e.funnelTimer <= 0) {
+        e.funnelAttackIndex = (e.funnelAttackIndex + 1) % 3;
+        if (e.funnelAttackIndex === 0) beginFunnelsRush(e);
+        else if (e.funnelAttackIndex === 1) beginFunnelsLaser(e);
+        else beginFunnelsSlash(e);
+      }
+    } else if (e.funnelMode === 'rush') {
+      let allOrbiting = true;
+      for (const satellite of e.funnels) {
+        if (satellite.state === 'orbit') continue;
+        allOrbiting = false;
+        if (satellite.state === 'launch') {
+          const dx = satellite.wall.x - satellite.x, dy = satellite.wall.y - satellite.y, distance = Math.hypot(dx, dy);
+          satellite.speed = Math.min(720, satellite.speed + 1900 * dt);
+          const step = Math.min(distance, satellite.speed * dt);
+          satellite.x += dx / (distance || 1) * step; satellite.y += dy / (distance || 1) * step;
+          if (distance <= step + 1) {
+            satellite.x = satellite.wall.x; satellite.y = satellite.wall.y;
+            satellite.state = 'stuck'; satellite.timer = 0.32; satellite.speed = 0;
+            ring(satellite.x, satellite.y, 46, 0.28, funnelsColor(e), 3);
+            burst(satellite.x, satellite.y, 7, funnelsColor(e), 190, 0.26, 2.8);
+          }
+        } else if (satellite.state === 'stuck') {
+          satellite.timer -= dt;
+          if (satellite.timer <= 0) {
+            const locked = playerPosition(getTargetPlayer(satellite.x, satellite.y));
+            satellite.angle = Math.atan2(locked.y - satellite.y, locked.x - satellite.x);
+            satellite.wall = funnelsWallPoint(satellite.x, satellite.y, satellite.angle, 0);
+            satellite.state = 'warning'; satellite.timer = 0.62;
+            ring(satellite.x, satellite.y, 38, 0.3, funnelsColor(e), 2.5);
+          }
+        } else if (satellite.state === 'warning') {
+          satellite.timer -= dt;
+          if (satellite.timer <= 0) { satellite.state = 'dash'; satellite.speed = 0; }
+        } else if (satellite.state === 'dash') {
+          satellite.speed = Math.min(FUNNELS_DASH_SPEED, satellite.speed + 3800 * dt);
+          const step = Math.min(satellite.wall.distance + FUNNELS_SATELLITE_RADIUS * 2, satellite.speed * dt);
+          satellite.x += Math.cos(satellite.angle) * step;
+          satellite.y += Math.sin(satellite.angle) * step;
+          satellite.wall.distance -= step;
+          if (satellite.wall.distance <= 0) {
+            satellite.x = satellite.wall.x; satellite.y = satellite.wall.y;
+            satellite.state = 'stuckReturn'; satellite.timer = 0.3; satellite.speed = 0;
+            ring(satellite.x, satellite.y, 56, 0.3, funnelsColor(e), 3);
+            burst(satellite.x, satellite.y, 8, funnelsColor(e), 230, 0.3, 3);
+          }
+        } else if (satellite.state === 'stuckReturn') {
+          satellite.timer -= dt;
+          if (satellite.timer <= 0) satellite.state = 'return';
+        } else if (satellite.state === 'return') {
+          const point = funnelsOrbitPoint(e, satellite), dx = point.x - satellite.x, dy = point.y - satellite.y;
+          const distance = Math.hypot(dx, dy), step = Math.min(distance, 620 * dt);
+          satellite.x += dx / (distance || 1) * step; satellite.y += dy / (distance || 1) * step;
+          satellite.angle = Math.atan2(dy, dx);
+          if (distance <= step + 1) satellite.state = 'orbit';
+        }
+      }
+      if (allOrbiting) finishFunnelsAttack(e);
+    } else if (e.funnelMode === 'return') {
+      e.funnelOrbitAngle += dt * 0.34;
+      let allReturned = true;
+      for (const satellite of e.funnels) {
+        const point = funnelsOrbitPoint(e, satellite), dx = point.x - satellite.x, dy = point.y - satellite.y;
+        const amount = 1 - Math.exp(-5.5 * dt);
+        satellite.x += dx * amount; satellite.y += dy * amount; satellite.angle = point.angle;
+        if (Math.hypot(dx, dy) > 2) allReturned = false;
+        else { satellite.x = point.x; satellite.y = point.y; }
+      }
+      if (allReturned) { e.funnelMode = 'orbit'; e.funnelTimer = 3.2; }
+    } else if (e.funnelMode === 'laser') {
+      if (e.funnelLaserPhase === 'grow') {
+        e.funnelLaserT -= dt;
+        const progress = 1 - Math.max(0, e.funnelLaserT / 1.7);
+        e.funnelOrbitRadius = FUNNELS_ORBIT_RADIUS + progress * 150;
+        e.funnelOrbitAngle += dt * 0.22;
+        for (const satellite of e.funnels) {
+          const point = funnelsOrbitPoint(e, satellite);
+          satellite.x = point.x; satellite.y = point.y; satellite.angle = point.angle;
+        }
+        if (e.funnelLaserT <= 0) {
+          e.funnelLaserPhase = 'warning'; e.funnelLaserT = 0.8;
+          for (const satellite of e.funnels) {
+            const locked = playerPosition(getTargetPlayer(satellite.x, satellite.y));
+            satellite.angle = Math.atan2(locked.y - satellite.y, locked.x - satellite.x);
+            satellite.wall = funnelsWallPoint(satellite.x, satellite.y, satellite.angle);
+          }
+        }
+      } else if (e.funnelLaserPhase === 'warning') {
+        e.funnelLaserT -= dt;
+        if (e.funnelLaserT <= 0) {
+          e.funnelLaserPhase = 'active'; e.funnelLaserT = 1.45;
+          e.funnelSparks = e.funnels.map((satellite) => ({ x: satellite.wall.x, y: satellite.wall.y }));
+        }
+      } else if (e.funnelLaserPhase === 'active') {
+        for (const satellite of e.funnels) {
+          const locked = playerPosition(getAngularTargetPlayer(satellite.x, satellite.y, satellite.angle));
+          const desired = Math.atan2(locked.y - satellite.y, locked.x - satellite.x);
+          const turn = angDiff(desired, satellite.angle);
+          satellite.angle += Math.max(-FUNNELS_LASER_TURN_SPEED * dt, Math.min(FUNNELS_LASER_TURN_SPEED * dt, turn));
+          satellite.wall = funnelsWallPoint(satellite.x, satellite.y, satellite.angle);
+          funnelsLaserHit(satellite);
+        }
+        e.funnelLaserT -= dt;
+        if (e.funnelLaserT <= 0) {
+          e.funnelLaserPhase = 'sparks'; e.funnelSparkIndex = 0; e.funnelSparkT = 0.25;
+          e.funnelSparks = e.funnels.map((satellite) => ({ x: satellite.wall.x, y: satellite.wall.y }));
+        }
+      } else if (e.funnelLaserPhase === 'sparks') {
+        e.funnelSparkT -= dt;
+        if (e.funnelSparkT <= 0 && e.funnelSparkIndex < e.funnelSparks.length) {
+          funnelsExplodeSpark(e, e.funnelSparks[e.funnelSparkIndex++]);
+          e.funnelSparkT = 0.34;
+        }
+        if (e.funnelSparkIndex >= e.funnelSparks.length) finishFunnelsAttack(e);
+      }
+    } else if (e.funnelMode === 'slash') {
+      e.funnelOrbitAngle += dt * 0.34;
+      const warningDuration = 0.55;
+      if (e.funnelSlashPhase === 'warning') {
+        const progress = 1 - Math.max(0, e.funnelSlashT / warningDuration);
+        e.rot = e.funnelSlashBase + progress * 0.72;
+      }
+      for (const satellite of e.funnels) {
+        const point = funnelsOrbitPoint(e, satellite);
+        satellite.x = point.x; satellite.y = point.y;
+        satellite.angle = point.angle + (e.funnelSlashPhase === 'warning' ? e.rot - e.funnelSlashBase : 0);
+      }
+      e.funnelSlashT -= dt;
+      if (e.funnelSlashPhase === 'warning' && e.funnelSlashT <= 0) {
+        fireFunnelsSlash(e); e.funnelSlashVolleys--;
+        e.funnelSlashBase = e.rot;
+        e.funnelSlashPhase = 'recover'; e.funnelSlashT = 0.18;
+      } else if (e.funnelSlashPhase === 'recover' && e.funnelSlashT <= 0) {
+        if (e.funnelSlashVolleys > 0) {
+          e.funnelSlashPhase = 'warning'; e.funnelSlashT = warningDuration;
+          const base = e.rot;
+          e.funnelSlashAngles = Array.from({ length: 8 }, (_, index) => base + index * TAU / 8);
+        } else finishFunnelsAttack(e);
+      }
+    }
   }
 
   function fortlessFaceAngle(e, i) { return e.rot + Math.PI / FORTLESS_SIDES + i * TAU / FORTLESS_SIDES; }
@@ -3374,7 +3720,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     return best;
   }
   function hitPopY(e, point) {
-    return point.y - (e.type === 'matrix' ? MATRIX_CELL / 2 : e.r) - 4;
+    return point.y - (e.type === 'matrix' ? MATRIX_CELL / 2 : e.type === 'funnels' ? FUNNELS_SATELLITE_RADIUS : e.r) - 4;
   }
   function fortlessBodyHit(e, x, y, rad) {
     return !!fortlessPanelAt(e, x, y, rad) || Math.hypot(e.x - x, e.y - y) < e.r + rad;
@@ -3394,10 +3740,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (!hit) return null;
     const dealt = Math.min(amount, hit.plate.hp);
     hit.plate.hp = Math.max(0, hit.plate.hp - amount);
+    hit.plate.shellHp = Math.max(0, (hit.plate.shellHp === undefined ? hit.plate.maxHp : hit.plate.shellHp) - amount);
     hit.plate.flash = 0.1;
     if (hit.plate.hp <= 0) {
       hit.plate.repairT = FORTLESS_PANEL_REPAIR;
-      hit.plate.exposedSpawnT = 1.2;
       hit.plate.laserPhase = 0;
       ring(hit.x, hit.y, 52, 0.35, ET.fortless.color, 3);
       burst(hit.x, hit.y, 14, ET.fortless.color, 260, 0.35, 3);
@@ -3408,29 +3754,32 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function initFortless(e) {
     e.p2 = false;
     e.laserPhase = 0; e.laserT = 4;
-    const panelHp = Math.max(80, Math.round(e.maxHp * 0.025));
+    e.minionSpawnT = e.enhanced ? 4 + Math.random() * 2 : 6 + Math.random() * 3;
+    const panelHp = Math.max(80, Math.round(e.maxHp * 0.025 * 3));
     e.plates = Array.from({ length: FORTLESS_SIDES }, (_, i) => ({
-      hp: panelHp, maxHp: panelHp, repairT: 0, flash: 0, type: randomFortlessPlateType(),
-      attackT: 1.4 + Math.random() * 1.8, laserPhase: 0, laserT: 0, laserAngle: fortlessFaceAngle(e, i),
-      spawnT: 2.8 + i * 0.4
+      hp: panelHp * (e.enhanced ? 2 : 1), maxHp: panelHp * (e.enhanced ? 2 : 1),
+      shellHp: panelHp, shellMaxHp: panelHp, repairT: 0, flash: 0, type: randomFortlessPlateType(),
+      attackT: e.enhanced ? 0.9 + Math.random() * 0.9 : 1.4 + Math.random() * 1.8, burstLeft: 0, burstT: 0,
+      laserPhase: 0, laserT: 0, laserAngle: fortlessFaceAngle(e, i)
     }));
   }
-  function randomFortlessPlateType() { return ['tri', 'bounce', 'laser'][Math.floor(Math.random() * 3)]; }
+  function randomFortlessPlateType() { return ['tri', 'bounce', 'laser', 'drone'][Math.floor(Math.random() * 4)]; }
+  function fortlessAttackInterval(e, i) {
+    const interval = FORTLESS_ATTACK_INTERVAL * (e.enhanced ? 0.62 : 1);
+    return interval + i * 0.12 + Math.random() * (e.enhanced ? 0.2 : 0.35);
+  }
   function fortlessGunFire(e, i, offset, tk) {
     const mount = fortlessMount(e, i, offset, 12);
-    const target = getTargetPlayer(mount.x, mount.y), base = Math.atan2(target.y - mount.y, target.x - mount.x);
-    const speed = e.p2 ? 205 : 185;
-    for (let k = -1; k <= 1; k++) {
-      const a = base + k * 0.25, c = Math.cos(a), s = Math.sin(a);
-      ebullets.push({ x: mount.x, y: mount.y, vx: c * speed * tk, vy: s * speed * tk, r: 5.5, life: projectileLifetime(speed * tk, 5.5), color: ET.fortless.color });
-    }
+    const a = mount.a + (Math.random() - 0.5) * 0.06, c = Math.cos(a), s = Math.sin(a);
+    const speed = e.p2 ? 230 : 205, radius = 7;
+    ebullets.push({ x: mount.x, y: mount.y, vx: c * speed * tk, vy: s * speed * tk, r: radius, life: projectileLifetime(speed * tk, radius), color: ET.fortless.color, dmg: 12 });
     burst(mount.x, mount.y, 4, ET.fortless.color, 130, 0.18, 2.2);
     ring(mount.x, mount.y, 24, 0.18, ET.fortless.color, 2);
     sfx.eshoot();
   }
   function fortlessBounceFire(e, i, offset, tk) {
-    const mount = fortlessMount(e, i, offset, 12), target = getTargetPlayer(mount.x, mount.y);
-    const a = Math.atan2(target.y - mount.y, target.x - mount.x), speed = (e.p2 ? 235 : 210) * tk;
+    const mount = fortlessMount(e, i, offset, 12);
+    const a = mount.a, speed = (e.p2 ? 255 : 225) * tk;
     ebullets.push({
       x: mount.x, y: mount.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
       r: 9, life: projectileLifetime(speed, 8), bounce: 3, star: true, rot: 0, color: BOUNCE_COL, dmg: 12
@@ -3439,37 +3788,62 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     ring(mount.x, mount.y, 28, 0.2, BOUNCE_COL, 2);
     sfx.eshoot();
   }
-  function fortlessSpawn(e, i) {
-    const plate = e.plates[i], type = plate.type === 'tri' ? 'tri' : plate.type === 'bounce' ? 'quadstar' : 'hexstar';
-    const mount = fortlessMount(e, i, 0, 20), tx = -Math.sin(mount.a), ty = Math.cos(mount.a);
-    spawns.push({
-      x: Math.max(40, Math.min(W - 40, mount.x + tx * (Math.random() - 0.5) * 22)),
-      y: Math.max(40, Math.min(H - 40, mount.y + ty * (Math.random() - 0.5) * 22)),
-      t: 0, delay: 0.65, type, summoned: true
-    });
-    burst(mount.x, mount.y, 7, ET.fortless.color, 150, 0.25, 2.4);
-    ring(mount.x, mount.y, 38, 0.25, ET.fortless.color, 2);
+  function fortlessDeployDrones(e, i) {
+    for (const offset of [-23, 23]) {
+      const mount = fortlessMount(e, i, offset, 18);
+      for (let index = 0; index < 2; index++) {
+        const angle = mount.a + (index ? 0.16 : -0.16);
+        const drone = spawnEnemy('fortlessDrone', mount.x, mount.y, true, true);
+        drone.vx = Math.cos(angle) * 100; drone.vy = Math.sin(angle) * 100;
+      }
+    }
+    const panel = fortlessPanelCenter(e, i);
+    burst(panel.x, panel.y, 8, ET.fortless.color, 180, 0.3, 2.6);
+  }
+  function fortlessSpawnMinions(e) {
+    const normal = ['tri', 'sq', 'pent', 'hex', 'cross', 'hexstar', 'quadstar', 'sept'];
+    const normalWave = { tri: 1, sq: 2, pent: 4, hex: 5, cross: 7, hexstar: 8, quadstar: 10, sept: 26 };
+    const eligible = normal.filter((type) => wave >= normalWave[type]);
+    const angle = Math.random() * TAU, distance = e.r + 48;
+    const summonCount = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < summonCount; i++) {
+      const spawnAngle = angle + i * TAU / summonCount;
+      const type = eligible[Math.floor(Math.random() * eligible.length)] || 'tri';
+      spawns.push({
+        x: Math.max(36, Math.min(W - 36, e.x + Math.cos(spawnAngle) * distance)),
+        y: Math.max(36, Math.min(H - 36, e.y + Math.sin(spawnAngle) * distance)),
+        t: 0, delay: 0.7, type, summoned: true
+      });
+    }
+    if (e.p2 && Math.random() < (e.enhanced ? 0.32 : 0.18)) {
+      const elites = ['esq', 'etri', 'epent', 'ehex', 'ecross', 'ehexstar', 'equadstar', 'esept']
+        .filter((elite) => wave >= ({ esq: 2, etri: 3, epent: 6, ehex: 9, ecross: 16, equadstar: 16, ehexstar: 18, esept: 36 })[elite]);
+      if (elites.length) {
+        const elite = elites[Math.floor(Math.random() * elites.length)];
+        const eliteAngle = angle + Math.PI + (Math.random() - 0.5) * 0.5;
+        spawns.push({
+          x: Math.max(36, Math.min(W - 36, e.x + Math.cos(eliteAngle) * distance)),
+          y: Math.max(36, Math.min(H - 36, e.y + Math.sin(eliteAngle) * distance)),
+          t: 0, delay: 1.0, type: elite, summoned: true
+        });
+      }
+    }
+    burst(e.x, e.y, 10, ET.fortless.color, 200, 0.32, 2.8);
+    ring(e.x, e.y, 90, 0.35, ET.fortless.color, 2);
   }
   function fortlessLaserHit(e, p, i) {
-    const face = fortlessFacePoint(e, i), c = Math.cos(p.laserAngle), s = Math.sin(p.laserAngle);
+    const angle = p.laserAngle, c = Math.cos(angle), s = Math.sin(angle);
     for (const pl of partyPlayers()) {
       if (pl.hp <= 0 || pl.inv > 0 || (pl === P && state === 'dying')) continue;
       const pos = playerPosition(pl);
-      const rx = pos.x - face.x, ry = pos.y - face.y;
-      if (rx * c + ry * s > 0 && Math.abs(rx * s - ry * c) < 7 + pl.r * 0.5) {
-        if (pl === P) hurtPlayer(12, face.x, face.y); else hurtRemotePlayer(pl, 12, face.x, face.y);
+      for (const offset of [-23, 23]) {
+        const mount = fortlessMount(e, i, offset, 12), rx = pos.x - mount.x, ry = pos.y - mount.y;
+        if (rx * c + ry * s > 0 && Math.abs(rx * s - ry * c) < 7 + pl.r * 0.5) {
+          if (pl === P) hurtPlayer(12, mount.x, mount.y); else hurtRemotePlayer(pl, 12, mount.x, mount.y);
+          break;
+        }
       }
     }
-  }
-  function fortlessExposedSpawn(e, i) {
-    const type = e.p2 && Math.random() < 0.35 ? 'ehex' : 'hex';
-    const mount = fortlessMount(e, i, 0, 20), tx = -Math.sin(mount.a), ty = Math.cos(mount.a);
-    spawns.push({
-      x: Math.max(40, Math.min(W - 40, mount.x + tx * (Math.random() - 0.5) * 22)),
-      y: Math.max(40, Math.min(H - 40, mount.y + ty * (Math.random() - 0.5) * 22)),
-      t: 0, delay: 0.65, type, summoned: true
-    });
-    ring(mount.x, mount.y, 38, 0.25, ET.fortless.color, 2);
   }
   function updateFortlessLasers(e, dt) {
     for (let i = 0; i < e.plates.length; i++) {
@@ -3489,7 +3863,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         if (plate.laserT > 0) fortlessLaserHit(e, plate, i);
         else {
           plate.laserPhase = 0;
-          plate.attackT = FORTLESS_ATTACK_INTERVAL + i * 0.12 + Math.random() * 0.35;
+          plate.attackT = fortlessAttackInterval(e, i);
         }
       }
     }
@@ -3501,43 +3875,55 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (!e.p2 && e.hp <= e.maxHp * 0.5) {
       e.p2 = true;
       ring(e.x, e.y, 170, 0.6, ET.fortless.color, 4);
-      floatText(e.x, e.y - 100, 'ENRAGED', ET.fortless.color);
+      floatText(e.x, e.y - 100, 'ENRAGED', e.color || ET.fortless.color);
       shake = Math.max(shake, 10); sfx.boss();
+    }
+    e.minionSpawnT = (e.minionSpawnT || 0) - dt;
+    if (e.minionSpawnT <= 0) {
+      fortlessSpawnMinions(e);
+      e.minionSpawnT = e.enhanced
+        ? (e.p2 ? 2.4 : 3) + Math.random() * (e.p2 ? 1.3 : 1.6)
+        : (e.p2 ? 6 : 4.5) + Math.random() * (e.p2 ? 3 : 2.5);
     }
     for (let i = 0; i < e.plates.length; i++) {
       const plate = e.plates[i];
       plate.flash = Math.max(0, plate.flash - dt);
       if (plate.hp <= 0) {
         plate.repairT -= dt;
-        plate.exposedSpawnT = Math.max(0, (plate.exposedSpawnT || 0) - dt);
-        if (plate.exposedSpawnT <= 0) {
-          fortlessExposedSpawn(e, i);
-          plate.exposedSpawnT = 3.8 + Math.random() * 1.2;
-        }
         if (plate.repairT <= 0) {
-          plate.hp = plate.maxHp; plate.repairT = 0; plate.flash = 0.4;
-          plate.type = randomFortlessPlateType(); plate.attackT = 1.4 + Math.random() * 1.8;
-          plate.laserPhase = 0; plate.laserT = 0; plate.exposedSpawnT = 0;
-          plate.spawnT = 2.5;
+          plate.hp = plate.maxHp; plate.shellHp = plate.shellMaxHp; plate.repairT = 0; plate.flash = 0.4;
+          plate.type = randomFortlessPlateType();
+          plate.attackT = e.enhanced ? 0.9 + Math.random() * 0.9 : 1.4 + Math.random() * 1.8;
+          plate.burstLeft = 0; plate.burstT = 0;
+          plate.laserPhase = 0; plate.laserT = 0;
           ring(fortlessPanelCenter(e, i).x, fortlessPanelCenter(e, i).y, 48, 0.35, ET.fortless.color, 3);
           burst(fortlessPanelCenter(e, i).x, fortlessPanelCenter(e, i).y, 10, ET.fortless.color, 220, 0.3, 2.6);
         }
         continue;
       }
       if (plate.type !== 'laser') {
-        plate.attackT -= dt;
-        if (plate.attackT <= 0) {
-          for (const offset of [-23, 23]) {
-            if (plate.type === 'tri') fortlessGunFire(e, i, offset, tk);
-            else fortlessBounceFire(e, i, offset, tk);
+        if (plate.burstLeft > 0) {
+          plate.burstT -= dt;
+          if (plate.burstT <= 0) {
+            for (const offset of [-23, 23]) {
+              if (plate.type === 'tri') fortlessGunFire(e, i, offset, tk);
+              else if (plate.type === 'bounce') fortlessBounceFire(e, i, offset, tk);
+            }
+            plate.burstLeft--;
+            plate.burstT = 0.24;
+            if (plate.burstLeft === 0) plate.attackT = fortlessAttackInterval(e, i);
           }
-          plate.attackT = FORTLESS_ATTACK_INTERVAL + i * 0.12 + Math.random() * 0.35;
+        } else {
+          plate.attackT -= dt;
+          if (plate.attackT <= 0) {
+            if (plate.type === 'drone') {
+              fortlessDeployDrones(e, i);
+              plate.attackT = fortlessAttackInterval(e, i);
+            } else {
+              plate.burstLeft = 3; plate.burstT = 0;
+            }
+          }
         }
-      }
-      plate.spawnT -= dt;
-      if (plate.spawnT <= 0) {
-        fortlessSpawn(e, i);
-        plate.spawnT = FORTLESS_SPAWN_INTERVAL + i * 0.35;
       }
     }
     updateFortlessLasers(e, dt);
@@ -4278,7 +4664,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function spawnEnemy(type, x, y, quiet, summoned) {
     const et = ET[type], bh = 2 + Math.floor((wave - 1) / 1.8);
     const baseType = baseEnemyType(type);
-    const baseHp = et.boss ? bossHp() : type === 'tridrone' ? TRIDRONE_BASE_HP * (1 + Math.max(0, wave - 15) * TRIDRONE_HP_PER_WAVE)
+    const baseHp = et.boss ? bossHp() : type === 'fortlessDrone' ? 2 * TRIDRONE_BASE_HP * (1 + Math.max(0, wave - 15) * TRIDRONE_HP_PER_WAVE)
+      : type === 'tridrone' ? TRIDRONE_BASE_HP * (1 + Math.max(0, wave - 15) * TRIDRONE_HP_PER_WAVE)
       : baseType === 'sq' ? bh * 2 + 1
       : baseType === 'pent' || baseType === 'quadstar' ? (isEliteEnemy(type) ? bh * 3 + 4 : bh * 2 + 1)
       : baseType === 'trap' ? bh + 3 : baseType === 'hex' ? bh * 2 + 1
@@ -4312,6 +4699,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       pseptLaserAngles: [],
       pseptLaserLaunchPending: false
     };
+    enemy.enhanced = wave >= 30 && ['stardust', 'trinity', 'fortless'].includes(type);
+    if (type === 'trinity' && enemy.enhanced) {
+      enemy.color = '#73dce8'; enemy.fill = '#10282d';
+    }
     const enemyColor = et.color;
     if (type === 'esept') {
       enemy.id = ++uid;
@@ -4322,6 +4713,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
     if (type === 'trinity') { enemy.sy0 = y; initTrinity(enemy); }
     if (type === 'fortless') initFortless(enemy);
+    if (type === 'funnels') initFunnels(enemy);
     if (type === 'matrix') initMatrix(enemy);
     if (isHexEnemy(type)) { const hv = Math.min(150, 70 + wave * 3); enemy.vx = Math.cos(va) * hv; enemy.vy = Math.sin(va) * hv; }
     enemies.push(enemy);
@@ -4338,7 +4730,6 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   const TRAIN_LEN = 32, TRAIN_GAP = 34, TRAIN_SPEED = 150, TRAIN_ENTRY = 260;
   const TRAIN_HEAD_RADIUS = 24, TRAIN_BODY_RADIUS = 19, TRAIN_SPLIT_DAMAGE_RATIO = 0.25;
   const TRAIN_PART_SHOT_INTERVAL = 0.35, TRAIN_PART_SHOT_INTERVAL_ENRAGED = 0.28, TRAIN_PART_SHOT_START = 1.2, TRAIN_CHARGE_INTERVAL = 8.2;
-  const TRAIN_SOLO_SHOT_INTERVAL = TRAIN_PART_SHOT_INTERVAL_ENRAGED * 8;
   const TRAIN_CHARGE_WINDUP = 1.05, TRAIN_CHARGE_DASH_SPEED = 1050, TRAIN_CHARGE_TURN_SPEED = 1.8;
   const TRAIN_PASSTHROUGH_INTERVAL = 18;
   const TRAIN_ROTATION_SPEED = 2.2;
@@ -4349,21 +4740,24 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function spawnTrain(sp) {
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1];
     const hx = sp.edge === 0 ? -40 : sp.edge === 1 ? W + 40 : sp.x, hy = sp.edge === 2 ? -40 : sp.edge === 3 ? H + 40 : sp.y;
-    const totalHp = Math.round(HP_SCALE * bossHp() * 1.35 / 22) * 22, per = totalHp / TRAIN_LEN, cid = trainCid++;
-    for (let i = 0; i < TRAIN_LEN; i++) {
+    const enhanced = wave >= 30, length = enhanced ? 64 : TRAIN_LEN;
+    const totalHp = Math.round(HP_SCALE * bossHp() * 1.35 * (enhanced ? 1.35 : 1) / 22) * 22, per = totalHp / length, cid = trainCid++;
+    for (let i = 0; i < length; i++) {
       const x = hx - ux * TRAIN_GAP * i, y = hy - uy * TRAIN_GAP * i;
       enemies.push({
         type: 'train', x, y, bx: x, by: y, r: i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS, hp: per, maxHp: per, maxTotal: totalHp, rootCid: cid,
+        enhanced, color: enhanced ? '#75d9e8' : ET.train.color,
         chainHp: totalHp, chainMaxHp: totalHp, splitPending: false,
         cid, ci: i, ang: Math.atan2(uy, ux), ent: i === 0, boost: 0, ph: Math.random() * TAU, rot: 0, flash: 0, born: 1,
         chargeCooldown: TRAIN_CHARGE_INTERVAL + Math.random() * 1.2, chargePhase: 0, chargeT: 0, chargeAngle: 0,
-        rushCooldown: TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3, rushPhase: 0, rushT: 0, rushAngle: 0,
+        rushCooldown: enhanced ? 7 + Math.random() * 3 : TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3, rushPhase: 0, rushT: 0, rushAngle: 0,
         shootT: i === 0 ? TRAIN_PART_SHOT_START : 0, shootIndex: 0,
         vx: 0, vy: 0, cd: 9, atk: 0, volley: 0, spin: 0, mode: 'drift', dashT: 9, healT: 9, inv: 0
       });
     }
     const chain = enemies.filter((segment) => segment.type === 'train' && segment.cid === cid).sort((a, b) => a.ci - b.ci);
-    startTrainPassThrough(chain, sp.edge, sp.edge < 2 ? sp.y : sp.x);
+    if (enhanced) startEnhancedTrainPassThrough(chain);
+    else startTrainPassThrough(chain, sp.edge, sp.edge < 2 ? sp.y : sp.x);
   }
   function collectTrainChains(segs) {
     const chains = []; let cur = null;
@@ -4375,11 +4769,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     return chains;
   }
   function resetTrainHead(head) {
-    head.ent = false; head.boost = 1.2;
+    head.ent = false; head.boost = 0;
     head.splitPending = false; head.chargePhase = 0; head.chargeT = 0;
     head.rushWarning = null;
     head.chargeCooldown = TRAIN_CHARGE_INTERVAL + Math.random() * 1.2;
-    head.rushCooldown = TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3; head.rushPhase = 0; head.rushT = 0;
+    head.rushCooldown = head.enhanced ? 7 + Math.random() * 3 : TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3; head.rushPhase = 0; head.rushT = 0;
     head.shootT = 0.5; head.shootIndex = 0;
   }
   function assignTrainChain(chain, cid, hp, maxHp) {
@@ -4430,6 +4824,27 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       Math.max(0, Math.min(H, head.y + Math.sin(head.rushAngle) * 30))
     );
   }
+  function startEnhancedTrainPassThrough(chain) {
+    const head = chain[0], edge = Math.floor(Math.random() * 4);
+    const x = edge === 0 ? -head.r : edge === 1 ? W + head.r : 70 + Math.random() * (W - 140);
+    const y = edge === 2 ? -head.r : edge === 3 ? H + head.r : 70 + Math.random() * (H - 140);
+    const target = getTargetPlayer(x, y), pos = playerPosition(target);
+    let angle = Math.atan2(pos.y - y, pos.x - x);
+    if (edge < 2 && Math.abs(Math.sin(angle)) < 0.25) angle += (pos.y >= y ? 0.32 : -0.32);
+    if (edge >= 2 && Math.abs(Math.cos(angle)) < 0.25) angle += (pos.x >= x ? -0.32 : 0.32);
+    head.x = x; head.y = y; head.ang = angle; head.rushAngle = angle;
+    for (let i = 0; i < chain.length; i++) {
+      chain[i].x = x - Math.cos(angle) * TRAIN_GAP * i;
+      chain[i].y = y - Math.sin(angle) * TRAIN_GAP * i;
+      chain[i].ang = angle;
+    }
+    const exit = funnelsWallPoint(Math.max(0, Math.min(W, x)), Math.max(0, Math.min(H, y)), angle);
+    head.rushExitEdge = Math.abs(exit.x) < 1 ? 0 : Math.abs(exit.x - W) < 1 ? 1 : Math.abs(exit.y) < 1 ? 2 : 3;
+    head.rushDuration = (exit.distance + TRAIN_GAP * (chain.length - 1) + TRAIN_HEAD_RADIUS + TRAIN_BODY_RADIUS) / 1950;
+    head.ent = false; head.rushPhase = 1; head.rushT = TRAIN_CHARGE_WINDUP;
+    head.rushWarning = { edge, t: 0, delay: TRAIN_CHARGE_WINDUP, x: Math.max(0, Math.min(W, x)), y: Math.max(0, Math.min(H, y)), angle, endX: exit.x, endY: exit.y };
+    trainEntryEffect(head.rushWarning.x, head.rushWarning.y);
+  }
   function fireTrainSplitVolley(x, y) {
     for (let i = 0; i < 12; i++) {
       const angle = i * TAU / 12, c = Math.cos(angle), s = Math.sin(angle);
@@ -4450,7 +4865,6 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       seen.add(cid);
       chain.forEach((segment, i) => { segment.cid = cid; segment.ci = i; segment.r = i === 0 ? TRAIN_HEAD_RADIUS : TRAIN_BODY_RADIUS; });
     }
-    const col = ET.train.color;
     let didSplit = false;
     if (state !== 'dying') for (const chain of chains) {
       const head = chain[0];
@@ -4461,8 +4875,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const firstHp = parentHp * firstRatio, secondHp = parentHp - firstHp;
       assignTrainChain(first, head.cid, firstHp, firstHp);
       assignTrainChain(second, trainCid++, secondHp, secondHp);
-      fireTrainSplitVolley(x, y);
-      burst(x, y, 20, col, 320, 0.5, 3.2);
+      burst(x, y, 20, head.color || ET.train.color, 320, 0.5, 3.2);
       shake = Math.max(shake, 10); sfx.impact();
       didSplit = true;
     }
@@ -4492,6 +4905,21 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     for (const chain of chains) {
       const head = chain[0];
+      if (chain.length === 1) {
+        const segment = chain[0];
+        segment.ent = false; segment.chargePhase = 0; segment.rushPhase = 0;
+        segment.trainFireDot = 0;
+        segment.rot = (segment.rot + TRAIN_ROTATION_SPEED * dt + TAU) % TAU;
+        const speed = TRAIN_SPEED * 0.9;
+        segment.x += Math.cos(segment.ang) * speed * dt;
+        segment.y += Math.sin(segment.ang) * speed * dt;
+        if (segment.x < segment.r) { segment.x = segment.r; segment.ang = Math.PI - segment.ang; }
+        else if (segment.x > W - segment.r) { segment.x = W - segment.r; segment.ang = Math.PI - segment.ang; }
+        if (segment.y < segment.r) { segment.y = segment.r; segment.ang = -segment.ang; }
+        else if (segment.y > H - segment.r) { segment.y = H - segment.r; segment.ang = -segment.ang; }
+        segment.ang = wrap(segment.ang); segment.bx = segment.x; segment.by = segment.y;
+        continue;
+      }
       const charging = head.chargePhase === 1 || head.rushPhase === 1;
       for (const segment of chain) {
         segment.rot = (segment.rot + TRAIN_ROTATION_SPEED * (charging ? 3 : 1) * dt + TAU) % TAU;
@@ -4515,7 +4943,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         if (head.rushPhase === 0 && head.chargePhase === 0 && !out) {
           if (chain.length >= 4) head.rushCooldown -= dt;
           if (chain.length > 1) head.chargeCooldown -= dt;
-          if (chain.length >= 4 && head.rushCooldown <= 0) {
+          if (head.enhanced && head.rushCooldown <= 0) {
+            startEnhancedTrainPassThrough(chain);
+          } else if (chain.length >= 4 && head.rushCooldown <= 0) {
             const edge = Math.floor(Math.random() * 4);
             head.rushExitEdge = edge;
             head.rushExitAngle = edge === 0 ? Math.PI : edge === 1 ? 0 : edge === 2 ? -Math.PI / 2 : Math.PI / 2;
@@ -4547,7 +4977,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           head.rushT -= dt;
           if (head.rushT <= 0) { head.rushPhase = 2; head.rushT = head.rushDuration; head.rushWarning = null; }
         } else if (head.rushPhase === 2) {
-          head.rushT -= dt; head.ang = head.rushAngle; speed = TRAIN_CHARGE_DASH_SPEED;
+          head.rushT -= dt; head.ang = head.rushAngle; speed = head.enhanced ? 1950 : TRAIN_CHARGE_DASH_SPEED;
         } else if (head.rushPhase === 5) {
           const dx = W / 2 - head.x, dy = H / 2 - head.y, distance = Math.hypot(dx, dy);
           const returnAngle = Math.atan2(dy, dx), returnDelta = wrap(returnAngle - head.ang);
@@ -4555,7 +4985,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           speed = TRAIN_SPEED * 1.8;
           if (distance < 110) {
             head.rushPhase = 0;
-            head.rushCooldown = TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3;
+            head.rushCooldown = head.enhanced ? 7 + Math.random() * 3 : TRAIN_PASSTHROUGH_INTERVAL + Math.random() * 3;
             head.chargeCooldown = 3 + Math.random() * 3;
           }
         } else if (head.chargePhase === 1) {
@@ -4605,27 +5035,23 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         startTrainPassThrough(chain, entryEdge, lane);
       }
       if (!head.ent) {
-        head.shootT -= dt;
-        const shootInterval = chain.length === 1 ? TRAIN_SOLO_SHOT_INTERVAL
-          : head.p2 ? TRAIN_PART_SHOT_INTERVAL_ENRAGED : TRAIN_PART_SHOT_INTERVAL;
-        const dotDuration = Math.min(shootInterval, TRAIN_PART_SHOT_INTERVAL);
+        const shootInterval = head.p2 ? TRAIN_PART_SHOT_INTERVAL_ENRAGED : TRAIN_PART_SHOT_INTERVAL;
         const shooter = chain[head.shootIndex % chain.length];
+        const shooterOnScreen = shooter.x >= -shooter.r && shooter.x <= W + shooter.r &&
+          shooter.y >= -shooter.r && shooter.y <= H + shooter.r;
+        if (!shooterOnScreen) {
+          shooter.trainFireDot = 0;
+          head.shootT = Math.max(head.shootT, shootInterval);
+          continue;
+        }
+        head.shootT -= dt;
+        const dotDuration = Math.min(shootInterval, TRAIN_PART_SHOT_INTERVAL);
         shooter.trainFireDot = Math.max(0, Math.min(1, 1 - Math.max(0, head.shootT) / dotDuration));
         if (head.shootT <= 0) {
           shooter.trainFireDot = 0;
-          if (chain.length === 1) {
-            for (let i = 0; i < 12; i++) {
-              const angle = i * TAU / 12;
-              ebullets.push({ x: head.x + Math.cos(angle) * head.r, y: head.y + Math.sin(angle) * head.r, vx: Math.cos(angle) * 220, vy: Math.sin(angle) * 220, r: 5.5, life: projectileLifetime(220, 5.5), color: col });
-            }
-            head.shootIndex = (head.shootIndex + 1) % chain.length;
-            head.shootT = TRAIN_SOLO_SHOT_INTERVAL;
-            sfx.eshoot();
-            continue;
-          }
           const target = getTargetPlayer(shooter.x, shooter.y);
           const angle = Math.atan2(target.y - shooter.y, target.x - shooter.x), c = Math.cos(angle), s = Math.sin(angle);
-          ebullets.push({ x: shooter.x + c * shooter.r, y: shooter.y + s * shooter.r, vx: c * 220, vy: s * 220, r: 5.5, life: projectileLifetime(220, 5.5), color: col });
+          ebullets.push({ x: shooter.x + c * shooter.r, y: shooter.y + s * shooter.r, vx: c * 220, vy: s * 220, r: 5.5, life: projectileLifetime(220, 5.5), color: head.color || ET.train.color });
           head.shootIndex = (head.shootIndex + 1) % chain.length;
           head.shootT = head.p2 ? TRAIN_PART_SHOT_INTERVAL_ENRAGED : TRAIN_PART_SHOT_INTERVAL; sfx.eshoot();
         }
@@ -4665,9 +5091,54 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
   }
 
+  function closestPointOnSegment(x, y, x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0, lengthSquared = dx * dx + dy * dy;
+    const t = lengthSquared > 0 ? Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / lengthSquared)) : 0;
+    return { x: x0 + dx * t, y: y0 + dy * t };
+  }
+  function funnelsBodyHit(e, x, y, radius) {
+    for (const satellite of e.funnels || []) {
+      const prevX = Number.isFinite(satellite.prevX) ? satellite.prevX : satellite.x;
+      const prevY = Number.isFinite(satellite.prevY) ? satellite.prevY : satellite.y;
+      const closest = closestPointOnSegment(x, y, prevX, prevY, satellite.x, satellite.y);
+      if (Math.hypot(x - closest.x, y - closest.y) <= FUNNELS_SATELLITE_RADIUS * eventSizeScale('enemy') + radius) return true;
+    }
+    return false;
+  }
+  function funnelsClosestPoint(e, x, y) {
+    let best = null, bestDistance = Infinity;
+    for (const satellite of e.funnels || []) {
+      const distance = Math.hypot(satellite.x - x, satellite.y - y);
+      if (distance < bestDistance) { bestDistance = distance; best = satellite; }
+    }
+    return best ? { x: best.x, y: best.y } : { x: e.x, y: e.y };
+  }
+  function funnelsSatelliteHit(x0, y0, x1, y1, radius, hitEnemies = null) {
+    const bulletDistance = Math.hypot(x1 - x0, y1 - y0);
+    for (const enemy of enemies) {
+      if (enemy.type !== 'funnels' || enemy.hp <= 0 || (hitEnemies && hitEnemies.has(enemy))) continue;
+      for (const satellite of enemy.funnels || []) {
+        const prevX = Number.isFinite(satellite.prevX) ? satellite.prevX : satellite.x;
+        const prevY = Number.isFinite(satellite.prevY) ? satellite.prevY : satellite.y;
+        const satelliteDistance = Math.hypot(satellite.x - prevX, satellite.y - prevY);
+        const steps = Math.max(1, Math.ceil(Math.max(bulletDistance, satelliteDistance) / 5));
+        for (let step = 0; step <= steps; step++) {
+          const progress = step / steps;
+          const bulletX = x0 + (x1 - x0) * progress, bulletY = y0 + (y1 - y0) * progress;
+          const satelliteX = prevX + (satellite.x - prevX) * progress;
+          const satelliteY = prevY + (satellite.y - prevY) * progress;
+          if (Math.hypot(satelliteX - bulletX, satelliteY - bulletY) <= FUNNELS_SATELLITE_RADIUS * eventSizeScale('enemy') + radius) {
+            return { enemy, satellite, x: bulletX, y: bulletY };
+          }
+        }
+      }
+    }
+    return null;
+  }
   // 複数パーツを持つ敵(Trinity)用の当たり判定ヘルパー
   function bodyHit(e, x, y, rad) {
     if (e.type === 'fortless') return fortlessBodyHit(e, x, y, rad);
+    if (e.type === 'funnels') return funnelsBodyHit(e, x, y, rad);
     if (e.type === 'matrix' && e.mxGridCells) return matrixGridHit(e, x, y, rad);
     if (e.matrixCells && !e.mxGridCells) {
       if (matrixFindTurret(e, x, y, rad)) return true;
@@ -4695,6 +5166,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     return null;
   }
   function nearPt(e, x, y, radius) {
+    if (e.type === 'funnels') return funnelsClosestPoint(e, x, y);
     if (e.type === 'matrix' && e.mxGridCells) {
       const unit = matrixFindDamageUnit(e, x, y, radius || 0);
       if (unit) return unit;
@@ -4755,7 +5227,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       let dx = pl.dvx || pl.x - previousX, dy = pl.dvy || pl.y - previousY;
       let length = Math.hypot(dx, dy);
       if (length < 1) { dx = hitPoint.x - pl.x; dy = hitPoint.y - pl.y; length = Math.hypot(dx, dy) || 1; }
-      if (enemy.type !== 'fortless') applyEnemyKnockback(enemy, dx / length * pl.S.kb * 45, dy / length * pl.S.kb * 45);
+      if (enemy.type !== 'fortless' && enemy.type !== 'funnels') applyEnemyKnockback(enemy, dx / length * pl.S.kb * 45, dy / length * pl.S.kb * 45);
       burst(hitPoint.x, hitPoint.y, 6, color, 220, 0.22, 2.2);
     }
     if (stacks > 0) burst(pos.x, pos.y, 8, color, 260, 0.25, 2.6);
@@ -4922,6 +5394,15 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     hurtFlash = Math.max(0, hurtFlash - dt * 2.2);
     pickFlash = Math.max(0, pickFlash - dt * 2);
   }
+  function clearTransientEffects() {
+    parts.length = 0;
+    rings.length = 0;
+    texts.length = 0;
+    emojiEffects.length = 0;
+    shake = 0;
+    hurtFlash = 0;
+    pickFlash = 0;
+  }
 
   function rebuildEnemyGrid() {
     enemyGrid.clear();
@@ -4936,6 +5417,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       if (e.hp <= 0) continue;
       if (e.mxGridCells) for (const cell of e.mxGridCells) addEnemy(e, cell.x, cell.y);
       else if (e.matrixCells) for (const cell of e.matrixCells) { const pos = matrixCellCenter(e, cell); addEnemy(e, pos.x, pos.y); }
+      else if (e.funnels) for (const satellite of e.funnels) addEnemy(e, satellite.x, satellite.y);
       else if (e.parts) for (const part of e.parts) addEnemy(e, part.x, part.y);
       else if (e.plates) { addEnemy(e, e.x, e.y); for (let i = 0; i < e.plates.length; i++) { const p = fortlessPanelCenter(e, i); addEnemy(e, p.x, p.y); } }
       else addEnemy(e, e.x, e.y);
@@ -4985,6 +5467,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (bullets.length > LIMITS.bullets) bullets.splice(0, bullets.length - LIMITS.bullets);
     if (ebullets.length > LIMITS.ebullets) ebullets.splice(0, ebullets.length - LIMITS.ebullets);
     rebuildEnemyGrid();
+    const velocitySampleDt = Math.max(dt, 1 / 120);
+    for (const enemy of enemies) {
+      enemy.cpuVx = Number.isFinite(enemy.cpuLastX) ? Math.max(-2200, Math.min(2200, (enemy.x - enemy.cpuLastX) / velocitySampleDt)) : 0;
+      enemy.cpuVy = Number.isFinite(enemy.cpuLastY) ? Math.max(-2200, Math.min(2200, (enemy.y - enemy.cpuLastY) / velocitySampleDt)) : 0;
+      enemy.cpuLastX = enemy.x; enemy.cpuLastY = enemy.y;
+    }
     // player
     if (state !== 'dying') {
       P.prevX = P.x; P.prevY = P.y;
@@ -5107,6 +5595,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         if (e.type === 'stardust') updateBoss(e, dt);
         else if (e.type === 'trinity') updateTrinity(e, dt);
         else if (e.type === 'fortless') updateFortless(e, dt);
+        else if (e.type === 'funnels') updateFunnels(e, dt);
         else if (e.type === 'matrix') updateMatrix(e, dt);
         e.bx = e.x; e.by = e.y;
       } else {
@@ -5144,7 +5633,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
           const a = Math.atan2(target.y - e.by, target.x - e.bx), sp = Math.min(62, 30 + wave * 2);
           e.bx += Math.cos(a) * sp * dt; e.by += Math.sin(a) * sp * dt;
         }
-        if (e.type === 'tridrone' && state !== 'dying') {
+        if ((e.type === 'tridrone' || e.type === 'fortlessDrone') && state !== 'dying') {
           const target = getTargetPlayer(e.bx, e.by), dx = target.x - e.bx, dy = target.y - e.by, distance = Math.hypot(dx, dy) || 1;
           const steer = Math.min(1, dt * 1.8);
           e.vx += (dx / distance * 140 - e.vx) * steer; e.vy += (dy / distance * 140 - e.vy) * steer;
@@ -5344,7 +5833,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       for (const pl of partyPlayers()) {
         if (pl.hp <= 0 || (pl === P && state === 'dying')) continue;
         const pos = playerPosition(pl), playerRadius = pl.r * eventSizeScale('player');
-        const radius = e.type === 'fortless' || e.type === 'matrix' ? playerRadius : e.r * 0.85 * (ET[e.type].hk || 1) * eventSizeScale('enemy') + playerRadius;
+        const radius = e.type === 'fortless' || e.type === 'matrix' || e.type === 'funnels'
+          ? playerRadius : e.r * 0.85 * (ET[e.type].hk || 1) * eventSizeScale('enemy') + playerRadius;
         if ((pl.dashT > 0 || pl.dashJustEnded) && pl.S.dashDamage > 0) {
           const x0 = Number.isFinite(pl.prevX) ? pl.prevX : pos.x, y0 = Number.isFinite(pl.prevY) ? pl.prevY : pos.y;
           const hitPoint = sweptBodyHit(e, x0, y0, pos.x, pos.y, radius);
@@ -5353,7 +5843,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         const collided = bodyHit(e, pos.x, pos.y, radius);
         if (!collided || pl.inv > 0) continue;
         if (isSquareChaser(e.type) || (e.type === 'psept' && pseptChasing)) pl.inv = 0.375 * (playerInvulnerabilityDuration() / 0.75);
-        if (pl === P) hurtPlayer(hitDamage, e.x, e.y); else hurtRemotePlayer(pl, hitDamage, e.x, e.y);
+        const hitSource = e.type === 'funnels' ? nearPt(e, pos.x, pos.y) : e;
+        if (pl === P) hurtPlayer(hitDamage, hitSource.x, hitSource.y); else hurtRemotePlayer(pl, hitDamage, hitSource.x, hitSource.y);
       }
     }
     dt = frameDt;
@@ -5396,7 +5887,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     ebullets.length = ebulletWrite;
     updateMeteors(dt);
     updateItems(dt);
-    updateRandomEvent(dt); startTrainEvent(dt); updatePartyEvents(frameDt);
+    updateRandomEvent(dt); startTrainEvent(dt);
     // bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
@@ -5422,12 +5913,18 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         destroyProjectile(b, C.bullet);
         bullets.splice(i, 1); continue;
       }
+      const funnelsHit = funnelsSatelliteHit(b.px, b.py, b.x, b.y, b.r * eventSizeScale('player'), b.hit);
+      const candidates = nearbyEnemies(b.x, b.y, 160);
+      if (funnelsHit && !candidates.includes(funnelsHit.enemy)) candidates.push(funnelsHit.enemy);
       let dead = false;
-      for (const e of nearbyEnemies(b.x, b.y, 160)) {
+      for (const e of candidates) {
         if (e.hp <= 0) continue;
         if (b.hit.has(e)) continue;
-        const hitRadius = e.type === 'fortless' || e.type === 'matrix' ? b.r * eventSizeScale('player') : e.r * 0.9 * (ET[e.type].hk || 1) * eventSizeScale('enemy') + b.r * eventSizeScale('player');
-        if (bodyHit(e, b.x, b.y, hitRadius)) {
+        const hitFunnel = e.type === 'funnels' && funnelsHit && funnelsHit.enemy === e;
+        const hitRadius = e.type === 'fortless' || e.type === 'matrix' || e.type === 'funnels'
+          ? b.r * eventSizeScale('player') : e.r * 0.9 * (ET[e.type].hk || 1) * eventSizeScale('enemy') + b.r * eventSizeScale('player');
+        if (hitFunnel || bodyHit(e, b.x, b.y, hitRadius)) {
+          const hitX = hitFunnel ? funnelsHit.x : b.x, hitY = hitFunnel ? funnelsHit.y : b.y;
           b.hit.add(e);
           // クリティカル: 率100%ごとに1重確定。倍率は 1 + 重数 × (クリティカルダメージ − 1) の加算
           const stacks = rollCriticalStacks(b.crit);
@@ -5443,16 +5940,16 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
             burst(b.x, b.y, 8, b.color || playerDamageColor(b.owner || 1), 260, 0.25, 2.6);
           }
           if (e.type === 'fortless') {
-            const hit = fortlessDamage(e, dealt, b.x, b.y, b.r, b.owner);
+            const hit = fortlessDamage(e, dealt, hitX, hitY, b.r, b.owner);
             if (hit) damagePop(hit.x, hit.y - 14, hit.damage, stacks > 0, b.color || playerDamageColor(b.owner || 1));
           } else {
-            const actualDamage = applyEnemyDamage(e, dealt, b.owner, b.x, b.y, b.r);
-            const hitPoint = nearPt(e, b.x, b.y, b.r);
+            const actualDamage = applyEnemyDamage(e, dealt, b.owner, hitX, hitY, b.r);
+            const hitPoint = nearPt(e, hitX, hitY, b.r);
             if (actualDamage > 0) damagePop(hitPoint.x, hitPopY(e, hitPoint), actualDamage, stacks > 0, b.color || playerDamageColor(b.owner || 1));
           }
           const l = Math.hypot(b.vx, b.vy) || 1;
-          if (e.type !== 'fortless') applyEnemyKnockback(e, (b.vx / l) * b.kb * 45, (b.vy / l) * b.kb * 45);
-          burst(b.x, b.y, 6, b.color || playerDamageColor(b.owner || 1), 220, 0.22, 2.2);
+          if (e.type !== 'fortless' && e.type !== 'funnels') applyEnemyKnockback(e, (b.vx / l) * b.kb * 45, (b.vy / l) * b.kb * 45);
+          burst(hitX, hitY, 8, b.color || playerDamageColor(b.owner || 1), 240, 0.26, 2.6);
           shake = Math.max(shake, 2);
           sfx.hit();
           if (b.burst > 0) explodeBullet(b, e, critScale);
@@ -5497,13 +5994,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       randomEvent = null;
     }
     if (!sandboxMode && state === 'play' && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0 && phaseIdx + 1 < phaseCount) {
-      finishPartyEvent();
       phaseIdx++; startPhase(phaseIdx);
       bannerText = 'PHASE ' + (phaseIdx + 1) + ' / ' + phaseCount; bannerT = 1.8;
       ring(P.x, P.y, 300, 0.6, '#ffffff', 2); sfx.wave();
     } else if (!sandboxMode && state === 'play' && waveClearGuard <= 0 && spawns.length === 0 && enemies.length === 0 && reviveAnimations.length === 0 && trainRushes.length === 0) {
-      finishPartyEvent();
       state = 'clear'; clearT = 1.2; collectRemainingItems();
+      clearTransientEffects();
       sendCpuEmojis(0);
       bannerBossTypes = null; bannerText = 'WAVE CLEAR'; bannerT = 1.4;
       showWaveClearFx();
@@ -5897,7 +6393,10 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     for (const e of enemies) {
       if (e.type !== 'train' || e.ci < 1) continue;
       const pv = trainMap.get(e.cid + ':' + (e.ci - 1));
-      if (pv) { ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(pv.x, pv.y); ctx.stroke(); }
+      if (pv) {
+        ctx.strokeStyle = e.enhanced ? 'rgba(117,217,232,.55)' : 'rgba(195,208,224,.5)';
+        ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(pv.x, pv.y); ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -5919,12 +6418,12 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
   }
   function drawTrainSeg(e) {
-    const et = ET.train, head = e.ci === 0;
+    const et = ET.train, head = e.ci === 0, color = e.color || et.color;
     ctx.translate(e.x, e.y); ctx.rotate(e.rot || 0);
-    ctx.shadowColor = et.color; ctx.shadowBlur = head ? 24 : 12;
+    ctx.shadowColor = color; ctx.shadowBlur = head ? 24 : 12;
     drawPoly(0, 0, e.r, Math.PI / 6, 6);
-    ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill; ctx.fill();
-    ctx.lineWidth = head ? 3.5 : 2.5; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : et.color; ctx.stroke();
+    ctx.fillStyle = e.flash > 0 ? '#ffffff' : (e.enhanced ? '#102a30' : et.fill); ctx.fill();
+    ctx.lineWidth = head ? 3.5 : 2.5; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : color; ctx.stroke();
     const warningTime = head ? (e.chargePhase === 1 ? e.chargeT : e.rushPhase === 1 ? e.rushT : 0) : 0;
     if (warningTime > 0) {
       const progress = 1 - Math.max(0, Math.min(1, warningTime / TRAIN_CHARGE_WINDUP));
@@ -5950,6 +6449,16 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     const p = Math.min(1, sp.t / sp.delay), blink = Math.floor(sp.t * 6) % 2 ? 1 : 0.45, lane = 76 * eventSizeScale('enemy');
     const D = [[1, 0], [-1, 0], [0, 1], [0, -1]][sp.edge], ux = D[0], uy = D[1], horiz = sp.edge < 2;
     ctx.save();
+    if (Number.isFinite(sp.angle)) {
+      ctx.globalAlpha = (0.25 + 0.55 * p) * blink; ctx.strokeStyle = '#75d9e8';
+      ctx.lineWidth = 24; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.endX, sp.endY); ctx.stroke();
+      ctx.globalAlpha = 0.95 * blink; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(sp.endX, sp.endY); ctx.stroke();
+      drawChargeArrows(sp.x, sp.y, sp.angle, '#75d9e8', 24, Math.hypot(sp.endX - sp.x, sp.endY - sp.y));
+      ctx.restore();
+      return;
+    }
     ctx.globalAlpha = (0.14 + 0.2 * p) * blink; ctx.fillStyle = '#ff4d4d';
     if (horiz) ctx.fillRect(0, sp.y - lane / 2, W, lane); else ctx.fillRect(sp.x - lane / 2, 0, lane, H);
     ctx.globalAlpha = 0.85 * blink; ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 2;
@@ -5990,10 +6499,24 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -FORTLESS_PANEL_DEPTH * sc / 2, FORTLESS_PANEL_HALF * 2 * sc, FORTLESS_PANEL_DEPTH * sc);
         ctx.lineWidth = 2; ctx.strokeStyle = plate.flash > 0 ? '#ffffff' : et.color;
         ctx.strokeRect(-FORTLESS_PANEL_HALF * sc, -FORTLESS_PANEL_DEPTH * sc / 2, FORTLESS_PANEL_HALF * 2 * sc, FORTLESS_PANEL_DEPTH * sc);
-        ctx.fillStyle = '#081119';
-        ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -1.5 * sc, FORTLESS_PANEL_HALF * 2 * sc, 3 * sc);
-        ctx.fillStyle = et.color;
-        ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -1.5 * sc, FORTLESS_PANEL_HALF * 2 * sc * (plate.hp / plate.maxHp), 3 * sc);
+        const gaugeWidth = FORTLESS_PANEL_HALF * 2 * sc;
+        if (e.enhanced) {
+          const shellMaxHp = Math.max(1, plate.shellMaxHp || plate.maxHp);
+          const shell = Math.max(0, Math.min(1, (plate.shellHp || 0) / shellMaxHp));
+          const core = Math.max(0, Math.min(1, (plate.hp - (plate.shellHp || 0)) / shellMaxHp));
+          ctx.fillStyle = '#081119';
+          ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -5 * sc, gaugeWidth, 3 * sc);
+          ctx.fillRect(-FORTLESS_PANEL_HALF * sc, 2 * sc, gaugeWidth, 3 * sc);
+          ctx.fillStyle = et.color;
+          ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -5 * sc, gaugeWidth * shell, 3 * sc);
+          ctx.fillStyle = '#d9fbff';
+          ctx.fillRect(-FORTLESS_PANEL_HALF * sc, 2 * sc, gaugeWidth * core, 3 * sc);
+        } else {
+          ctx.fillStyle = '#081119';
+          ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -1.5 * sc, gaugeWidth, 3 * sc);
+          ctx.fillStyle = et.color;
+          ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -1.5 * sc, gaugeWidth * (plate.hp / plate.maxHp), 3 * sc);
+        }
       } else {
         ctx.fillStyle = 'rgba(4,8,14,.9)';
         ctx.fillRect(-FORTLESS_PANEL_HALF * sc, -FORTLESS_PANEL_DEPTH * sc / 2, FORTLESS_PANEL_HALF * 2 * sc, FORTLESS_PANEL_DEPTH * sc);
@@ -6004,24 +6527,51 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       ctx.restore();
       if (plate.hp <= 0) continue;
-      const weaponColor = plate.type === 'bounce' ? BOUNCE_COL : plate.type === 'laser' ? '#ff66c4' : '#b7e9ef';
+      ctx.save();
+      ctx.fillStyle = et.color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold ' + Math.max(8, 10 * sc) + 'px sans-serif';
+      ctx.fillText(({ tri: '3', bounce: 'B', laser: 'L', drone: 'D' })[plate.type] || '', panel.x, panel.y);
+      ctx.restore();
+      const weaponColor = et.color;
       for (const offset of [-23, 23]) {
         const weapon = fortlessMount(e, i, offset, 8);
         ctx.save(); ctx.translate(weapon.x, weapon.y); ctx.rotate(weapon.a - Math.PI / 2);
         ctx.fillStyle = '#527484'; ctx.fillRect(-7 * sc, -4 * sc, 14 * sc, 9 * sc);
         ctx.beginPath(); ctx.arc(0, 4 * sc, 7 * sc, 0, Math.PI); ctx.fill();
         ctx.fillStyle = weaponColor;
-        ctx.fillRect((plate.type === 'bounce' ? -3 : -2) * sc, 5 * sc, (plate.type === 'bounce' ? 6 : 4) * sc, (plate.type === 'laser' ? 13 : 10) * sc);
+        ctx.fillRect(-2 * sc, 5 * sc, 4 * sc, (plate.type === 'laser' ? 13 : 10) * sc);
         ctx.restore();
       }
-      const spawner = fortlessMount(e, i, 0, 5);
-      ctx.save(); ctx.translate(spawner.x, spawner.y); ctx.rotate(spawner.a - Math.PI / 2);
-      ctx.beginPath(); ctx.moveTo(-8 * sc, -3 * sc); ctx.lineTo(8 * sc, -3 * sc);
-      ctx.lineTo(12 * sc, 9 * sc); ctx.lineTo(-12 * sc, 9 * sc); ctx.closePath();
-      ctx.fillStyle = et.color; ctx.fill(); ctx.strokeStyle = '#b7e9ef'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.restore();
     }
     ctx.restore();
+  }
+
+  function drawFunnels(e, sc) {
+    const color = funnelsColor(e);
+    ctx.save(); ctx.globalAlpha = 0.18; ctx.strokeStyle = color; ctx.lineWidth = 1.5 * sc;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.funnelOrbitRadius || FUNNELS_ORBIT_RADIUS, 0, TAU); ctx.stroke(); ctx.restore();
+    for (const satellite of e.funnels || []) {
+      const active = satellite.state === 'launch' || satellite.state === 'dash' || satellite.state === 'warning';
+      ctx.save(); ctx.translate(satellite.x, satellite.y); ctx.rotate(satellite.angle);
+      if (satellite.state === 'dash' || satellite.state === 'launch') {
+        const trail = satellite.state === 'dash' ? 78 : 42;
+        ctx.globalAlpha = 0.22; ctx.strokeStyle = color; ctx.lineWidth = 20 * sc;
+        ctx.beginPath(); ctx.moveTo(-trail, 0); ctx.lineTo(0, 0); ctx.stroke();
+        ctx.globalAlpha = 0.75; ctx.lineWidth = 3 * sc; ctx.stroke();
+      }
+      ctx.globalAlpha = 0.2; ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(0, 0, FUNNELS_SATELLITE_RADIUS * 2.2 * sc, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1; ctx.shadowColor = color; ctx.shadowBlur = bloomEnabled ? (active ? 32 : 20) : 0;
+      ctx.beginPath(); ctx.moveTo(22 * sc, 0); ctx.lineTo(-13 * sc, 10 * sc);
+      ctx.lineTo(-7 * sc, 0); ctx.lineTo(-13 * sc, -10 * sc); ctx.closePath();
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : '#12343a'; ctx.fill(); ctx.lineWidth = 2.8 * sc;
+      ctx.strokeStyle = color; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(12 * sc, 0); ctx.lineTo(-8 * sc, 0);
+      ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.8; ctx.lineWidth = 1.5 * sc; ctx.stroke();
+      ctx.globalAlpha = 1; ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(0, 0, 3.2 * sc, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
   }
 
   function drawMatrixGrid(cells, getCenter, cellSize, fill, outline, sc, selectedKey) {
@@ -6181,13 +6731,14 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       if (e.type === 'train') { drawTrainSeg(e); ctx.restore(); continue; }
       if (e.type === 'fortless') { drawFortless(e, sc); ctx.restore(); continue; }
+      if (e.type === 'funnels') { drawFunnels(e, sc); ctx.restore(); continue; }
       if (e.type === 'matrix') { drawMatrix(e, sc); ctx.restore(); continue; }
       if (e.parts) {                                          // Trinity: 3つの三角形
         for (const q of e.parts) {
-          ctx.shadowColor = bloomEnabled ? et.color : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + q.chg * 26 : 0;
+          ctx.shadowColor = bloomEnabled ? enemyColor : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + q.chg * 26 : 0;
           drawPoly(q.x, q.y, e.r * sc * et.vr, q.rot, 3);
-          ctx.fillStyle = e.flash > 0 ? '#ffffff' : et.fill; ctx.fill();
-          ctx.lineWidth = 3; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : et.color; ctx.stroke();
+          ctx.fillStyle = e.flash > 0 ? '#ffffff' : enemyFill; ctx.fill();
+          ctx.lineWidth = 3; ctx.strokeStyle = e.flash > 0 ? '#ffffff' : enemyColor; ctx.stroke();
           if (q.chg > 0) {                                    // 発射準備: 先端に光が集まる
             const tx = q.x + Math.cos(q.rot) * e.r * et.vr * sc, ty = q.y + Math.sin(q.rot) * e.r * et.vr * sc;
             ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(tx, ty, 2 + q.chg * 7, 0, TAU); ctx.fill();
@@ -6200,7 +6751,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       }
       ctx.shadowColor = bloomEnabled ? enemyColor : 'transparent'; ctx.shadowBlur = bloomEnabled ? 16 + ch * 22 : 0;
       if (isLaserStar(e.type)) drawSixStar(e.x, e.y, e.r * sc * et.vr, e.rot);
-      else if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, 0.36);
+      else if (et.star) drawStar(e.x, e.y, e.r * sc * et.vr, e.rot, e.enhanced && e.type === 'stardust' ? 0.48 : 0.36);
       else if (et.cross) drawCross(e.x, e.y, e.r * sc * et.vr, e.rot);
       else drawPoly(e.x, e.y, e.r * sc * et.vr, e.rot, et.sides);
       ctx.fillStyle = e.flash > 0 ? '#ffffff' : (e.type === 'psept' && (e.pseptPhase === 'warning' || e.pseptPhase === 'active') ? adjustHexBrightness(e.pseptColor, 0.55) : enemyFill);
@@ -6248,6 +6799,67 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
 
   function drawLasers() {                                   // Trinity と六芳星のレーザー(予告線→照射)
     for (const e of enemies) {
+      if (e.type === 'stardust' && e.enhanced && e.holyLaserPhase > 0) {
+        const warning = e.holyLaserPhase === 1;
+        const fade = warning ? 1 : Math.min(1, e.holyLaserT / 0.18);
+        for (let i = 0; i < 4; i++) {
+          const angle = e.holyLaserBase + i * Math.PI / 2;
+          const ex = e.x + Math.cos(angle) * laserRayLength(), ey = e.y + Math.sin(angle) * laserRayLength();
+          ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(ex, ey); ctx.lineCap = 'round';
+          if (warning) {
+            ctx.globalAlpha = 0.35 + 0.4 * (Math.sin(time * 20) + 1) * 0.5;
+            ctx.strokeStyle = '#75d9e8'; ctx.lineWidth = 2; ctx.stroke();
+          } else {
+            ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = '#75d9e8'; ctx.shadowBlur = 22 * fade;
+            ctx.globalAlpha = 0.34 * fade; ctx.strokeStyle = '#75d9e8'; ctx.lineWidth = 22 * fade; ctx.stroke();
+            ctx.globalAlpha = 0.92 * fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * fade; ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      if (e.type === 'funnels') {
+        for (const satellite of e.funnels || []) {
+          if (e.funnelMode === 'rush' && satellite.state === 'warning' && satellite.wall) {
+            const endX = satellite.x + Math.cos(satellite.angle) * satellite.wall.distance;
+            const endY = satellite.y + Math.sin(satellite.angle) * satellite.wall.distance;
+            ctx.save(); ctx.globalAlpha = 0.78; ctx.strokeStyle = funnelsColor(e); ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(satellite.x, satellite.y); ctx.lineTo(endX, endY); ctx.stroke(); ctx.restore();
+          }
+          if (e.funnelMode === 'laser' && (e.funnelLaserPhase === 'warning' || e.funnelLaserPhase === 'active')) {
+            const endX = satellite.x + Math.cos(satellite.angle) * satellite.wall.distance;
+            const endY = satellite.y + Math.sin(satellite.angle) * satellite.wall.distance;
+            ctx.save(); ctx.beginPath(); ctx.moveTo(satellite.x, satellite.y); ctx.lineTo(endX, endY); ctx.lineCap = 'round';
+            if (e.funnelLaserPhase === 'warning') {
+              ctx.globalAlpha = 0.65; ctx.strokeStyle = funnelsColor(e); ctx.lineWidth = 2; ctx.stroke();
+            } else {
+              const fade = Math.min(1, e.funnelLaserT / 0.2);
+              ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = funnelsColor(e); ctx.shadowBlur = 22 * fade;
+              ctx.globalAlpha = 0.34 * fade; ctx.strokeStyle = funnelsColor(e); ctx.lineWidth = 22 * fade; ctx.stroke();
+              ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * fade; ctx.stroke();
+            }
+            ctx.restore();
+          }
+        }
+        if (e.funnelMode === 'laser' && (e.funnelLaserPhase === 'active' || e.funnelLaserPhase === 'sparks')) {
+          const firstSpark = e.funnelLaserPhase === 'sparks' ? e.funnelSparkIndex : 0;
+          for (let i = firstSpark; i < (e.funnelSparks || []).length; i++) {
+            const spark = e.funnelSparks[i];
+            ctx.save(); ctx.globalAlpha = e.funnelLaserPhase === 'sparks' ? 0.65 + 0.3 * Math.sin(time * 24) : 0.75;
+            ctx.strokeStyle = funnelsColor(e); ctx.lineWidth = 4;
+            ctx.shadowColor = funnelsColor(e); ctx.shadowBlur = 16;
+            ctx.beginPath(); ctx.arc(spark.x, spark.y, 16 + Math.sin(time * 18) * 4, 0, TAU); ctx.stroke();
+            ctx.restore();
+          }
+        }
+        if (e.funnelMode === 'slash' && e.funnelSlashPhase === 'warning') {
+          for (let i = 0; i < (e.funnelSlashAngles || []).length; i++) {
+            const angle = e.funnelSlashAngles[i], source = e.funnels[i % e.funnels.length];
+            const endX = source.x + Math.cos(angle) * laserRayLength(), endY = source.y + Math.sin(angle) * laserRayLength();
+            ctx.save(); ctx.globalAlpha = 0.58; ctx.strokeStyle = funnelsColor(e); ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(source.x, source.y); ctx.lineTo(endX, endY); ctx.stroke(); ctx.restore();
+          }
+        }
+      }
       if (e.type === 'psept' && e.pseptAction === 7 && (e.pseptLaserPhase === 1 || e.pseptLaserPhase === 2 || e.pseptLaserPhase === 3)) {
         for (const angle of e.pseptLaserAngles || []) {
           const ex = e.x + Math.cos(angle) * laserRayLength(), ey = e.y + Math.sin(angle) * laserRayLength();
@@ -6298,24 +6910,42 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         for (let i = 0; i < e.plates.length; i++) {
           const plate = e.plates[i];
           if (!plate.laserPhase) continue;
-          const face = fortlessFacePoint(e, i), ex = face.x + Math.cos(plate.laserAngle) * laserRayLength(), ey = face.y + Math.sin(plate.laserAngle) * laserRayLength();
-          ctx.beginPath(); ctx.moveTo(face.x, face.y); ctx.lineTo(ex, ey);
-          if (plate.laserPhase === 1) {
-            ctx.globalAlpha = 0.35 + 0.4 * (Math.sin(time * 20) + 1) * 0.5;
-            ctx.strokeStyle = ET.fortless.color; ctx.lineWidth = 2.5;
-            ctx.setLineDash([]); ctx.stroke();
-          } else {
-            ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = ET.fortless.color; ctx.shadowBlur = 24;
-            ctx.setLineDash([]); ctx.strokeStyle = ET.fortless.color; ctx.globalAlpha = 0.38; ctx.lineWidth = 24; ctx.stroke();
-            ctx.globalAlpha = 0.88; ctx.lineWidth = 9; ctx.stroke();
-            ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.95; ctx.lineWidth = 3.5; ctx.stroke();
+          for (const offset of [-23, 23]) {
+            const mount = fortlessMount(e, i, offset, 12);
+            const ex = mount.x + Math.cos(plate.laserAngle) * laserRayLength();
+            const ey = mount.y + Math.sin(plate.laserAngle) * laserRayLength();
+            ctx.beginPath(); ctx.moveTo(mount.x, mount.y); ctx.lineTo(ex, ey);
+            if (plate.laserPhase === 1) {
+              ctx.globalAlpha = 0.35 + 0.4 * (Math.sin(time * 20) + 1) * 0.5;
+              ctx.strokeStyle = ET.fortless.color; ctx.lineWidth = 2.5;
+              ctx.setLineDash([]); ctx.stroke();
+            } else {
+              ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = ET.fortless.color; ctx.shadowBlur = 24;
+              ctx.setLineDash([]); ctx.strokeStyle = ET.fortless.color; ctx.globalAlpha = 0.38; ctx.lineWidth = 24; ctx.stroke();
+              ctx.globalAlpha = 0.88; ctx.lineWidth = 9; ctx.stroke();
+              ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.95; ctx.lineWidth = 3.5; ctx.stroke();
+            }
           }
         }
         ctx.restore(); continue;
       }
       if (e.type !== 'trinity') continue;
-      const col = ET.trinity.color;
+      const col = trinityColor(e);
       ctx.save();
+      if (e.form === 'merging') {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+        ctx.globalAlpha = 0.35 + 0.45 * Math.min(1, e.ft / TRI_MERGE_T);
+        for (let i = 0; i < (e.parts || []).length; i++) {
+          const part = e.parts[i], target = trinityMergeTarget(e, i);
+          const dx = target.x - part.x, dy = target.y - part.y, length = Math.hypot(dx, dy) || 1;
+          const bend = (i - 1) * 55;
+          ctx.beginPath(); ctx.moveTo(part.x, part.y);
+          ctx.quadraticCurveTo((part.x + target.x) / 2 - dy / length * bend,
+            (part.y + target.y) / 2 + dx / length * bend, target.x, target.y);
+          ctx.stroke();
+        }
+      }
       for (const p of e.parts || []) {
         if (!p.laserPhase) continue;
         const ex = p.x + Math.cos(p.laserAngle) * laserRayLength(), ey = p.y + Math.sin(p.laserAngle) * laserRayLength();
@@ -6434,11 +7064,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       shot.moveTo(b.x + b.r * size, b.y);
       shot.arc(b.x, b.y, b.r * size, 0, TAU);
     }
-    ctx.globalAlpha = 0.38; ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.19; ctx.lineCap = 'round';
     for (const trail of trails.values()) {
       ctx.strokeStyle = trail.color; ctx.lineWidth = trail.width; ctx.stroke(trail.path);
     }
-    ctx.globalAlpha = 1; ctx.shadowBlur = 10;
+    ctx.globalAlpha = 0.5; ctx.shadowBlur = 10;
     for (const [color, shot] of shots) {
       ctx.fillStyle = color; ctx.shadowColor = color;
       ctx.fill(shot);
@@ -6745,17 +7375,28 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         ratio = Math.min(1, sum / boss.maxTotal);
       }
       const bw = 380, bx = (W - bw) / 2, by = 30 + bossIndex * 25;
-      ctx.textAlign = 'center'; ctx.fillStyle = ET[boss.type].color; setFont(12, 700); spaced(5);
-      ctx.fillText(boss.type === 'matrix' ? 'MATRIX  /  FORM ' + boss.mxForm : ET[boss.type].name, W / 2 + 2, by - 8); spaced(0);
+      const bossColor = boss.color || ET[boss.type].color;
+      ctx.textAlign = 'center'; ctx.fillStyle = bossColor; setFont(12, 700); spaced(5);
+      ctx.fillText(boss.type === 'matrix' ? 'MATRIX  /  FORM ' + boss.mxForm : bossDisplayName(boss), W / 2 + 2, by - 8); spaced(0);
       ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(bx, by, bw, 8);
-      ctx.fillStyle = ET[boss.type].color; ctx.fillRect(bx, by, bw * ratio, 8);
+      ctx.fillStyle = bossColor; ctx.fillRect(bx, by, bw * ratio, 8);
       ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(bx + bw / 2 - 1, by - 2, 2, 12);
       if (boss.type === 'fortless' && boss.plates) {
         const gap = 2, sw = (bw - gap * (FORTLESS_SIDES - 1)) / FORTLESS_SIDES, sy = by + 12;
         for (let i = 0; i < FORTLESS_SIDES; i++) {
           const plate = boss.plates[i], sx = bx + i * (sw + gap);
           ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.fillRect(sx, sy, sw, 3);
-          if (plate.hp > 0) { ctx.fillStyle = ET.fortless.color; ctx.fillRect(sx, sy, sw * (plate.hp / plate.maxHp), 3); }
+          if (plate.hp > 0) {
+            if (boss.enhanced) {
+              const shellMaxHp = Math.max(1, plate.shellMaxHp || plate.maxHp);
+              const shellRatio = Math.max(0, Math.min(1, (plate.shellHp || 0) / shellMaxHp));
+              const coreRatio = Math.max(0, Math.min(1, (plate.hp - (plate.shellHp || 0)) / shellMaxHp));
+              ctx.fillStyle = ET.fortless.color; ctx.fillRect(sx, sy, sw * shellRatio, 1.5);
+              ctx.fillStyle = '#d9fbff'; ctx.fillRect(sx, sy + 1.5, sw * coreRatio, 1.5);
+            } else {
+              ctx.fillStyle = ET.fortless.color; ctx.fillRect(sx, sy, sw * (plate.hp / plate.maxHp), 3);
+            }
+          }
           else { ctx.fillStyle = 'rgba(246,199,92,.7)'; ctx.fillRect(sx, sy, sw * (1 - plate.repairT / FORTLESS_PANEL_REPAIR), 3); }
         }
       }
@@ -6831,174 +7472,6 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     ctx.fillRect(W / 2 - width / 2, 52, width, 30);
     ctx.fillStyle = C.accent; ctx.shadowColor = C.accent; ctx.shadowBlur = 12;
     ctx.fillText(randomEvent.title, W / 2, 67); spaced(0); ctx.restore();
-  }
-  const partyEventActive = () => !!randomEvent && (state === 'play' || state === 'clear');
-  const localPlayerId = () => netRole === 'guest' ? playerId : 1;
-  function drawChevron(x, y, angle, size) {
-    ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
-    ctx.beginPath(); ctx.moveTo(-size, -size); ctx.lineTo(0, 0); ctx.lineTo(-size, size); ctx.stroke();
-    ctx.restore();
-  }
-  // プレイヤーより下に描くもの: 横断レーザー / 集合サークル / 絆レーザー
-  function drawPartyEventsUnder() {
-    if (!partyEventActive()) return;
-    const ev = randomEvent, now = performance.now() / 1000;
-    if (ev.type === 'sweep' && state === 'play') {
-      for (const laser of ev.lasers || []) {
-        const vertical = laser.axis === 'x', span = vertical ? W : H;
-        const pos = laser.t < SWEEP_LASER_WARN ? Math.max(4, Math.min(span - 4, laser.pos)) : laser.pos;
-        const x1 = vertical ? pos : 0, y1 = vertical ? 0 : pos, x2 = vertical ? pos : W, y2 = vertical ? H : pos;
-        const angle = vertical ? (laser.dir > 0 ? 0 : Math.PI) : (laser.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-        const length = vertical ? H : W;
-        ctx.save(); ctx.lineCap = 'round';
-        if (laser.t < SWEEP_LASER_WARN) {
-          ctx.globalAlpha = Math.floor(laser.t * 10) % 2 ? 0.95 : 0.35;
-          ctx.strokeStyle = SWEEP_LASER_COLOR; ctx.lineWidth = 3; ctx.setLineDash([16, 12]);
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-          ctx.setLineDash([]); ctx.lineWidth = 3;
-          for (let d = 60; d < length; d += 120) {
-            for (let k = 0; k < 3; k++) {
-              const off = 18 + k * 14;
-              drawChevron(vertical ? pos + Math.cos(angle) * off : d, vertical ? d : pos + Math.sin(angle) * off, angle, 7);
-            }
-          }
-        } else {
-          const pulse = 1 + Math.sin(now * 24) * 0.15;
-          ctx.shadowColor = SWEEP_LASER_COLOR; ctx.shadowBlur = bloomEnabled ? 30 : 0;
-          ctx.strokeStyle = 'rgba(255,77,109,.35)'; ctx.lineWidth = (SWEEP_LASER_HALF * 2 + 14) * pulse;
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-          ctx.strokeStyle = SWEEP_LASER_COLOR; ctx.lineWidth = SWEEP_LASER_HALF * 2 * 0.75;
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.shadowBlur = 0;
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-          ctx.globalAlpha = 0.8; ctx.strokeStyle = SWEEP_LASER_COLOR; ctx.lineWidth = 3;
-          const scroll = (now * 140) % 120;
-          for (let d = scroll; d < length; d += 120) {
-            drawChevron(vertical ? pos + Math.cos(angle) * 26 : d, vertical ? d : pos + Math.sin(angle) * 26, angle, 8);
-          }
-        }
-        ctx.restore();
-      }
-    }
-    if (ev.type === 'gather' && ev.circle && !(ev.gatherCd > 0) && state === 'play') {
-      const c = ev.circle, progress = Math.min(1, (ev.hold || 0) / GATHER_HOLD);
-      const pulse = 1 + Math.sin(now * 5) * 0.03;
-      ctx.save();
-      ctx.fillStyle = 'rgba(255,227,110,' + (0.07 + progress * 0.18) + ')';
-      ctx.beginPath(); ctx.arc(c.x, c.y, c.r * pulse, 0, TAU); ctx.fill();
-      ctx.shadowColor = GATHER_COLOR; ctx.shadowBlur = bloomEnabled ? 22 : 0;
-      ctx.strokeStyle = GATHER_COLOR; ctx.lineWidth = 4; ctx.setLineDash([18, 12]); ctx.lineDashOffset = -now * 40;
-      ctx.beginPath(); ctx.arc(c.x, c.y, c.r * pulse, 0, TAU); ctx.stroke();
-      ctx.setLineDash([]);
-      if (progress > 0) {
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 8;
-        ctx.beginPath(); ctx.arc(c.x, c.y, c.r * pulse + 8, -Math.PI / 2, -Math.PI / 2 + TAU * progress); ctx.stroke();
-      }
-      ctx.shadowBlur = 0; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = GATHER_COLOR; setFont(20, 700); spaced(2);
-      ctx.fillText('集合！ ' + (ev.inside || 0) + ' / ' + (ev.total || 0), c.x, c.y);
-      spaced(0);
-      // 自分が円の外にいるときは、円の方向を矢印で示す
-      const me = myPlayer();
-      if (me && me.hp > 0) {
-        const pos = playerPosition(me), dx = c.x - pos.x, dy = c.y - pos.y, distance = Math.hypot(dx, dy);
-        if (distance > c.r) {
-          const a = Math.atan2(dy, dx);
-          ctx.strokeStyle = GATHER_COLOR; ctx.lineWidth = 3; ctx.globalAlpha = 0.6 + Math.sin(now * 8) * 0.3;
-          drawChevron(pos.x + Math.cos(a) * 40, pos.y + Math.sin(a) * 40, a, 8);
-          drawChevron(pos.x + Math.cos(a) * 52, pos.y + Math.sin(a) * 52, a, 8);
-        }
-      }
-      ctx.restore();
-    }
-    if (ev.type === 'bond' && state === 'play') {
-      const chain = bondChain(visiblePlayers()).map((player) => ({ pos: playerPosition(player), color: player.color || playerColor(player.id || 1) }));
-      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      for (let i = 1; i < chain.length; i++) {
-        const a = chain[i - 1].pos, b = chain[i].pos, dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy) || 1;
-        const nx = -dy / length, ny = dx / length;
-        const gradient = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-        gradient.addColorStop(0, chain[i - 1].color); gradient.addColorStop(1, chain[i].color);
-        ctx.shadowColor = '#a0e7ff'; ctx.shadowBlur = bloomEnabled ? 20 : 0;
-        ctx.globalAlpha = 0.45; ctx.strokeStyle = gradient; ctx.lineWidth = BOND_HALF_WIDTH * 2 * (1 + Math.sin(now * 18 + i) * 0.12);
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        ctx.globalAlpha = 1; ctx.shadowBlur = bloomEnabled ? 10 : 0; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
-        const steps = Math.max(4, Math.floor(length / 26));
-        ctx.beginPath(); ctx.moveTo(a.x, a.y);
-        for (let k = 1; k < steps; k++) {
-          const t = k / steps, jitter = Math.sin(now * 37 + k * 2.3 + i * 5.1) * 6;
-          ctx.lineTo(a.x + dx * t + nx * jitter, a.y + dy * t + ny * jitter);
-        }
-        ctx.lineTo(b.x, b.y); ctx.stroke();
-      }
-      ctx.restore();
-    }
-  }
-  // プレイヤーより上に描くもの: 王冠 / 爆弾
-  function drawPartyEventsOver() {
-    if (!partyEventActive()) return;
-    const ev = randomEvent, now = performance.now() / 1000, players = visiblePlayers();
-    if (ev.type === 'king' && (ev.kingAlive || ev.rewarded)) {
-      const king = eventPlayerById(players, ev.kingId);
-      if (king && king.hp > 0) {
-        const pos = playerPosition(king), size = eventSizeScale('player');
-        const top = pos.y - king.r * size - 40 + Math.sin(now * 4) * 2.5;
-        ctx.save();
-        ctx.globalAlpha = 0.5 + Math.sin(now * 6) * 0.2; ctx.strokeStyle = KING_COLOR; ctx.lineWidth = 3;
-        ctx.shadowColor = KING_COLOR; ctx.shadowBlur = bloomEnabled ? 18 : 0;
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, king.r * size + 16 + Math.sin(now * 6) * 3, 0, TAU); ctx.stroke();
-        ctx.globalAlpha = 1; ctx.fillStyle = KING_COLOR; ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(pos.x - 14, top + 9); ctx.lineTo(pos.x - 14, top - 5); ctx.lineTo(pos.x - 7, top + 2);
-        ctx.lineTo(pos.x, top - 10); ctx.lineTo(pos.x + 7, top + 2); ctx.lineTo(pos.x + 14, top - 5); ctx.lineTo(pos.x + 14, top + 9);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#ff5d6a'; ctx.beginPath(); ctx.arc(pos.x, top + 3, 2.5, 0, TAU); ctx.fill();
-        ctx.restore();
-      }
-    }
-    if (ev.type === 'bomb' && ev.bomb && state === 'play') {
-      const holder = eventPlayerById(players, ev.bomb.holder);
-      if (holder && holder.hp > 0) {
-        const pos = playerPosition(holder), size = eventSizeScale('player');
-        const fuse = Math.max(0, ev.bomb.fuse), danger = fuse < 2.5;
-        const bx = pos.x, by = pos.y - holder.r * size - 42 + Math.sin(now * (danger ? 20 : 6)) * 2;
-        ctx.save();
-        if (danger) {
-          ctx.globalAlpha = 0.25 + (Math.floor(now * 8) % 2) * 0.25; ctx.strokeStyle = '#ff5d6a'; ctx.lineWidth = 2; ctx.setLineDash([10, 8]);
-          ctx.beginPath(); ctx.arc(pos.x, pos.y, BOMB_RADIUS, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
-        }
-        ctx.strokeStyle = '#c9b48a'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(bx + 6, by - 9); ctx.quadraticCurveTo(bx + 12, by - 18, bx + 16, by - 16); ctx.stroke();
-        ctx.fillStyle = Math.floor(now * 20) % 2 ? '#ffe36e' : '#ff9f43';
-        ctx.shadowColor = '#ff9f43'; ctx.shadowBlur = bloomEnabled ? 16 : 0;
-        ctx.beginPath(); ctx.arc(bx + 16, by - 16, 3.5 + Math.random() * 1.5, 0, TAU); ctx.fill();
-        ctx.fillStyle = '#1b1f2a'; ctx.strokeStyle = danger && Math.floor(now * 8) % 2 ? '#ff5d6a' : '#ff9f43'; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(bx, by, 13, 0, TAU); ctx.fill(); ctx.stroke();
-        ctx.shadowBlur = 0; ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; setFont(13, 700);
-        ctx.fillText(String(Math.ceil(fuse)), bx, by + 1);
-        ctx.restore();
-      }
-    }
-  }
-  function drawPartyEventFlash() {
-    if (!partyEventActive() || !(randomEvent.flash > 0)) return;
-    ctx.save();
-    ctx.fillStyle = randomEvent.type === 'gather' ? 'rgba(255,240,170,' + 0.45 * randomEvent.flash + ')' : 'rgba(255,170,90,' + 0.35 * randomEvent.flash + ')';
-    ctx.fillRect(0, 0, W, H); ctx.restore();
-  }
-  // 自分に関係するときだけ出す補足テキスト
-  function drawPartyEventHint() {
-    if (!randomEvent || state !== 'play') return;
-    const ev = randomEvent, id = localPlayerId();
-    let text = '';
-    if (ev.type === 'bomb' && ev.bomb && ev.bomb.holder === id) text = '爆弾を持っている！ダッシュで味方に押し付けろ！';
-    else if (ev.type === 'king' && ev.kingAlive && ev.kingId === id) text = 'あなたが王様！敵に狙われるが弾が超強力！';
-    else if (ev.type === 'sweep') text = 'ダッシュ中は無敵！レーザーはダッシュで抜けよう';
-    if (!text) return;
-    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; setFont(13, 700); spaced(1);
-    ctx.globalAlpha = 0.85 + Math.sin(performance.now() / 160) * 0.15;
-    ctx.fillStyle = ev.type === 'bomb' ? '#ff9f43' : ev.type === 'king' ? KING_COLOR : SWEEP_LASER_COLOR;
-    ctx.fillText(text, W / 2, 96); spaced(0); ctx.restore();
   }
   function drawDebuffCutin() {
     const debuff = DEBUFFS.find((entry) => entry.id === debuffCutinId);
@@ -7397,13 +7870,15 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       const pl = remotePlayers.get(d.playerId), enemy = enemies.find((candidate) => candidate.id === d.enemyId && candidate.hp > 0);
       if (!pl || pl.hp <= 0 || !enemy) return;
       const playerRadius = pl.r * eventSizeScale('player');
-      const radius = enemy.type === 'fortless' || enemy.type === 'matrix' ? playerRadius : enemy.r * 0.85 * (ET[enemy.type].hk || 1) * eventSizeScale('enemy') + playerRadius;
+      const radius = enemy.type === 'fortless' || enemy.type === 'matrix' || enemy.type === 'funnels'
+        ? playerRadius : enemy.r * 0.85 * (ET[enemy.type].hk || 1) * eventSizeScale('enemy') + playerRadius;
       if (!bodyHit(enemy, pl.x, pl.y, radius)) return;
       if (d.dash) {
         if (pl.S.dashDamage > 0 && (pl.dashT > 0 || pl.dashJustEnded)) applyDashDamage(pl, enemy, { x: pl.x, y: pl.y });
       } else if (pl.inv <= 0) {
         const damage = ET[enemy.type].boss ? 15 : enemy.mode === 'dash' ? 14 : 10;
-        hurtRemotePlayer(pl, damage, enemy.x, enemy.y);
+        const hitSource = enemy.type === 'funnels' ? nearPt(enemy, pl.x, pl.y) : enemy;
+        hurtRemotePlayer(pl, damage, hitSource.x, hitSource.y);
         if ((isSquareChaser(enemy.type) || enemy.type === 'psept' && enemy.pseptAction === 4 && enemy.pseptChasePhase === 'chase') && pl.hp > 0) pl.inv = 0.375 * (playerInvulnerabilityDuration() / 0.75);
       }
     });
@@ -7460,6 +7935,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (!e.id) e.id = ++uid;
     const ft = (isPentEnemy(e.type) || isQuadStarEnemy(e.type)) ? e.fireT : e.type === 'stardust' ? e.cd : ET[e.type].cross ? e.healT : (e.type === 'sq' && e.mode === 'wind') ? e.dashT : isSquareChaser(e.type) ? e.chaseT : 9;
     const o = { i: e.id, ty: e.type, x: r1(e.x), y: r1(e.y), rt: r2(e.rot), r: e.r, hp: r1(e.hp), mh: Math.round(e.maxHp), b: r2(Math.min(e.born, 1)), f: e.flash > 0 ? 1 : 0, ft: r2(isSquareChaser(e.type) ? ft : Math.min(ft, 1)) };
+    if (e.enhanced) o.en = 1;
+    if (e.color) o.co = e.color;
+    if (e.fill) o.fl = e.fill;
     if (e.reviveStacks > 0) o.rv = e.reviveStacks;
     if (e.type === 'esept') o.ec = e.septSummonType;
     if (isLaserStar(e.type) || (e.type === 'psept' && e.pseptAction === 3)) {
@@ -7479,14 +7957,19 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       o.tcp = e.chargePhase; o.tct = r2(e.chargeT); o.tca = r2(e.chargeAngle);
       o.tr = [e.rushPhase || 0, r2(e.rushT || 0), r2(e.rushAngle || 0)];
       o.tfd = r2(e.trainFireDot || 0);
-      if (e.rushWarning) o.rw = [e.rushWarning.edge, r1(e.rushWarning.lane), r2(e.rushWarning.t)];
+      if (e.rushWarning) o.rw = [
+        e.rushWarning.edge, r1(e.rushWarning.lane || 0), r2(e.rushWarning.t),
+        Number.isFinite(e.rushWarning.angle) ? r2(e.rushWarning.angle) : null,
+        r1(e.rushWarning.x || 0), r1(e.rushWarning.y || 0),
+        r1(e.rushWarning.endX || 0), r1(e.rushWarning.endY || 0)
+      ];
     }
     if (e.plates) {
       o.p2 = e.p2 ? 1 : 0;
-      o.fp = e.plates.map((p) => [r1(p.hp), p.maxHp, r2(p.repairT), r2(p.flash), p.laserPhase, r2(p.laserAngle), p.type, r2(p.laserT)]);
+      o.fp = e.plates.map((p) => [r1(p.hp), p.maxHp, r2(p.repairT), r2(p.flash), p.laserPhase, r2(p.laserAngle), p.type, r2(p.laserT), r1(p.shellHp || 0), p.shellMaxHp || 0]);
     }
     if (e.mxGridCells) {
-      o.      mx2 = { f: e.mxForm, cr: r1(e.mxCoreRadius), p2: e.p2 ? 1 : 0,
+      o.mx2 = { f: e.mxForm, cr: r1(e.mxCoreRadius), p2: e.p2 ? 1 : 0,
         c: e.mxGridCells.map((cell) => [r1(cell.x), r1(cell.y), cell.color || '', r1(cell.width || 1)]),
         s: e.mxSubs.map((sub) => [r1(sub.x), r1(sub.y), r1(sub.r), sub.mode, r1(sub.hp), sub.maxHp, r2(sub.throwAngle || 0)]),
         d: e.mxChildren.map((child) => [r1(child.x), r1(child.y), r1(child.r), r1(child.hp), child.maxHp]),
@@ -7508,8 +7991,26 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (e.parts) {
       o.fo = e.form || '';
       o.pa = e.parts.map((q) => [r1(q.x), r1(q.y), r2(q.rot), r2(q.chg), q.laserPhase, r2(q.laserAngle)]);
+      if (e.form === 'merging') o.mg = [r1(e.mergeX), r1(e.mergeY), r2(e.mergeAngle)];
       o.bm = e.beam; o.bp = r2(e.bp); o.la = r2(e.la); o.cx = r1(e.cx); o.cy = r1(e.cy);
       o.p2 = e.p2 ? 1 : 0;
+      if (e.enhanced) o.ev = [r1(e.mergeVx || 0), r1(e.mergeVy || 0), r2(e.bondedMeteorT || 0)];
+    }
+    if (e.type === 'stardust' && e.enhanced) {
+      o.hs = [e.holyLaserPhase || 0, r2(e.holyLaserT || 0), r2(e.holyLaserBase || 0)];
+    }
+    if (e.type === 'funnels') {
+      o.fu = {
+        m: e.funnelMode, ai: e.funnelAttackIndex, t: r2(e.funnelTimer), oa: r2(e.funnelOrbitAngle), or: r1(e.funnelOrbitRadius),
+        lp: e.funnelLaserPhase || '', lt: r2(e.funnelLaserT || 0), si: e.funnelSparkIndex || 0, st: r2(e.funnelSparkT || 0),
+        sparks: (e.funnelSparks || []).map((spark) => [r1(spark.x), r1(spark.y)]),
+        sp: e.funnelSlashPhase || '', stt: r2(e.funnelSlashT || 0), sv: e.funnelSlashVolleys || 0,
+        sb: r2(e.funnelSlashBase || 0), sa: e.funnelSlashAngles || [],
+        fs: (e.funnels || []).map((satellite) => [
+          r1(satellite.x), r1(satellite.y), r2(satellite.angle), satellite.state, r2(satellite.timer || 0),
+          r2(satellite.orbitAngle), satellite.wall ? [r1(satellite.wall.x), r1(satellite.wall.y), r1(satellite.wall.distance)] : null
+        ])
+      };
     }
     return o;
   }
@@ -7572,6 +8073,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function gEnemy(o, p, al) {
     const L = (k) => (p ? lerp(p[k], o[k], al) : o[k]);
     const e = { id: o.i, type: o.ty, x: L('x'), y: L('y'), rot: p ? angLerp(p.rt, o.rt, al) : o.rt, r: o.r, hp: o.hp, maxHp: o.mh, born: L('b'), flash: o.f ? 0.05 : 0, mode: o.m || 'drift', fireT: o.ft, cd: o.ft, healT: o.ft, dashT: o.ft, chaseT: p ? lerp(p.ft, o.ft, al) : o.ft, chasePhase: o.cp || 'warning', reviveStacks: o.rv || 0 };
+    e.enhanced = !!o.en; e.color = o.co || undefined; e.fill = o.fl || undefined;
     e.bx = e.x; e.by = e.y;
     if (o.ty === 'esept' && SEPT_SUMMON_TYPES.includes(o.ec)) {
       e.septSummonType = o.ec;
@@ -7609,8 +8111,11 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       e.trainFireDot = o.tfd || 0;
       e.rushWarning = Array.isArray(o.rw) ? {
         edge: o.rw[0], lane: o.rw[1], t: o.rw[2], delay: TRAIN_CHARGE_WINDUP,
-        x: o.rw[0] < 2 ? (o.rw[0] === 0 ? 0 : W) : o.rw[1],
-        y: o.rw[0] < 2 ? o.rw[1] : (o.rw[0] === 2 ? 0 : H)
+        angle: Number.isFinite(o.rw[3]) ? o.rw[3] : undefined,
+        x: o.rw[3] === null ? (o.rw[0] < 2 ? (o.rw[0] === 0 ? 0 : W) : o.rw[1]) : o.rw[4],
+        y: o.rw[3] === null ? (o.rw[0] < 2 ? o.rw[1] : (o.rw[0] === 2 ? 0 : H)) : o.rw[5],
+        endX: Number.isFinite(o.rw[6]) ? o.rw[6] : undefined,
+        endY: Number.isFinite(o.rw[7]) ? o.rw[7] : undefined
       } : null;
     }
     if (o.fp) {
@@ -7622,7 +8127,8 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
         const previousAngle = pq && pq[5] !== undefined ? pq[5] : laserAngle;
         return {
           hp: q[0], maxHp: q[1], repairT: q[2], flash: q[3], laserPhase: q[4] || 0,
-          laserAngle: pq ? angLerp(previousAngle, laserAngle, al) : laserAngle, type: q[6] || 'tri', laserT: q[7] || 0
+          laserAngle: pq ? angLerp(previousAngle, laserAngle, al) : laserAngle, type: q[6] || 'tri', laserT: q[7] || 0,
+          shellHp: q[8] || 0, shellMaxHp: q[9] || 0
         };
       });
     }
@@ -7660,6 +8166,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     }
     if (o.pa) {
       e.form = o.fo || '';
+      if (o.mg) { e.mergeX = o.mg[0]; e.mergeY = o.mg[1]; e.mergeAngle = o.mg[2]; }
       e.p2 = !!o.p2;
       e.parts = o.pa.map((q, i) => {
         const pq = p && p.pa && p.pa[i];
@@ -7673,6 +8180,33 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
       e.beam = o.bm; e.cx = L('cx'); e.cy = L('cy');
       e.la = p ? angLerp(p.la, o.la, al) : o.la;
       e.bp = (p && p.bm === o.bm) ? lerp(p.bp, o.bp, al) : o.bp;
+      if (o.ev) {
+        e.mergeVx = o.ev[0]; e.mergeVy = o.ev[1]; e.bondedMeteorT = o.ev[2];
+      }
+    }
+    if (o.hs) {
+      e.holyLaserPhase = o.hs[0]; e.holyLaserT = o.hs[1]; e.holyLaserBase = o.hs[2];
+    }
+    if (o.fu) {
+      const previousSatellites = p && p.fu && p.fu.fs || [];
+      e.funnelMode = o.fu.m; e.funnelAttackIndex = o.fu.ai; e.funnelTimer = o.fu.t;
+      e.funnelOrbitAngle = o.fu.oa; e.funnelOrbitRadius = o.fu.or;
+      e.funnelLaserPhase = o.fu.lp; e.funnelLaserT = o.fu.lt;
+      e.funnelSparkIndex = o.fu.si; e.funnelSparkT = o.fu.st;
+      e.funnelSparks = (o.fu.sparks || []).map((spark) => ({ x: spark[0], y: spark[1] }));
+      e.funnelSlashPhase = o.fu.sp; e.funnelSlashT = o.fu.stt;
+      e.funnelSlashVolleys = o.fu.sv; e.funnelSlashBase = o.fu.sb; e.funnelSlashAngles = o.fu.sa || [];
+      e.funnels = (o.fu.fs || []).map((satellite, index) => {
+        const previous = previousSatellites[index];
+        return {
+          index, x: previous ? lerp(previous[0], satellite[0], al) : satellite[0],
+          y: previous ? lerp(previous[1], satellite[1], al) : satellite[1],
+          prevX: previous ? previous[0] : satellite[0], prevY: previous ? previous[1] : satellite[1],
+          angle: previous ? angLerp(previous[2], satellite[2], al) : satellite[2],
+          state: satellite[3], timer: satellite[4], orbitAngle: satellite[5], speed: satellite[7] || 0,
+          wall: satellite[6] ? { x: satellite[6][0], y: satellite[6][1], distance: satellite[6][2] } : null
+        };
+      });
     }
     return e;
   }
@@ -7979,8 +8513,13 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   document.getElementById('sandboxControlsOpen').addEventListener('click', openSandboxPanel);
   document.getElementById('sandboxClose').addEventListener('click', closeSandboxPanel);
   document.getElementById('sandboxApplyUpgrades').addEventListener('click', applySandboxUpgrades);
+  document.getElementById('sandboxAutoAllocate').addEventListener('click', autoAllocateSandboxUpgrades);
+  document.getElementById('sandboxApplyTeam').addEventListener('click', applySandboxTeamSettings);
   document.getElementById('sandboxSpawnEnemy').addEventListener('click', spawnSandboxEnemy);
   document.getElementById('sandboxRevivePlayer').addEventListener('click', reviveSandboxPlayer);
+  document.getElementById('sandboxPlayerPresent').addEventListener('change', syncSandboxCpuOptions);
+  document.getElementById('sandboxJsonInfo').addEventListener('click', () => { document.getElementById('sandboxJsonInfoDialog').hidden = false; });
+  document.getElementById('sandboxJsonInfoClose').addEventListener('click', () => { document.getElementById('sandboxJsonInfoDialog').hidden = true; });
   document.getElementById('sandboxInvulnerable').addEventListener('change', (event) => {
     sandboxInvulnerable = event.target.checked;
   });
@@ -8084,6 +8623,7 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
   function frame(now) {
     requestAnimationFrame(frame);
     let dt = Math.min(0.05, (now - last) / 1000); last = now;
+    frameSfxPlayed.clear();
     const soloPaused = (pauseMenuOpen || sandboxPanelOpen) && netRole === 'solo';
 
     // update
@@ -8157,11 +8697,9 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     if (shake > 0.2) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
     drawSpawns();
     for (const enemy of enemies) if (enemy.type === 'train' && enemy.ci === 0 && enemy.rushWarning) drawTrainWarn(enemy.rushWarning);
-    drawMeteors(); drawPartyEventsUnder(); drawEnemies(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer();
-    drawPartyEventsOver();
+    drawMeteors(); drawEnemies(); drawItems(); drawLasers(); drawBullets(); drawEBullets(); drawPlayer();
     drawFx();
     ctx.restore();
-    drawPartyEventFlash();
 
     if (hurtFlash > 0) {
       const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.85);
@@ -8174,7 +8712,6 @@ body.canvas-title-active header, body.canvas-title-active .hint { display: none;
     drawBanner();
     drawEventBanner();
     drawRandomEventIndicator();
-    drawPartyEventHint();
     if (state === 'debuff') drawDebuffCutin();
     if (state === 'upgrade') drawUpgrade();
     if (state === 'over') drawOver();
